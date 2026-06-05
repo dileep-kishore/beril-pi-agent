@@ -59,3 +59,36 @@ The original build placed the `beril` CLI subcommands **in the original BERIL re
 - [ ] Full live loop in Pi: `beril start --agent pi` → `/berdl-status` ready → `berdl_query` renders a table → `/synthesize`→`/berdl-review`→`/submit` (ORCID gate + safety confirm) on a real project → `/literature-review` writes references.md.
 - [ ] **4.4 integration smoke:** `pi --mode json --no-session "<prompt>"` against a mock `beril` on PATH (or live), exercising the query→synthesize→review→submit happy path end-to-end (needs a model).
 - [ ] Provider: confirm the org `models.json` gateway (or ADC for Vertex) resolves.
+
+## Pi-native optimization (post-MVP, branch `feat/pi-native`) ✅
+
+Executed the highest-value/lowest-risk slices from `docs/superpowers/plans/2026-06-05-pi-native-plan.md`
+(report: `docs/superpowers/specs/2026-06-05-pi-native-recommendations.md`) via subagent-driven TDD
+(implement → spec-review → quality-review per phase; controller-owned verification + commits).
+Final whole-branch review verdict: **SHIP**. Gate at every commit: `bunx tsc --noEmit` clean,
+`bunx biome check .` clean, full `node --test` green, `uv run pytest -q` green, `pi install -l .` loads.
+**Invariant guard:** `git diff main..HEAD` touches none of `notebook_hash.py`, `review.sh`,
+`lakehouse_upload.py`, `lifecycle.py`, `hash_cmd.py`, `user_cmd.py`, `submit_cmd.py`, `beril-safety.ts`.
+
+- **Phase 1 — literature ported to TS** (`ae66088`, `d18c3d3`): `lib/lit.ts` (Node `fetch`, byte-for-byte
+  field mapping incl. `res.ok` parity with the Python `raise_for_status`) replaces the `beril lit`
+  subprocess; `expandQueries` uses in-process `complete()` with a `summarize.ts`-style model fallback
+  (headless-safe) + an injectable test seam. Removed `lit_cmd.py`, `lit_client.py`, the `lit` subparser,
+  the `httpx` dependency, their pytest files, and the now-dead `lib/jsonl.ts`. Python 201 → 186 tests.
+- **Phase 3 — tool_result hints** (`c656bbd`): `lib/hints.ts` + `extensions/beril-hints.ts` append a
+  next-step advisory to `berdl_query`/`berdl_discover` results (e.g. truncation when
+  `returned_rows == limit_applied`). Content-only patch — never touches `details`, so the payload stays
+  byte-identical; runs only on `!isError`, so the `tool_call` safety gate is unaffected.
+- **Phase 2 — footer project segment** (`07433c4`): governance tracks the active project and sets
+  `ctx.ui.setStatus("beril-2-project", …)` (hasUI-guarded; cleared on `session_shutdown`).
+- **Phase 4a — readiness TTL cache** (`8244b76`): `requireReady` fast-paths on a fresh, ready cached
+  verdict (30s TTL), live-exec fallback otherwise; never caches not-ready; `beril-env` seeds it. Drops the
+  per-tool `beril env` re-exec. `resetReadinessCache()` reset per-test in readiness/data suites.
+- **Phase 4b — lifecycle events → footer** (`2339a41`): governance emits `beril:lifecycle`/`beril:submitted`
+  on the shared `pi.events` bus after awaited success (the *returned* state); `beril-env` listens and sets
+  `beril-3-lifecycle`. `beril.yaml` stays authoritative; payload is display-only.
+
+**Deferred (per the plan's out-of-scope, higher-risk/blocked):** `query-table-renderResult` (needs GFM
+cell-escaping), `export/submit confirm-with-facts overlay`, `hash-diff card` (needs a new read-only
+`beril verify`), `registerProvider` Vertex/ADC, `before_agent_start` context injection, `appendEntry`
+persistence. Keep-in-Python unchanged (Spark/MinIO, both sha256 primitives, lifecycle/ORCID).
