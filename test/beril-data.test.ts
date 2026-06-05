@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import berilData from "../extensions/beril-data.ts";
+import { isDestructive } from "../lib/destructive.ts";
 import { renderTable } from "../lib/render.ts";
 
 function harness(execImpl: any) {
@@ -12,9 +13,39 @@ function harness(execImpl: any) {
 const ctx: any = { hasUI: false, mode: "json" };
 const ready = { ready: true, location: "off-cluster", checks: {}, next_steps: [] };
 
-test("registers berdl_query + berdl_discover", () => {
+test("registers berdl_query + berdl_discover + berdl_export", () => {
   const tools = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
-  assert.ok(tools.berdl_query && tools.berdl_discover);
+  assert.ok(tools.berdl_query && tools.berdl_discover && tools.berdl_export);
+});
+
+test("berdl_export shells 'beril export' with path/format/mode and is destructive", async () => {
+  const calls: string[][] = [];
+  const tools = harness(async (_c: string, args: string[]) => {
+    calls.push(args);
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: JSON.stringify({ path: "s3a://x", count: 5 }), stderr: "", code: 0, killed: false };
+  });
+  const res = await tools.berdl_export.execute(
+    "id",
+    { query: "SELECT 1", path: "s3a://x", format: "parquet", mode: "overwrite" },
+    undefined,
+    undefined,
+    ctx,
+  );
+  assert.equal((res.details as any).count, 5);
+  assert.deepEqual(calls[1], [
+    "export",
+    "--query",
+    "SELECT 1",
+    "--path",
+    "s3a://x",
+    "--format",
+    "parquet",
+    "--mode",
+    "overwrite",
+  ]);
+  // The safety gate must recognize this tool as destructive.
+  assert.equal(isDestructive("berdl_export", {}), true);
 });
 
 test("berdl_query runs readiness check first, then query", async () => {

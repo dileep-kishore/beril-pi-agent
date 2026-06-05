@@ -122,9 +122,10 @@ test("/submit uploads and marks submitted when ORCID present", async () => {
   });
   const { ctx: cctx } = cmdCtx();
   await commands.submit.handler("demo", cctx);
-  assert.ok(
-    calls.find((a) => a[0] === "submit" && a.includes("demo")),
-    "uploaded",
+  // Exact arg shape — `beril submit <project>` is positional (contract with the Python CLI).
+  assert.deepEqual(
+    calls.find((a) => a[0] === "submit"),
+    ["submit", "demo"],
   );
   assert.ok(
     calls.find((a) => a[0] === "lifecycle" && a[1] === "marker" && a.includes("submitted")),

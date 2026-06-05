@@ -81,7 +81,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       await requireReady(pi);
       // Exit 2 (partial archive) and exit 1 both surface as a thrown BerilError.
-      const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", "--project", params.project]);
+      const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", params.project]);
       return {
         content: [{ type: "text", text: `Submitted ${params.project}: ${JSON.stringify(manifest)}` }],
         details: manifest,
@@ -156,7 +156,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
         }
       }
       try {
-        const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", "--project", project]);
+        const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", project]);
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "submitted"]);
         if (ctx.hasUI) ctx.ui.notify(`Submitted ${project}: ${JSON.stringify(manifest)}`, "info");
       } catch (err) {
