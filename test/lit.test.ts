@@ -86,3 +86,14 @@ test("searchPubmed returns [] for an empty idlist (no esummary call)", async () 
   );
   assert.deepEqual(records, []);
 });
+
+test("searchPubmed throws on a non-2xx response (raise_for_status parity)", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    ({ ok: false, status: 429, statusText: "Too Many Requests", json: async () => ({}) }) as unknown as Response) as typeof globalThis.fetch;
+  try {
+    await assert.rejects(() => searchPubmed("x", 20), /429/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

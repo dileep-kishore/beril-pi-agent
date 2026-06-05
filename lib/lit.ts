@@ -66,6 +66,9 @@ function toUrl(endpoint: string, params: Record<string, string | number>): strin
 
 async function getJson(url: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const res = await fetch(url, { signal: signal ?? AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+  // Parity with the Python original's raise_for_status(): surface NCBI 429/5xx
+  // as a clear error rather than silently degrading to zero/garbled results.
+  if (!res.ok) throw new Error(`NCBI request failed: ${res.status} ${res.statusText}`);
   return (await res.json()) as Record<string, unknown>;
 }
 
