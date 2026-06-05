@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
-import type { BerdlEnv } from "../lib/readiness.ts";
+import { type BerdlEnv, setCachedEnv } from "../lib/readiness.ts";
 
 const STATUS_KEY = "beril-connection";
 
@@ -16,6 +16,7 @@ async function refreshStatus(pi: ExtensionAPI, ctx: ExtensionContext): Promise<B
   if (!ctx.hasUI) return undefined;
   try {
     const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
+    setCachedEnv(env);
     ctx.ui.setStatus(STATUS_KEY, statusLine(env, ctx));
     return env;
   } catch {

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import berilData from "../extensions/beril-data.ts";
 import { isDestructive } from "../lib/destructive.ts";
+import { resetReadinessCache } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
+
+beforeEach(() => resetReadinessCache());
 
 function harness(execImpl: any) {
   const tools: any = {};
