@@ -4,7 +4,9 @@
 
 **Goal:** Build `beril-pi-agent`, a Pi package that turns BERIL into a terminal research workbench — 5 capability-aligned TS extensions wrapping a stable `beril` CLI, with Pi-optimized skills and a central safety gate.
 
-**Architecture:** Thin TypeScript extensions register Pi tools/commands/hooks and shell out (`pi.exec`) to new `beril <subcommand>` calls in the BERIL repo; the proven Python keeps the logic, state, and reproducibility. Two repos: this package (`beril-pi-agent`, branch `feat/mvp`) and additive subcommands in `BERIL-research-observatory` (branch `feat/beril-pi-subcommands`).
+**Architecture:** Thin TypeScript extensions register Pi tools/commands/hooks and shell out (`pi.exec`) to a bundled `beril <subcommand>` CLI; the proven Python keeps the logic, state, and reproducibility.
+
+> **CORRECTION (see phase-notes.md):** this plan was written for a two-repo layout (Python subcommands added to `BERIL-research-observatory`). That was changed post-MVP — the `beril` CLI + BERDL `scripts/`/`tools/` are now **vendored into this single repo** (`beril_cli/`, `scripts/`, `tools/`, `pyproject.toml`, `PROJECT.md`), making `beril-pi-agent` self-contained with no dependency on the original repo. Where tasks below say "BERIL repo / `feat/beril-pi-subcommands`", read "this repo's bundled CLI." All Python tests now live in `tests/test_cli_*.py` here.
 
 **Tech Stack:** Pi `@earendil-works/pi-coding-agent@0.78.1` (verified), TypeScript (strict) + `typebox` params + Biome, Node 26 test runner (`node:test`); Python 3.11 stdlib + argparse (BERIL CLI), pytest. Companion: [`../specs/pi-api-reference.md`](../specs/pi-api-reference.md) and [`../specs/2026-06-05-beril-pi-agent-design.md`](../specs/2026-06-05-beril-pi-agent-design.md).
 

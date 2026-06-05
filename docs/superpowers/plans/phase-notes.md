@@ -2,6 +2,10 @@
 
 Running log of what was built/verified per phase, and what needs manual verification.
 
+## ⚠️ Re-architecture (post-MVP): self-contained / vendored
+
+The original build placed the `beril` CLI subcommands **in the original BERIL repo** (an unmerged branch) and had the Pi extensions call across to it — a cross-repo dependency that contradicted "a separate, complete alternative." **Corrected:** the `beril` CLI + the BERDL execution scripts/tools it wraps are now **vendored into this repo** (`beril_cli/`, `scripts/`, `tools/`, `pyproject.toml`, `PROJECT.md`). `beril-pi-agent` is now fully standalone and replaces the original repo's Claude Code/Codex skill layer; the **original BERIL repo is untouched (back at `940c3b0e`) and not a runtime dependency.** Commit `cdd9f0e`. Verified: **201 Python tests + 40 TS tests pass**; `beril env`/`lifecycle`/`hash` run end-to-end from this repo's root. (The phase log below was written against the original two-repo layout; the Python now lives here, not in `feat/beril-pi-subcommands`.)
+
 ## Phase 0 — Scaffold + Connect ✅ (automated checks green)
 
 **Python (BERIL repo, branch `feat/beril-pi-subcommands`):**
