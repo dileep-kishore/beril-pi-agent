@@ -7,17 +7,29 @@ const READY = { ready: true, location: "off-cluster", checks: {}, next_steps: []
 function harness(execImpl: any) {
   const tools: any = {};
   const commands: any = {};
+  const handlers: any = {};
   const pi: any = {
     registerTool: (t: any) => (tools[t.name] = t),
     registerCommand: (n: string, o: any) => (commands[n] = o),
-    on: () => {},
+    on: (event: string, h: any) => (handlers[event] = h),
     sendUserMessage: () => {},
     exec: execImpl,
   };
   berilGov(pi);
-  return { tools, commands };
+  return { tools, commands, handlers };
 }
 const ctx: any = { hasUI: false, mode: "json" };
+
+// Tool-execute ctx with a setStatus spy (5th arg to execute). Captures (key,text).
+function statusCtx() {
+  const statuses: [string, string | undefined][] = [];
+  const c: any = {
+    hasUI: true,
+    mode: "tui",
+    ui: { setStatus: (k: string, t: string | undefined) => statuses.push([k, t]) },
+  };
+  return { ctx: c, statuses };
+}
 
 test("registers the four governance tools", () => {
   const { tools } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
@@ -82,8 +94,17 @@ test("registers /synthesize /berdl-review /submit commands", () => {
 
 function cmdCtx() {
   const notes: string[] = [];
-  const c: any = { hasUI: true, mode: "tui", ui: { notify: (m: string) => notes.push(m), confirm: async () => true } };
-  return { ctx: c, notes };
+  const statuses: [string, string | undefined][] = [];
+  const c: any = {
+    hasUI: true,
+    mode: "tui",
+    ui: {
+      notify: (m: string) => notes.push(m),
+      confirm: async () => true,
+      setStatus: (k: string, t: string | undefined) => statuses.push([k, t]),
+    },
+  };
+  return { ctx: c, notes, statuses };
 }
 
 test("/submit aborts before upload when ORCID missing", async () => {
@@ -151,4 +172,47 @@ test("/berdl-review runs review then marks reviewed", async () => {
   await commands["berdl-review"].handler("demo", cctx);
   assert.deepEqual(calls[0], ["review", "demo"]);
   assert.deepEqual(calls[1], ["lifecycle", "set", "demo", "reviewed"]);
+});
+
+test("lifecycle_transition sets the active-project footer key under hasUI", async () => {
+  const { tools } = harness(async () => ({
+    stdout: JSON.stringify({ status: "reviewed" }),
+    stderr: "",
+    code: 0,
+    killed: false,
+  }));
+  const { ctx: sctx, statuses } = statusCtx();
+  await tools.lifecycle_transition.execute("id", { project: "demo", state: "reviewed" }, undefined, undefined, sctx);
+  const entry = statuses.find((s) => s[0] === "beril-2-project");
+  assert.ok(entry, "set beril-2-project");
+  assert.match(String(entry?.[1]), /demo/);
+});
+
+test("lifecycle_transition does not touch the footer when headless", async () => {
+  let setStatusCalled = false;
+  const { tools } = harness(async () => ({
+    stdout: JSON.stringify({ status: "reviewed" }),
+    stderr: "",
+    code: 0,
+    killed: false,
+  }));
+  const headless: any = { hasUI: false, mode: "json", ui: { setStatus: () => (setStatusCalled = true) } };
+  await tools.lifecycle_transition.execute(
+    "id",
+    { project: "demo", state: "reviewed" },
+    undefined,
+    undefined,
+    headless,
+  );
+  assert.equal(setStatusCalled, false, "setStatus must not be called when hasUI is false");
+});
+
+test("session_shutdown clears the active-project footer key", async () => {
+  const { handlers } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
+  const { ctx: sctx, statuses } = statusCtx();
+  await handlers.session_shutdown({ type: "session_shutdown", reason: "quit" }, sctx);
+  assert.deepEqual(
+    statuses.find((s) => s[0] === "beril-2-project"),
+    ["beril-2-project", undefined],
+  );
 });
