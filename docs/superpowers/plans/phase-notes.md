@@ -37,4 +37,21 @@ Running log of what was built/verified per phase, and what needs manual verifica
 
 ## Phase 2 — Governance core (the lift)
 **TS (`feat/mvp`) ✅:** `8b82e58` governance tools (notebook_hash, lifecycle_transition, beril_user, lakehouse_submit); `ae02df5` `/synthesize` `/berdl-review` `/submit` commands. ORCID gate: `/submit` reads identity stdout, aborts before upload when ORCID empty, confirms destructive step, marks submitted/failed. 30 TS tests pass; tsc + biome clean; `pi install -l .` loads all 4 extensions.
-**Python (`feat/beril-pi-subcommands`):** lifecycle engine + hash/export/review/submit/lifecycle subcommands — in progress (background agent); to be verified at checkpoint 2.9.
+**Python (`feat/beril-pi-subcommands`) ✅:** `9ec1f128` lifecycle state-machine core, `67975322` beril.yaml IO (+`pyyaml` dep), `f211477c` hash, `5f158c17` export (destructive), `cfa3d2b8` review+submit (2=partial=failure), `e15636ff` lifecycle subcommand.
+**Checkpoint 2.9 — live no-mock smoke (verified by me):** drove `active→analysis→reviewed→complete`, **rejected illegal `analysis→complete` (exit 2)**, demote `reviewed→analysis`, `approve` (canonical key order), `marker` (SUBMITTED.md), `hash` ({} on no-notebook). beril.yaml serialization correct; pure-JSON stdout contract holds.
+**Cross-repo contract audit:** found+fixed one mismatch — `beril submit` is positional (`submit <project>`), not `--project` (TS `e8a718b`); also added the missing `berdl_export` tool. All other TS→Python arg shapes match their subparsers.
+
+## Phase 3 — Literature ✅ (automated)
+- Python (`feat/beril-pi-subcommands`): `3afd7bae` lit client (PubMed E-utilities + Semantic Scholar; pure normalizers tested), `e3240568` `beril lit search|fetch` (+`httpx` dep). search→JSON array, fetch→JSON object (matches TS contract). 15 lit tests.
+- TS (`feat/mvp`): `…` `beril-literature` — `lit_search`/`lit_fetch` tools + `/literature-review` fan-out (sub-agent topic expansion via `pi --mode json`, newline-only JSONL parse, per-query search, dedupe → `references.md`). lib/jsonl.ts tested.
+
+## Phase 4 — Polish ✅ (skills/prompt/theme/README); 4.4 deferred
+- 4.1 **8 Pi-optimized skills** (parallel workflow + audit): berdl-query, berdl-discover, synthesize, berdl-review, submit, literature-review, suggest-research, pitfall-capture. All valid frontmatter (name+description), zero execution mechanics, reference real tools/commands. Judgment/rubrics preserved from the BERIL originals.
+- 4.2 `/berdl-start` prompt + `beril` theme (valid against Pi's theme schema).
+- 4.3 README (install, launch, off-cluster connection, models.json provider, safety/isolation).
+- **Final state:** TS — tsc+biome clean, 40 tests; Python — 245 tests. Package loads via `pi install -l .`.
+
+### Deferred to manual verification (need interactive TUI + live BERDL + model auth)
+- [ ] Full live loop in Pi: `beril start --agent pi` → `/berdl-status` ready → `berdl_query` renders a table → `/synthesize`→`/berdl-review`→`/submit` (ORCID gate + safety confirm) on a real project → `/literature-review` writes references.md.
+- [ ] **4.4 integration smoke:** `pi --mode json --no-session "<prompt>"` against a mock `beril` on PATH (or live), exercising the query→synthesize→review→submit happy path end-to-end (needs a model).
+- [ ] Provider: confirm the org `models.json` gateway (or ADC for Vertex) resolves.
