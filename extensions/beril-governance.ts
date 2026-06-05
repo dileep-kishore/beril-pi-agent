@@ -1,10 +1,25 @@
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { requireReady } from "../lib/readiness.ts";
 
 const LIFECYCLE_STATES = ["exploration", "proposed", "active", "analysis", "reviewed", "complete"] as const;
+
+// Footer key for the active-project segment. The built-in footer renders all
+// setStatus keys sorted by key, space-joined; the glyph prefix self-identifies
+// the segment alongside beril-env's "beril-connection" key.
+const PROJECT_STATUS_KEY = "beril-2-project";
+
+// Session-scoped active project, surfaced in the footer. Display-only: it never
+// feeds a hash or beril.yaml.
+let activeProject: string | undefined;
+
+/** Record the active project and reflect it in the footer (UI only). */
+function setActiveProject(ctx: ExtensionContext | ExtensionCommandContext, project: string): void {
+  activeProject = project;
+  if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, `▣ ${project}`);
+}
 
 interface Identity {
   name: string;
@@ -42,8 +57,11 @@ export default function berilGovernance(pi: ExtensionAPI) {
       project: Type.String({ description: "Project id." }),
       state: StringEnum([...LIFECYCLE_STATES], { description: "Target lifecycle state." }),
     }),
-    async execute(_id, params, _signal, _onUpdate, _ctx) {
+    async execute(_id, params, _signal, _onUpdate, ctx) {
       const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", params.project, params.state]);
+      setActiveProject(ctx, params.project);
+      // Broadcast the state the machine RETURNED (not the requested target) for the footer.
+      pi.events.emit("beril:lifecycle", { project: params.project, state: result.status });
       return { content: [{ type: "text", text: `Project ${params.project} → ${result.status}` }], details: result };
     },
   });
@@ -78,10 +96,11 @@ export default function berilGovernance(pi: ExtensionAPI) {
     parameters: Type.Object({
       project: Type.String({ description: "Project id." }),
     }),
-    async execute(_id, params, _signal, _onUpdate, _ctx) {
+    async execute(_id, params, _signal, _onUpdate, ctx) {
       await requireReady(pi);
       // Exit 2 (partial archive) and exit 1 both surface as a thrown BerilError.
       const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", params.project]);
+      setActiveProject(ctx, params.project);
       return {
         content: [{ type: "text", text: `Submitted ${params.project}: ${JSON.stringify(manifest)}` }],
         details: manifest,
@@ -99,6 +118,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
         if (ctx.hasUI) ctx.ui.notify("Usage: /synthesize <project>", "warning");
         return;
       }
+      setActiveProject(ctx, project);
       pi.sendUserMessage(
         `Follow the synthesize skill to interpret the analysis for project "${project}" and write REPORT.md. ` +
           `When the report is complete, call the lifecycle_transition tool to move "${project}" to "analysis".`,
@@ -114,8 +134,10 @@ export default function berilGovernance(pi: ExtensionAPI) {
         if (ctx.hasUI) ctx.ui.notify("Usage: /berdl-review <project>", "warning");
         return;
       }
+      setActiveProject(ctx, project);
       const review = await berilExec<{ review_file: string; report_hash: string }>(pi, ["review", project]);
-      await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
+      const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
+      pi.events.emit("beril:lifecycle", { project, state: result.status });
       if (ctx.hasUI) ctx.ui.notify(`Review written: ${review.review_file}; project marked reviewed.`, "info");
       pi.sendUserMessage(
         `An independent review of "${project}" is at ${review.review_file}. Follow the berdl-review skill to read it and guide any fixes.`,
@@ -131,6 +153,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
         if (ctx.hasUI) ctx.ui.notify("Usage: /submit <project>", "warning");
         return;
       }
+      setActiveProject(ctx, project);
       // ORCID gate — read identity from stdout regardless of exit code.
       const res = await pi.exec("beril", ["user", "--json"], { timeout: 30_000 });
       let identity: Identity;
@@ -158,6 +181,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
       try {
         const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", project]);
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "submitted"]);
+        // A marker, not a state transition: signal submission distinctly, never claim a lifecycle state.
+        pi.events.emit("beril:submitted", { project });
         if (ctx.hasUI) ctx.ui.notify(`Submitted ${project}: ${JSON.stringify(manifest)}`, "info");
       } catch (err) {
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "failed"]).catch(() => {});
@@ -165,5 +190,9 @@ export default function berilGovernance(pi: ExtensionAPI) {
         throw err;
       }
     },
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, undefined);
   });
 }

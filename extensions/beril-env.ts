@@ -1,9 +1,21 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
-import type { BerdlEnv } from "../lib/readiness.ts";
+import { type BerdlEnv, setCachedEnv } from "../lib/readiness.ts";
 
 const STATUS_KEY = "beril-connection";
+// Footer key for the lifecycle/submission segment, fed by the shared event bus.
+// Sorts after beril-connection and beril-2-project so segments read left-to-right.
+const LIFECYCLE_STATUS_KEY = "beril-3-lifecycle";
+
+// Display-only event payloads pushed by beril-governance on the shared bus.
+interface LifecycleEvent {
+  project: string;
+  state: string;
+}
+interface SubmittedEvent {
+  project: string;
+}
 
 function statusLine(env: BerdlEnv, ctx: ExtensionContext): string {
   const label = `BERDL ${env.location}${env.ready ? " ✓ ready" : " ✗ not ready"}`;
@@ -16,6 +28,7 @@ async function refreshStatus(pi: ExtensionAPI, ctx: ExtensionContext): Promise<B
   if (!ctx.hasUI) return undefined;
   try {
     const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
+    setCachedEnv(env);
     ctx.ui.setStatus(STATUS_KEY, statusLine(env, ctx));
     return env;
   } catch {
@@ -25,6 +38,26 @@ async function refreshStatus(pi: ExtensionAPI, ctx: ExtensionContext): Promise<B
 }
 
 export default function berilEnv(pi: ExtensionAPI) {
+  // Latest UI context, captured on session_start. The bus has no replay, so the
+  // listener needs a ctx to call setStatus; this mirrors the event-bus example.
+  let uiCtx: ExtensionContext | undefined;
+  // Most recently seen project, learned from the bus. Undefined on a cold start
+  // (a fresh process), so the session_start seed read shells out to no project.
+  let activeProject: string | undefined;
+
+  // Listen for lifecycle/submission broadcasts from beril-governance and reflect
+  // them in the footer. Registered at load so a listener exists before any emit.
+  pi.events.on("beril:lifecycle", (data) => {
+    const { project, state } = data as LifecycleEvent;
+    activeProject = project;
+    if (uiCtx?.hasUI) uiCtx.ui.setStatus(LIFECYCLE_STATUS_KEY, `◆ ${project} → ${state}`);
+  });
+  pi.events.on("beril:submitted", (data) => {
+    const { project } = data as SubmittedEvent;
+    activeProject = project;
+    if (uiCtx?.hasUI) uiCtx.ui.setStatus(LIFECYCLE_STATUS_KEY, `↑ ${project} submitted`);
+  });
+
   pi.registerTool({
     name: "berdl_env_check",
     label: "Check BERDL environment",
@@ -60,10 +93,25 @@ export default function berilEnv(pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    uiCtx = ctx;
     await refreshStatus(pi, ctx);
+    // One best-effort seed read so the lifecycle segment survives a restart. The
+    // bus has no history; only run a subprocess when a project is actually known
+    // (none on a cold start), keeping startup free of a mandatory extra exec.
+    if (ctx.hasUI && activeProject) {
+      try {
+        const proj = await berilExec<{ status?: string }>(pi, ["lifecycle", "status", activeProject]);
+        if (proj.status) ctx.ui.setStatus(LIFECYCLE_STATUS_KEY, `◆ ${activeProject} → ${proj.status}`);
+      } catch {
+        // best-effort: a missing/unreadable project must not break startup
+      }
+    }
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
-    if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
+    if (ctx.hasUI) {
+      ctx.ui.setStatus(STATUS_KEY, undefined);
+      ctx.ui.setStatus(LIFECYCLE_STATUS_KEY, undefined);
+    }
   });
 }

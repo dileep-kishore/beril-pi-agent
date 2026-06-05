@@ -95,13 +95,6 @@ def main(argv: list[str] | None = None) -> int:
     lifecycle_parser.add_argument("--review-hash", dest="review_hash", default=None)
     lifecycle_parser.add_argument("--kind", choices=["submitted", "failed"], default=None)
 
-    # lit
-    lit_parser = sub.add_parser("lit", help="Search or fetch literature records")
-    lit_parser.add_argument("action", choices=["search", "fetch"])
-    lit_parser.add_argument("--query", default=None)
-    lit_parser.add_argument("--max", type=int, default=20)
-    lit_parser.add_argument("--pmid", default=None)
-
     # user
     user_parser = sub.add_parser(
         "user",
@@ -179,11 +172,6 @@ def main(argv: list[str] | None = None) -> int:
         from beril_cli.lifecycle_cmd import run_lifecycle
 
         return run_lifecycle(args)
-
-    if args.command == "lit":
-        from beril_cli.lit_cmd import run_lit
-
-        return run_lit(args)
 
     if args.command == "user":
         from beril_cli.user_cmd import run_user
