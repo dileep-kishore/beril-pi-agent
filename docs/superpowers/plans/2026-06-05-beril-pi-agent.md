@@ -28,7 +28,9 @@ Subcommands locate the BERIL repo via `find_repo_root()` (walk up for `PROJECT.m
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 export default function (pi: ExtensionAPI) { /* register tools/commands/hooks */ }
 ```
-Import types from the package **root** (the `/hooks` subpath is broken). Tool params use `import { Type } from "typebox"`; string-enums use `import { StringEnum } from "@earendil-works/pi-ai"`. `execute(toolCallId, params, signal, onUpdate, ctx)` — tools **throw** on failure (no `isError` field). Touch `ctx.ui` only when `ctx.hasUI`; touch `ctx.ui.custom/setFooter/setHeader` only when `ctx.mode === "tui"`.
+Import types from the package **root**. Tool params use `import { Type } from "typebox"`; string-enums use `import { StringEnum } from "@earendil-works/pi-ai"`. `execute(toolCallId, params, signal, onUpdate, ctx)` — tools **throw** on failure (no `isError` field). Touch `ctx.ui` only when `ctx.hasUI`; touch `ctx.ui.custom/setFooter/setHeader` only when `ctx.mode === "tui"`.
+
+**STRIP-ONLY TS CONSTRAINT (verified at runtime):** tests run under Node 26's native type-stripping, which only *erases* types — it cannot *transform* code. Therefore NEVER use: TypeScript **parameter properties** (`constructor(public x: T)` → declare the field + assign in the body instead), `enum`, `namespace`, or experimental decorators. Use `.ts` extensions in relative imports; use `import type` for type-only imports (`verbatimModuleSyntax` is on). Test command: `node --test test/` (no flags). Typecheck: `bunx tsc --noEmit`.
 
 ### C4 — `berilExec` wrapper template (`lib/beril-exec.ts`, built in Task 0.3)
 All tools call `berilExec(pi, args)` rather than `pi.exec` directly. It runs `beril`, maps exit 0/1/2, and `JSON.parse`s stdout.
