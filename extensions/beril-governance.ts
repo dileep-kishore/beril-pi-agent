@@ -1,5 +1,5 @@
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { requireReady } from "../lib/readiness.ts";
@@ -86,6 +86,84 @@ export default function berilGovernance(pi: ExtensionAPI) {
         content: [{ type: "text", text: `Submitted ${params.project}: ${JSON.stringify(manifest)}` }],
         details: manifest,
       };
+    },
+  });
+
+  // --- Commands: orchestration; scientific judgment lives in the matching skills ---
+
+  pi.registerCommand("synthesize", {
+    description: "Synthesize results into REPORT.md for a project (delegates to the synthesize skill).",
+    async handler(args: string, ctx: ExtensionCommandContext) {
+      const project = args.trim();
+      if (!project) {
+        if (ctx.hasUI) ctx.ui.notify("Usage: /synthesize <project>", "warning");
+        return;
+      }
+      pi.sendUserMessage(
+        `Follow the synthesize skill to interpret the analysis for project "${project}" and write REPORT.md. ` +
+          `When the report is complete, call the lifecycle_transition tool to move "${project}" to "analysis".`,
+      );
+    },
+  });
+
+  pi.registerCommand("berdl-review", {
+    description: "Run an independent review of a project, then mark it reviewed.",
+    async handler(args: string, ctx: ExtensionCommandContext) {
+      const project = args.trim();
+      if (!project) {
+        if (ctx.hasUI) ctx.ui.notify("Usage: /berdl-review <project>", "warning");
+        return;
+      }
+      const review = await berilExec<{ review_file: string; report_hash: string }>(pi, ["review", project]);
+      await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
+      if (ctx.hasUI) ctx.ui.notify(`Review written: ${review.review_file}; project marked reviewed.`, "info");
+      pi.sendUserMessage(
+        `An independent review of "${project}" is at ${review.review_file}. Follow the berdl-review skill to read it and guide any fixes.`,
+      );
+    },
+  });
+
+  pi.registerCommand("submit", {
+    description: "Submit an approved project to the lakehouse (ORCID-gated, irreversible).",
+    async handler(args: string, ctx: ExtensionCommandContext) {
+      const project = args.trim();
+      if (!project) {
+        if (ctx.hasUI) ctx.ui.notify("Usage: /submit <project>", "warning");
+        return;
+      }
+      // ORCID gate — read identity from stdout regardless of exit code.
+      const res = await pi.exec("beril", ["user", "--json"], { timeout: 30_000 });
+      let identity: Identity;
+      try {
+        identity = JSON.parse(res.stdout) as Identity;
+      } catch {
+        if (ctx.hasUI) ctx.ui.notify("Could not read researcher identity. Run `beril setup`.", "error");
+        return;
+      }
+      if (!identity.orcid) {
+        if (ctx.hasUI) ctx.ui.notify("No ORCID configured — cannot submit. Run `beril setup` to add it.", "error");
+        return;
+      }
+      // Destructive: confirm in-session (the safety gate covers the model-tool path, not this command path).
+      if (ctx.hasUI) {
+        const ok = await ctx.ui.confirm(
+          `Submit "${project}"?`,
+          `This irreversibly replaces the remote archive, attributed to ORCID ${identity.orcid}. Proceed?`,
+        );
+        if (!ok) {
+          ctx.ui.notify("Submission cancelled.", "info");
+          return;
+        }
+      }
+      try {
+        const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", "--project", project]);
+        await berilExec(pi, ["lifecycle", "marker", project, "--kind", "submitted"]);
+        if (ctx.hasUI) ctx.ui.notify(`Submitted ${project}: ${JSON.stringify(manifest)}`, "info");
+      } catch (err) {
+        await berilExec(pi, ["lifecycle", "marker", project, "--kind", "failed"]).catch(() => {});
+        if (ctx.hasUI) ctx.ui.notify(`Submission failed: ${(err as Error).message}`, "error");
+        throw err;
+      }
     },
   });
 }
