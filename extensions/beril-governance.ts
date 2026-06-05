@@ -60,6 +60,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, ctx) {
       const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", params.project, params.state]);
       setActiveProject(ctx, params.project);
+      // Broadcast the state the machine RETURNED (not the requested target) for the footer.
+      pi.events.emit("beril:lifecycle", { project: params.project, state: result.status });
       return { content: [{ type: "text", text: `Project ${params.project} → ${result.status}` }], details: result };
     },
   });
@@ -134,7 +136,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
       }
       setActiveProject(ctx, project);
       const review = await berilExec<{ review_file: string; report_hash: string }>(pi, ["review", project]);
-      await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
+      const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
+      pi.events.emit("beril:lifecycle", { project, state: result.status });
       if (ctx.hasUI) ctx.ui.notify(`Review written: ${review.review_file}; project marked reviewed.`, "info");
       pi.sendUserMessage(
         `An independent review of "${project}" is at ${review.review_file}. Follow the berdl-review skill to read it and guide any fixes.`,
@@ -178,6 +181,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
       try {
         const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", project]);
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "submitted"]);
+        // A marker, not a state transition: signal submission distinctly, never claim a lifecycle state.
+        pi.events.emit("beril:submitted", { project });
         if (ctx.hasUI) ctx.ui.notify(`Submitted ${project}: ${JSON.stringify(manifest)}`, "info");
       } catch (err) {
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "failed"]).catch(() => {});

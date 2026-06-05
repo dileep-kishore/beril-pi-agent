@@ -4,17 +4,33 @@ import berilEnv from "../extensions/beril-env.ts";
 
 const READY = { ready: true, location: "off-cluster", checks: {}, next_steps: [] };
 
+// Minimal shared event bus matching pi.events (emit/on) so listeners can be driven.
+function fakeBus() {
+  const listeners: Record<string, Array<(data: any) => void>> = {};
+  return {
+    emit: (channel: string, data: any) => {
+      for (const h of listeners[channel] ?? []) h(data);
+    },
+    on: (channel: string, handler: (data: any) => void) => {
+      (listeners[channel] ??= []).push(handler);
+      return () => {};
+    },
+  };
+}
+
 function harness(execResult: any = READY) {
   const tools: any = {};
   const commands: any = {};
   const handlers: any = {};
+  const events = fakeBus();
   const pi: any = {
     registerTool: (t: any) => (tools[t.name] = t),
     registerCommand: (n: string, o: any) => (commands[n] = o),
     on: (e: string, h: any) => (handlers[e] = h),
     exec: async () => ({ stdout: JSON.stringify(execResult), stderr: "", code: 0, killed: false }),
+    events,
   };
-  return { pi, tools, commands, handlers };
+  return { pi, tools, commands, handlers, events };
 }
 
 function uiCtx(hasUI: boolean) {
@@ -70,5 +86,43 @@ test("session_shutdown clears the status widget", async () => {
   berilEnv(h.pi);
   const { ctx, set } = uiCtx(true);
   h.handlers.session_shutdown({ type: "session_shutdown", reason: "quit" }, ctx);
-  assert.deepEqual(set.at(-1), ["beril-connection", undefined]);
+  assert.deepEqual(
+    set.find(([k]) => k === "beril-connection"),
+    ["beril-connection", undefined],
+  );
+});
+
+test("beril:lifecycle event sets the lifecycle footer key under hasUI", async () => {
+  const h = harness();
+  berilEnv(h.pi);
+  const { ctx, set } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+  h.events.emit("beril:lifecycle", { project: "demo", state: "analysis" });
+  const entry = set.find(([k]) => k === "beril-3-lifecycle");
+  assert.ok(entry, "set beril-3-lifecycle");
+  assert.match(String(entry?.[1]), /analysis/);
+});
+
+test("beril:lifecycle event is a no-op without UI", async () => {
+  const h = harness();
+  berilEnv(h.pi);
+  const { ctx, set } = uiCtx(false);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+  h.events.emit("beril:lifecycle", { project: "demo", state: "analysis" });
+  assert.equal(
+    set.find(([k]) => k === "beril-3-lifecycle"),
+    undefined,
+    "no lifecycle status when headless",
+  );
+});
+
+test("beril:submitted event sets a distinct footer indicator under hasUI", async () => {
+  const h = harness();
+  berilEnv(h.pi);
+  const { ctx, set } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+  h.events.emit("beril:submitted", { project: "demo" });
+  const entry = set.find(([k]) => k === "beril-3-lifecycle");
+  assert.ok(entry, "set beril-3-lifecycle for submitted");
+  assert.match(String(entry?.[1]), /submit/i);
 });

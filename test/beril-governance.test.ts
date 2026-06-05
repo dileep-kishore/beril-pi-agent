@@ -8,15 +8,17 @@ function harness(execImpl: any) {
   const tools: any = {};
   const commands: any = {};
   const handlers: any = {};
+  const emitted: [string, any][] = [];
   const pi: any = {
     registerTool: (t: any) => (tools[t.name] = t),
     registerCommand: (n: string, o: any) => (commands[n] = o),
     on: (event: string, h: any) => (handlers[event] = h),
     sendUserMessage: () => {},
     exec: execImpl,
+    events: { emit: (channel: string, data: any) => emitted.push([channel, data]), on: () => () => {} },
   };
   berilGov(pi);
-  return { tools, commands, handlers };
+  return { tools, commands, handlers, emitted };
 }
 const ctx: any = { hasUI: false, mode: "json" };
 
@@ -214,5 +216,61 @@ test("session_shutdown clears the active-project footer key", async () => {
   assert.deepEqual(
     statuses.find((s) => s[0] === "beril-2-project"),
     ["beril-2-project", undefined],
+  );
+});
+
+test("lifecycle_transition emits the RETURNED state on beril:lifecycle", async () => {
+  // The state machine returns "analysis" even though the requested target was "reviewed".
+  const { tools, emitted } = harness(async () => ({
+    stdout: JSON.stringify({ status: "analysis" }),
+    stderr: "",
+    code: 0,
+    killed: false,
+  }));
+  await tools.lifecycle_transition.execute("id", { project: "demo", state: "reviewed" }, undefined, undefined, ctx);
+  const ev = emitted.find((e) => e[0] === "beril:lifecycle");
+  assert.ok(ev, "emitted beril:lifecycle");
+  assert.deepEqual(ev?.[1], { project: "demo", state: "analysis" });
+});
+
+test("lifecycle_transition emits nothing when the transition throws", async () => {
+  const { tools, emitted } = harness(async () => ({
+    stdout: "",
+    stderr: "illegal transition",
+    code: 1,
+    killed: false,
+  }));
+  await assert.rejects(() =>
+    tools.lifecycle_transition.execute("id", { project: "demo", state: "complete" }, undefined, undefined, ctx),
+  );
+  assert.equal(
+    emitted.find((e) => e[0] === "beril:lifecycle"),
+    undefined,
+    "no lifecycle event on failure",
+  );
+});
+
+test("/submit success emits beril:submitted, not beril:lifecycle", async () => {
+  const { commands, emitted } = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "user") {
+      return {
+        stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+        stderr: "",
+        code: 0,
+        killed: false,
+      };
+    }
+    return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+  });
+  const { ctx: cctx } = cmdCtx();
+  await commands.submit.handler("demo", cctx);
+  assert.deepEqual(
+    emitted.find((e) => e[0] === "beril:submitted"),
+    ["beril:submitted", { project: "demo" }],
+  );
+  assert.equal(
+    emitted.find((e) => e[0] === "beril:lifecycle"),
+    undefined,
+    "submit must not claim a lifecycle transition",
   );
 });
