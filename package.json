@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "check": "tsc --noEmit && biome check .",
-    "test": "node --test test/"
+    "test": "node --test 'test/**/*.test.ts'"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
