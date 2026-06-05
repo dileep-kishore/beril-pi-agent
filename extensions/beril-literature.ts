@@ -15,9 +15,7 @@ interface LitRecord {
 
 /** Expand a topic into focused search queries via a `pi --mode json` sub-agent. */
 async function expandQueries(pi: ExtensionAPI, topic: string): Promise<string[]> {
-  const prompt =
-    `Expand this literature-review topic into 2-4 focused PubMed search queries ` +
-    `(use MeSH-style terms where helpful). Respond with ONLY a JSON array of query strings. Topic: ${topic}`;
+  const prompt = `Expand this literature-review topic into 2-4 focused PubMed search queries (use MeSH-style terms where helpful). Respond with ONLY a JSON array of query strings. Topic: ${topic}`;
   try {
     const res = await pi.exec("pi", ["--mode", "json", "--no-session", prompt], { timeout: 180_000 });
     const text = lastAssistantText(parseJsonl(res.stdout));
@@ -107,8 +105,7 @@ export default function berilLiterature(pi: ExtensionAPI) {
       await writeFile(path, formatReferences(topic, records), "utf8");
       if (ctx.hasUI) ctx.ui.notify(`Wrote ${records.length} references to references.md`, "info");
       pi.sendUserMessage(
-        `references.md now lists ${records.length} citations for "${topic}" (from queries: ${queries.join("; ")}). ` +
-          `Follow the literature-review skill to read and synthesize them.`,
+        `references.md now lists ${records.length} citations for "${topic}" (from queries: ${queries.join("; ")}). Follow the literature-review skill to read and synthesize them.`,
       );
     },
   });
