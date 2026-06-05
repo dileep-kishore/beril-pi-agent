@@ -1,24 +1,69 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { complete, getModel } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context, Model, ProviderStreamOptions } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { berilExec } from "../lib/beril-exec.ts";
-import { lastAssistantText, parseJsonl } from "../lib/jsonl.ts";
+import { type LitRecord, fetchArticle, searchPubmed } from "../lib/lit.ts";
 
-interface LitRecord {
-  pmid?: string;
-  title?: string;
-  journal?: string;
-  year?: string;
-  authors?: string[];
+/** Default model for query expansion when the session has none selected. */
+const DEFAULT_EXPANSION_MODEL = "claude-sonnet-4-5";
+
+/**
+ * Injectable seam for {@link expandQueries}: lets tests substitute the model
+ * lookup / completion without hitting the network. Defaults to the real pi-ai
+ * `getModel`/`complete`. The signatures are loosened to reflect runtime reality
+ * (`getModel` returns `undefined` when a model is not found — see summarize.ts).
+ */
+export interface Completer {
+  getModel?: (provider: string, modelId: string) => Model<any> | undefined;
+  complete?: (model: Model<any>, ctx: Context, opts: ProviderStreamOptions) => Promise<AssistantMessage>;
 }
 
-/** Expand a topic into focused search queries via a `pi --mode json` sub-agent. */
-async function expandQueries(pi: ExtensionAPI, topic: string): Promise<string[]> {
+/**
+ * Expand a topic into focused PubMed search queries via an in-process `complete()`
+ * call. Prefers `ctx.model`; otherwise falls back to the default model + the
+ * model registry's resolved auth. Returns `[topic]` whenever no model/auth is
+ * available or the response is not a JSON array of strings.
+ */
+export async function expandQueries(
+  ctx: Pick<ExtensionCommandContext, "model" | "modelRegistry" | "signal">,
+  topic: string,
+  deps: Completer = {},
+): Promise<string[]> {
   const prompt = `Expand this literature-review topic into 2-4 focused PubMed search queries (use MeSH-style terms where helpful). Respond with ONLY a JSON array of query strings. Topic: ${topic}`;
+  const getModelFn = deps.getModel ?? getModel;
+  const completeFn = deps.complete ?? complete;
   try {
-    const res = await pi.exec("pi", ["--mode", "json", "--no-session", prompt], { timeout: 180_000 });
-    const text = lastAssistantText(parseJsonl(res.stdout));
+    let model = ctx.model;
+    let apiKey: string | undefined;
+    let headers: Record<string, string> | undefined;
+    if (model) {
+      // Session has a model; resolve its auth (may already be wired by the runtime).
+      const auth = ctx.modelRegistry ? await ctx.modelRegistry.getApiKeyAndHeaders(model) : undefined;
+      if (auth?.ok) {
+        apiKey = auth.apiKey;
+        headers = auth.headers;
+      }
+    } else {
+      // No session model: fall back to a default, mirroring summarize.ts:163-178.
+      model = getModelFn("anthropic", DEFAULT_EXPANSION_MODEL);
+      const auth = model && ctx.modelRegistry ? await ctx.modelRegistry.getApiKeyAndHeaders(model) : undefined;
+      if (!model || !auth?.ok || !auth.apiKey) return [topic];
+      apiKey = auth.apiKey;
+      headers = auth.headers;
+    }
+    if (!model) return [topic];
+
+    const response = await completeFn(
+      model,
+      { messages: [{ role: "user", content: prompt, timestamp: Date.now() }] },
+      { apiKey, headers, signal: ctx.signal },
+    );
+    const text = response.content
+      .filter((c): c is { type: "text"; text: string } => c.type === "text")
+      .map((c) => c.text)
+      .join("");
     const arr = JSON.parse(text);
     if (Array.isArray(arr) && arr.length > 0) return arr.map(String);
   } catch {
@@ -55,21 +100,14 @@ export default function berilLiterature(pi: ExtensionAPI) {
   pi.registerTool({
     name: "lit_search",
     label: "Search the literature",
-    description: "Search PubMed/Semantic Scholar for a query. Returns a list of normalized citation records.",
+    description: "Search PubMed for a query. Returns a list of normalized citation records.",
     parameters: Type.Object({
       query: Type.String({ description: "Search query (keywords or MeSH terms)." }),
       max: Type.Optional(Type.Integer({ description: "Max results (default 20).", default: 20 })),
     }),
-    async execute(_id, params, _signal, _onUpdate, _ctx) {
+    async execute(_id, params, signal, _onUpdate, _ctx) {
       const max = params.max ?? 20;
-      const records = await berilExec<LitRecord[]>(pi, [
-        "lit",
-        "search",
-        "--query",
-        params.query,
-        "--max",
-        String(max),
-      ]);
+      const records = await searchPubmed(params.query, max, signal);
       const text = `${records.length} result(s) for "${params.query}"`;
       return { content: [{ type: "text", text }], details: { records } };
     },
@@ -82,8 +120,8 @@ export default function berilLiterature(pi: ExtensionAPI) {
     parameters: Type.Object({
       pmid: Type.String({ description: "PubMed ID." }),
     }),
-    async execute(_id, params, _signal, _onUpdate, _ctx) {
-      const record = await berilExec<LitRecord>(pi, ["lit", "fetch", "--pmid", params.pmid]);
+    async execute(_id, params, signal, _onUpdate, _ctx) {
+      const record = await fetchArticle(params.pmid, signal);
       return { content: [{ type: "text", text: record.title ?? `PMID ${params.pmid}` }], details: record };
     },
   });
@@ -96,10 +134,8 @@ export default function berilLiterature(pi: ExtensionAPI) {
         if (ctx.hasUI) ctx.ui.notify("Usage: /literature-review <topic>", "warning");
         return;
       }
-      const queries = await expandQueries(pi, topic);
-      const batches = await Promise.all(
-        queries.map((q) => berilExec<LitRecord[]>(pi, ["lit", "search", "--query", q, "--max", "20"]).catch(() => [])),
-      );
+      const queries = await expandQueries(ctx, topic, (ctx as { __completer?: Completer }).__completer);
+      const batches = await Promise.all(queries.map((q) => searchPubmed(q, 20, ctx.signal).catch(() => [])));
       const records = dedupe(batches.flat());
       const path = join(ctx.cwd, "references.md");
       await writeFile(path, formatReferences(topic, records), "utf8");
