@@ -144,3 +144,10 @@ vite.config.ts.timestamp-*
 
 # pi local dev install (machine-specific)
 .pi/
+
+# Python (bundled beril CLI)
+__pycache__/
+*.egg-info/
+.venv/
+.venv-berdl/
+*.pyc

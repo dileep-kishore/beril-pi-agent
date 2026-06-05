@@ -2,9 +2,9 @@
 
 A [Pi](https://github.com/earendil-works/pi) package that turns the **BERIL Research Observatory** into a terminal/TUI research workbench.
 
-BERIL's scientific judgment (query patterns, research protocols, rubrics, biological interpretation) stays as Pi **skills**; connection, execution, state, safety, and rendering live in five thin Pi **extensions** that shell out to a stable `beril` CLI. The proven Python keeps the logic and reproducibility; the package owns the Pi surface.
+BERIL's scientific judgment (query patterns, research protocols, rubrics, biological interpretation) stays as Pi **skills**; connection, execution, state, safety, and rendering live in five thin Pi **extensions** that shell out to a **bundled `beril` CLI** (in `beril_cli/` + `scripts/` + `tools/`). The proven Python keeps the logic and reproducibility; the package owns the Pi surface.
 
-> This is a terminal workbench. It does **not** include the BERIL web app / Observatory UI.
+> **Self-contained.** This repo replaces the Claude Code / Codex skill layer of the original BERIL Research Observatory and bundles its own BERDL execution substrate — it does **not** depend on that repo at runtime. It is also a terminal workbench: no web app / Observatory UI.
 
 ## What you get
 
@@ -22,26 +22,31 @@ BERIL's scientific judgment (query patterns, research protocols, rubrics, biolog
 ## Requirements
 
 - [Pi](https://pi.dev) `@earendil-works/pi-coding-agent` (verified against **0.78.1**).
-- The [BERIL Research Observatory](https://github.com/kbaseincubator/BERIL-research-observatory) repo, with its `beril` CLI installed (`pip install -e .` / `uv` in that repo). The extensions call `beril <subcommand>` on your `PATH`.
-- A KBase account + `KBASE_AUTH_TOKEN` (from <https://narrative.kbase.us/#auth2/account>).
+- Python ≥ 3.11 and [`uv`](https://docs.astral.sh/uv/) (the bundled `beril` CLI ships in this repo).
+- A KBase account + `KBASE_AUTH_TOKEN` (from <https://narrative.kbase.us/#auth2/account>) in a `.env` at the repo root.
 
 ## Install
 
 ```bash
-# from a checkout (development):
-pi install -l .          # project-local
-# or from git (internal):
-pi install git:git@github.com:kbaseincubator/beril-pi-agent
+git clone git@github.com:dileep-kishore/beril-pi-agent && cd beril-pi-agent
+
+# 1) the bundled beril CLI (Python execution substrate)
+uv sync                  # or: uv pip install -e .   (provides the `beril` command)
+
+# 2) the Pi package (extensions/skills/prompts/themes)
+bun install
+pi install -l .          # project-local; or `pi install git:…` for a remote checkout
 ```
 
-`pi list` should show the package; its five extensions load at session start.
+`pi list` shows the package; its five extensions load at session start. This repo **is** your
+workspace (`PROJECT.md` marks the root; research projects live under `projects/<id>/`).
 
 ## Launch
 
-From inside the BERIL repo:
+From the repo root:
 
 ```bash
-beril start --agent pi
+uv run beril start --agent pi      # or just `beril start --agent pi` if the CLI is on PATH
 ```
 
 `beril start` pins a release tag, refreshes your KBase token, ensures the model provider, and execs `pi` with this package. Onboarding/status is handled by the `beril-env` extension (no prompt injection) — run `/berdl-start` any time to re-orient.
@@ -87,9 +92,13 @@ Destructive tools (`berdl_export` overwrite, `lakehouse_submit`'s `mc rm --recur
 ## Development
 
 ```bash
+# TypeScript (Pi package)
 bun install
 bun run check     # tsc --noEmit + biome
 bun run test      # node --test (TypeScript, strip-only — no parameter properties / enums)
+
+# Python (bundled beril CLI)
+uv run --group test pytest tests/ -q
 ```
 
 Architecture, the verified Pi API reference, and the implementation plan live under `docs/superpowers/`.

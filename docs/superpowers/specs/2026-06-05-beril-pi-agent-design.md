@@ -23,7 +23,7 @@ It keeps BERIL's **scientific judgment** (query patterns, research protocols, ru
 |---|---|---|
 | 1 | MVP scope | **Core research loop + literature**: connection, data access, governance lifecycle (synthesize→review→submit with reproducibility + ORCID gate), and literature review. Out: ingest, remote-compute, phenix. |
 | 2 | TS ↔ Python relationship | **Thin TS wrappers** that shell out (`pi.exec`) to Python. Python keeps the logic + reproducibility. |
-| 3 | TS → Python boundary | **Stable `beril <subcommand>` CLI** (additive subcommands in the BERIL repo). |
+| 3 | TS → Python boundary | **Bundled `beril <subcommand>` CLI vendored into this repo** (`beril_cli/` + `scripts/` + `tools/`). Self-contained — the original BERIL repo is not a runtime dependency and is not modified. *(Superseded the initial "additive subcommands in the BERIL repo" approach — see §4.)* |
 | 4 | Distribution | **Separate git repo**, installed via `pi install git:` (private SSH for internal KBase/LBL). |
 | 5 | Launch model | **`beril start` execs `pi`** — CLI stays the version-pin / token / provider / reproducibility boundary. |
 | 6 | Model provider | **Org-managed endpoint via `models.json`** (gateway `baseUrl` + `$ENV` key). |
@@ -131,9 +131,11 @@ Pi has **no MCP** (reference §A7), so the original "MCP bridge" is realized as 
 
 ---
 
-## 4. Additive changes to the BERIL repo
+## 4. Bundled `beril` CLI (vendored into this repo — self-contained)
 
-New `beril` subcommands (thin wrappers except `lifecycle`/`lit`, which are net-new engines). Added on a branch in the BERIL repo, following the existing argparse-subparser + lazy-import dispatch pattern (reference §B1):
+> **Architecture correction.** The initial design added these subcommands *in the original BERIL repo* (an additive branch) and had the Pi extensions call across to it. That created a dependency on, and edits to, the original repo — contradicting the goal of a **separate, complete alternative**. The CLI and its execution substrate are now **vendored into this repo** (`beril_cli/` + `scripts/` + `tools/`, with `PROJECT.md` marking the workspace root so every script resolves paths here). The original BERIL repo is **untouched and not required at runtime**; `beril-pi-agent` fully replaces its Claude Code / Codex skill layer.
+
+The `beril` subcommands (thin wrappers except `lifecycle`/`lit`, which are net-new engines) follow the existing argparse-subparser + lazy-import dispatch pattern (reference §B1):
 
 | Subcommand | Wraps | New? | Notes |
 |---|---|---|---|
@@ -149,7 +151,7 @@ New `beril` subcommands (thin wrappers except `lifecycle`/`lit`, which are net-n
 | `beril lit search\|fetch` | — | **build** | direct PubMed/Semantic Scholar HTTP |
 | `beril start --agent pi` | extend `start.py` | extend | exec `pi`; provider config; no Vertex env |
 
-These subcommands are the stable contract the TS tools call. Each ships with pytest coverage in the BERIL repo.
+These subcommands are the stable contract the TS tools call. Each ships with pytest coverage **in this repo** (`tests/test_cli_*.py`). `beril inventory` is listed for completeness but is deferred (no tool wired in the MVP).
 
 ---
 

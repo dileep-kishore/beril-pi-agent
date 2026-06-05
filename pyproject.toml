@@ -1,0 +1,22 @@
+[project]
+name = "beril-cli"
+version = "0.1.0"
+description = "BERIL Pi workbench — bundled `beril` CLI (execution substrate for the Pi extensions)"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = ["pyyaml>=6", "httpx>=0.27"]
+
+[project.scripts]
+beril = "beril_cli.cli:main"
+
+[dependency-groups]
+test = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Only the CLI package is built into the wheel; scripts/ and tools/ are standalone
+# (invoked via `uv run`/subprocess), resolved relative to the workspace root at runtime.
+[tool.hatch.build.targets.wheel]
+packages = ["beril_cli"]
