@@ -16,10 +16,7 @@ export default function berilSafety(pi: ExtensionAPI) {
     if (!ctx.hasUI) {
       return { block: true, reason: `Destructive tool ${toolName} blocked in non-interactive mode` };
     }
-    const ok = await ctx.ui.confirm(
-      `Allow ${toolName}?`,
-      "This will irreversibly modify remote data. Proceed?",
-    );
+    const ok = await ctx.ui.confirm(`Allow ${toolName}?`, "This will irreversibly modify remote data. Proceed?");
     return ok ? undefined : { block: true, reason: `User declined ${toolName}` };
   });
 }

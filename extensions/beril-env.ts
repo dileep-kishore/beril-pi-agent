@@ -33,9 +33,8 @@ export default function berilEnv(pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute(_id, _params, _signal, _onUpdate, _ctx) {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
-      const text =
-        `BERDL ${env.location}: ${env.ready ? "ready" : "NOT ready"}` +
-        (env.next_steps?.length ? `\nNext steps:\n- ${env.next_steps.join("\n- ")}` : "");
+      const steps = env.next_steps?.length ? `\nNext steps:\n- ${env.next_steps.join("\n- ")}` : "";
+      const text = `BERDL ${env.location}: ${env.ready ? "ready" : "NOT ready"}${steps}`;
       return { content: [{ type: "text", text }], details: env };
     },
   });

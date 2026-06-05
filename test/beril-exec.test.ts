@@ -1,6 +1,6 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
-import { berilExec, BerilError } from "../lib/beril-exec.ts";
+import { test } from "node:test";
+import { BerilError, berilExec } from "../lib/beril-exec.ts";
 
 function fakePi(result: { stdout: string; stderr: string; code: number }) {
   return { exec: async () => ({ ...result, killed: false }) } as any;

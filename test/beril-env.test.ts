@@ -1,5 +1,5 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import berilEnv from "../extensions/beril-env.ts";
 
 const READY = { ready: true, location: "off-cluster", checks: {}, next_steps: [] };

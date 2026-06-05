@@ -1,5 +1,5 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { requireReady } from "../lib/readiness.ts";
 
 const pi = (env: any) =>
@@ -12,10 +12,7 @@ test("returns env when ready", async () => {
 
 test("throws with next_steps when not ready", async () => {
   await assert.rejects(
-    () =>
-      requireReady(
-        pi({ ready: false, location: "off-cluster", checks: {}, next_steps: ["start pproxy"] }),
-      ),
+    () => requireReady(pi({ ready: false, location: "off-cluster", checks: {}, next_steps: ["start pproxy"] })),
     (err: any) => /start pproxy/.test(err.message),
   );
 });

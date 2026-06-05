@@ -1,5 +1,5 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import berilSafety from "../extensions/beril-safety.ts";
 import { isDestructive } from "../lib/destructive.ts";
 
@@ -9,8 +9,7 @@ function harness() {
   berilSafety(pi);
   return handlers;
 }
-const ctx = (hasUI: boolean, confirm: boolean) =>
-  ({ hasUI, ui: { confirm: async () => confirm } }) as any;
+const ctx = (hasUI: boolean, confirm: boolean) => ({ hasUI, ui: { confirm: async () => confirm } }) as any;
 
 test("blocks destructive tool when user declines", async () => {
   const h = harness();
