@@ -116,6 +116,12 @@ On a laptop, BERDL is reached through an SSH-tunnel + proxy stack that **you** s
 
 Run `/berdl-status` to confirm; the footer widget shows `BERDL off-cluster ✓ ready` when set. On the BERDL JupyterHub (on-cluster) access is direct and only the token is needed.
 
+The BERDL execution scripts (Spark query/export/discover) and the analysis
+notebooks declare their dependencies inline (PEP 723) and run under `uv run`, so
+`uv` builds and caches their environments on first use. There is **no manual venv
+to create or activate** — no `.venv-berdl`, no bootstrap step. The first Spark
+query just takes a little longer while `uv` builds the PySpark env once.
+
 ## Model provider
 
 beril uses **whatever model your `pi` is configured with** — your existing

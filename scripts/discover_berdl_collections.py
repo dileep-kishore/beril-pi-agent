@@ -1,5 +1,15 @@
-#!/usr/bin/env python3
-"""Discover BERDL tenants, databases, tables, and schemas into a UI snapshot."""
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""Discover BERDL tenants, databases, tables, and schemas into a UI snapshot.
+
+Off-cluster: invoke as `uv run scripts/discover_berdl_collections.py ...`.
+The off-cluster REST path uses only the standard library, so the PEP 723 block
+above declares no dependencies and uv runs it in a clean, project-independent
+env — no `.venv-berdl` activation required. On-cluster, `berdl_notebook_utils`
+is imported opportunistically and supplied by the JupyterHub kernel."""
 
 from __future__ import annotations
 

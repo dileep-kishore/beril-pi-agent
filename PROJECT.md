@@ -1,8 +1,11 @@
 # BERIL Pi Workbench — Project Root
 
 This file marks the workspace root. The `beril` CLI and the bundled BERDL scripts
-resolve paths (`.env`, `.venv-berdl`, `projects/<id>/`) relative to the directory
-containing this file, so keep it at the repo root.
+resolve paths (`.env`, `projects/<id>/`) relative to the directory containing
+this file, so keep it at the repo root. The BERDL scripts and notebooks declare
+their dependencies inline (PEP 723) and run under `uv run`, so `uv` manages and
+caches their environments automatically — there is no manual venv to create or
+activate.
 
 ## Layout
 
