@@ -89,9 +89,9 @@ test("lakehouse_submit throws on partial (exit 2)", async () => {
   await assert.rejects(() => tools.lakehouse_submit.execute("id", { project: "demo" }, undefined, undefined, ctx));
 });
 
-test("registers /synthesize /berdl-review /submit commands", () => {
+test("registers /synthesize /submit commands", () => {
   const { commands } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
-  for (const name of ["synthesize", "berdl-review", "submit"]) assert.ok(commands[name], `command ${name}`);
+  for (const name of ["synthesize", "submit"]) assert.ok(commands[name], `command ${name}`);
 });
 
 function cmdCtx() {
@@ -154,26 +154,6 @@ test("/submit uploads and marks submitted when ORCID present", async () => {
     calls.find((a) => a[0] === "lifecycle" && a[1] === "marker" && a.includes("submitted")),
     "marked submitted",
   );
-});
-
-test("/berdl-review runs review then marks reviewed", async () => {
-  const calls: string[][] = [];
-  const { commands } = harness(async (_c: string, args: string[]) => {
-    calls.push(args);
-    if (args[0] === "review") {
-      return {
-        stdout: JSON.stringify({ review_file: "REVIEW_1.md", report_hash: "sha256:x" }),
-        stderr: "",
-        code: 0,
-        killed: false,
-      };
-    }
-    return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
-  });
-  const { ctx: cctx } = cmdCtx();
-  await commands["berdl-review"].handler("demo", cctx);
-  assert.deepEqual(calls[0], ["review", "demo"]);
-  assert.deepEqual(calls[1], ["lifecycle", "set", "demo", "reviewed"]);
 });
 
 test("lifecycle_transition sets the active-project footer key under hasUI", async () => {

@@ -126,25 +126,6 @@ export default function berilGovernance(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("berdl-review", {
-    description: "Run an independent review of a project, then mark it reviewed.",
-    async handler(args: string, ctx: ExtensionCommandContext) {
-      const project = args.trim();
-      if (!project) {
-        if (ctx.hasUI) ctx.ui.notify("Usage: /berdl-review <project>", "warning");
-        return;
-      }
-      setActiveProject(ctx, project);
-      const review = await berilExec<{ review_file: string; report_hash: string }>(pi, ["review", project]);
-      const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
-      pi.events.emit("beril:lifecycle", { project, state: result.status });
-      if (ctx.hasUI) ctx.ui.notify(`Review written: ${review.review_file}; project marked reviewed.`, "info");
-      pi.sendUserMessage(
-        `An independent review of "${project}" is at ${review.review_file}. Follow the berdl-review skill to read it and guide any fixes.`,
-      );
-    },
-  });
-
   pi.registerCommand("submit", {
     description: "Submit an approved project to the lakehouse (ORCID-gated, irreversible).",
     async handler(args: string, ctx: ExtensionCommandContext) {

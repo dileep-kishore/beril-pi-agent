@@ -67,13 +67,6 @@ def main(argv: list[str] | None = None) -> int:
     export_parser.add_argument("--mode", default="overwrite")
     export_parser.add_argument("--no-proxy", dest="proxy", action="store_false", default=True)
 
-    # review
-    review_parser = sub.add_parser("review", help="Run a CLI reviewer agent over a project")
-    review_parser.add_argument("project", help="Project directory name under projects/")
-    review_parser.add_argument("--type", dest="type", default="project", choices=["project", "plan"])
-    review_parser.add_argument("--reviewer", default="codex", choices=["codex"])
-    review_parser.add_argument("--model", default=None)
-
     # submit
     submit_parser = sub.add_parser("submit", help="Upload an approved project to the lakehouse")
     submit_parser.add_argument("project", help="Project directory name under projects/")
@@ -150,11 +143,6 @@ def main(argv: list[str] | None = None) -> int:
         from beril_cli.export_cmd import run_export
 
         return run_export(args)
-
-    if args.command == "review":
-        from beril_cli.review_cmd import run_review
-
-        return run_review(args)
 
     if args.command == "submit":
         from beril_cli.submit_cmd import run_submit
