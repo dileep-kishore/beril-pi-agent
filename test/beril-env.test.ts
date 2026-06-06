@@ -101,6 +101,10 @@ test("beril:lifecycle event sets the lifecycle footer key under hasUI", async ()
   const entry = set.find(([k]) => k === "beril-3-lifecycle");
   assert.ok(entry, "set beril-3-lifecycle");
   assert.match(String(entry?.[1]), /analysis/);
+  // The research-step breadcrumb segment renders alongside, marking the current step.
+  const step = set.find(([k]) => k === "beril-4-step");
+  assert.ok(step, "set beril-4-step");
+  assert.match(String(step?.[1]), /▸review/);
 });
 
 test("beril:lifecycle event is a no-op without UI", async () => {

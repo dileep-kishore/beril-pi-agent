@@ -2,11 +2,15 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type BerdlEnv, setCachedEnv } from "../lib/readiness.ts";
+import { stepBreadcrumb } from "../lib/research-steps.ts";
 
 const STATUS_KEY = "beril-connection";
 // Footer key for the lifecycle/submission segment, fed by the shared event bus.
 // Sorts after beril-connection and beril-2-project so segments read left-to-right.
 const LIFECYCLE_STATUS_KEY = "beril-3-lifecycle";
+// Footer key for the research-step breadcrumb (the scientist-facing checklist).
+// Sorts last so it reads as the rightmost, widest segment.
+const STEP_STATUS_KEY = "beril-4-step";
 
 // Display-only event payloads pushed by beril-governance on the shared bus.
 interface LifecycleEvent {
@@ -50,7 +54,10 @@ export default function berilEnv(pi: ExtensionAPI) {
   pi.events.on("beril:lifecycle", (data) => {
     const { project, state } = data as LifecycleEvent;
     activeProject = project;
-    if (uiCtx?.hasUI) uiCtx.ui.setStatus(LIFECYCLE_STATUS_KEY, `◆ ${project} → ${state}`);
+    if (uiCtx?.hasUI) {
+      uiCtx.ui.setStatus(LIFECYCLE_STATUS_KEY, `◆ ${project} → ${state}`);
+      uiCtx.ui.setStatus(STEP_STATUS_KEY, uiCtx.ui.theme.fg("muted", `◷ ${stepBreadcrumb(state)}`));
+    }
   });
   pi.events.on("beril:submitted", (data) => {
     const { project } = data as SubmittedEvent;
@@ -101,7 +108,10 @@ export default function berilEnv(pi: ExtensionAPI) {
     if (ctx.hasUI && activeProject) {
       try {
         const proj = await berilExec<{ status?: string }>(pi, ["lifecycle", "status", activeProject]);
-        if (proj.status) ctx.ui.setStatus(LIFECYCLE_STATUS_KEY, `◆ ${activeProject} → ${proj.status}`);
+        if (proj.status) {
+          ctx.ui.setStatus(LIFECYCLE_STATUS_KEY, `◆ ${activeProject} → ${proj.status}`);
+          ctx.ui.setStatus(STEP_STATUS_KEY, ctx.ui.theme.fg("muted", `◷ ${stepBreadcrumb(proj.status)}`));
+        }
       } catch {
         // best-effort: a missing/unreadable project must not break startup
       }
@@ -112,6 +122,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     if (ctx.hasUI) {
       ctx.ui.setStatus(STATUS_KEY, undefined);
       ctx.ui.setStatus(LIFECYCLE_STATUS_KEY, undefined);
+      ctx.ui.setStatus(STEP_STATUS_KEY, undefined);
     }
   });
 }

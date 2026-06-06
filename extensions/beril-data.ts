@@ -1,7 +1,8 @@
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
+import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql } from "../lib/peek.ts";
 import { requireReady } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
 
@@ -47,6 +48,51 @@ export default function berilData(pi: ExtensionAPI) {
       if (params.max_databases != null) args.push("--max-databases", String(params.max_databases));
       const snap = await berilExec<Record<string, unknown>>(pi, args);
       return { content: [{ type: "text", text: JSON.stringify(snap, null, 2) }], details: snap };
+    },
+  });
+
+  pi.registerTool({
+    name: "berdl_peek",
+    label: "Preview BERDL table",
+    description:
+      "Preview a BERDL table in one call: its column schema (types + comments) and a few sample rows. Use to SEE what a table actually contains before building a query or analysis on it. Does not count rows (avoids full scans on large tables).",
+    parameters: Type.Object({
+      table: Type.String({ description: "Fully-qualified table, e.g. kbase.ke_pangenome.genome." }),
+      limit: Type.Optional(Type.Integer({ description: "Sample rows to show (default 5, max 50).", default: 5 })),
+    }),
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
+      await requireReady(pi);
+      const table = params.table.trim();
+      if (!isPlausibleTable(table)) {
+        throw new Error(`Not a valid table identifier: "${table}". Expected db.table or catalog.db.table.`);
+      }
+      const limit = clampSampleLimit(params.limit);
+      // Schema first, then a bounded sample. DESCRIBE can return many rows
+      // (columns + partition metadata); cap generously so the schema isn't truncated.
+      const describe = await berilExec<QueryPayload>(pi, ["query", "--query", describeSql(table), "--limit", "500"]);
+      const sample = await berilExec<QueryPayload>(pi, [
+        "query",
+        "--query",
+        sampleSql(table, limit),
+        "--limit",
+        String(limit),
+      ]);
+      const text = formatPeek(table, describe.rows, sample.rows);
+      return { content: [{ type: "text", text }], details: { table, columns: describe.rows, sample: sample.rows } };
+    },
+  });
+
+  pi.registerCommand("berdl-preview", {
+    description: "Preview a BERDL table's schema and a few sample rows (berdl_peek).",
+    async handler(args: string, ctx: ExtensionCommandContext) {
+      const table = args.trim();
+      if (!table) {
+        if (ctx.hasUI) ctx.ui.notify("Usage: /berdl-preview <db.table>", "warning");
+        return;
+      }
+      pi.sendUserMessage(
+        `Use the berdl_peek tool to preview the table "${table}", then briefly summarize what it contains and whether it looks usable for analysis.`,
+      );
     },
   });
 

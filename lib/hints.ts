@@ -30,7 +30,7 @@ export function discoverHint(snapshot: unknown): string | undefined {
         return Array.isArray(collections) && collections.length > 0;
       });
       if (hasCollection) {
-        return "Use `berdl_query` to sample a table from the collections you just discovered.";
+        return "Use `berdl_peek` to preview a table (schema + sample rows) from the collections you just discovered before querying it.";
       }
     }
   }
