@@ -202,12 +202,15 @@ def test_checkout_release_uses_latest_when_no_version(monkeypatch, tmp_path):
     assert ["git", "checkout", "--quiet", "v0.0.1"] in calls
 
 
-def test_checkout_release_no_releases_available(monkeypatch, tmp_path, capsys):
-    _patch_run(monkeypatch, _make_git_dispatcher())
+def test_checkout_release_no_releases_available_continues_on_head(monkeypatch, tmp_path, capsys):
+    # No --version and no published release: degrade gracefully, launch from the
+    # current checkout (rc 0) with a warning, and do NOT attempt a checkout.
+    calls = _patch_run(monkeypatch, _make_git_dispatcher())
     monkeypatch.setattr(start, "_latest_release_tag", lambda _root: None)
     rc = start._checkout_release(tmp_path, None)
-    assert rc == 1
-    assert "no release tags found" in capsys.readouterr().err
+    assert rc == 0
+    assert "no published release found" in capsys.readouterr().err
+    assert not any(argv[:2] == ["git", "checkout"] for argv in calls)
 
 
 def test_checkout_release_skips_when_already_on_tag(monkeypatch, tmp_path, capsys):

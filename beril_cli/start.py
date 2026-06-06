@@ -104,8 +104,16 @@ def _checkout_release(repo_root: Path, requested_version: str | None) -> int:
     else:
         tag = _latest_release_tag(repo_root)
         if not tag:
-            print("Error: no release tags found in repository.", file=sys.stderr)
-            return 1
+            # No published release to pin to (e.g. a fresh standalone checkout).
+            # The version pin is a best-effort reproducibility aid, not a launch
+            # requirement, so warn and continue on the current checkout. An
+            # explicitly requested --version that is missing still hard-fails above.
+            print(
+                "Warning: no published release found; launching from the current "
+                "checkout without a version pin.",
+                file=sys.stderr,
+            )
+            return 0
 
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"],
