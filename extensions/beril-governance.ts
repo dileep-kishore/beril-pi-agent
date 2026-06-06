@@ -3,6 +3,14 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { requireReady } from "../lib/readiness.ts";
+import {
+  callLine,
+  destructiveResultCard,
+  hashCard,
+  lifecycleCard,
+  partialLine,
+  userCard,
+} from "../lib/ui/science-cards.ts";
 
 const LIFECYCLE_STATES = ["exploration", "proposed", "active", "analysis", "reviewed", "complete"] as const;
 
@@ -46,6 +54,13 @@ export default function berilGovernance(pi: ExtensionAPI) {
       const hashes = await berilExec<Record<string, string>>(pi, ["hash", params.project]);
       return { content: [{ type: "text", text: JSON.stringify(hashes, null, 2) }], details: hashes };
     },
+    renderCall(args, theme) {
+      return callLine(theme, `hash · ${args.project}`);
+    },
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Hashing notebooks…");
+      return hashCard(theme, result.details as Record<string, string>);
+    },
   });
 
   pi.registerTool({
@@ -63,6 +78,14 @@ export default function berilGovernance(pi: ExtensionAPI) {
       // Broadcast the state the machine RETURNED (not the requested target) for the footer.
       pi.events.emit("beril:lifecycle", { project: params.project, state: result.status });
       return { content: [{ type: "text", text: `Project ${params.project} → ${result.status}` }], details: result };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `lifecycle · ${args.project} → ${args.state}`);
+    },
+    renderResult(res, { isPartial }, theme, ctx) {
+      if (isPartial) return partialLine(theme, "Updating lifecycle…");
+      const d = res.details as { status: string };
+      return lifecycleCard(theme, ctx.args.project, d.status);
     },
   });
 
@@ -86,6 +109,16 @@ export default function berilGovernance(pi: ExtensionAPI) {
       const text = `Researcher: ${identity.name || "(unset)"} · ${identity.affiliation || "(unset)"} · ORCID ${identity.orcid || "(unset)"}`;
       return { content: [{ type: "text", text }], details };
     },
+    renderCall(_args, theme) {
+      return callLine(theme, "researcher identity");
+    },
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Reading identity…");
+      return userCard(
+        theme,
+        result.details as { name?: string; affiliation?: string; orcid?: string; complete?: boolean },
+      );
+    },
   });
 
   pi.registerTool({
@@ -105,6 +138,18 @@ export default function berilGovernance(pi: ExtensionAPI) {
         content: [{ type: "text", text: `Submitted ${params.project}: ${JSON.stringify(manifest)}` }],
         details: manifest,
       };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `submit → lakehouse · ${args.project} (irreversible)`);
+    },
+    renderResult(result, { isPartial }, theme, ctx) {
+      if (isPartial) return partialLine(theme, "Uploading to lakehouse…");
+      const manifest = result.details as Record<string, unknown>;
+      return destructiveResultCard(
+        theme,
+        `Submitted ${ctx.args.project}`,
+        JSON.stringify(manifest, null, 2).split("\n"),
+      );
     },
   });
 

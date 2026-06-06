@@ -5,6 +5,15 @@ import { berilExec } from "../lib/beril-exec.ts";
 import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql } from "../lib/peek.ts";
 import { requireReady } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
+import {
+  type QueryView,
+  callLine,
+  destructiveResultCard,
+  discoverCard,
+  partialLine,
+  peekCard,
+  queryCard,
+} from "../lib/ui/science-cards.ts";
 
 const EXPORT_FORMATS = ["parquet", "delta", "json", "csv"] as const;
 const EXPORT_MODES = ["overwrite", "append"] as const;
@@ -13,6 +22,12 @@ interface QueryPayload {
   returned_rows: number;
   rows: Record<string, unknown>[];
   limit_applied: number | null;
+}
+
+/** One-line, ANSI-trimmed SQL preview for a dimmed tool-call summary. */
+function sqlPreview(query: string): string {
+  const sql = query.replace(/\s+/g, " ").trim();
+  return sql.length > 60 ? `${sql.slice(0, 59)}…` : sql;
 }
 
 export default function berilData(pi: ExtensionAPI) {
@@ -33,6 +48,13 @@ export default function berilData(pi: ExtensionAPI) {
       const text = `${payload.returned_rows} row(s)${note}\n${renderTable(payload.rows)}`;
       return { content: [{ type: "text", text }], details: payload };
     },
+    renderCall(args, theme) {
+      return callLine(theme, `query · ${sqlPreview(args.query)} (limit ${args.limit ?? 100})`);
+    },
+    renderResult(result, { expanded, isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Querying…");
+      return queryCard(theme, result.details as QueryView, expanded);
+    },
   });
 
   pi.registerTool({
@@ -48,6 +70,13 @@ export default function berilData(pi: ExtensionAPI) {
       if (params.max_databases != null) args.push("--max-databases", String(params.max_databases));
       const snap = await berilExec<Record<string, unknown>>(pi, args);
       return { content: [{ type: "text", text: JSON.stringify(snap, null, 2) }], details: snap };
+    },
+    renderCall(_args, theme) {
+      return callLine(theme, "discover · accessible collections");
+    },
+    renderResult(result, { expanded, isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Discovering collections…");
+      return discoverCard(theme, result.details as Record<string, unknown>, expanded);
     },
   });
 
@@ -79,6 +108,18 @@ export default function berilData(pi: ExtensionAPI) {
       ]);
       const text = formatPeek(table, describe.rows, sample.rows);
       return { content: [{ type: "text", text }], details: { table, columns: describe.rows, sample: sample.rows } };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `peek · ${args.table.trim()}`);
+    },
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Previewing table…");
+      const d = result.details as {
+        table: string;
+        columns: Record<string, unknown>[];
+        sample: Record<string, unknown>[];
+      };
+      return peekCard(theme, d);
     },
   });
 
@@ -117,6 +158,14 @@ export default function berilData(pi: ExtensionAPI) {
         content: [{ type: "text", text: `Exported to ${params.path}: ${JSON.stringify(manifest)}` }],
         details: manifest,
       };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `export → ${args.path} (${args.mode ?? "overwrite"}, destructive)`);
+    },
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Exporting…");
+      const manifest = result.details as Record<string, unknown>;
+      return destructiveResultCard(theme, "Export complete", JSON.stringify(manifest, null, 2).split("\n"));
     },
   });
 }

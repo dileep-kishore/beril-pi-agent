@@ -5,6 +5,7 @@ import type { AssistantMessage, Context, Model, ProviderStreamOptions } from "@e
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type LitRecord, fetchArticle, searchPubmed } from "../lib/lit.ts";
+import { articleCard, callLine, litCard, partialLine } from "../lib/ui/science-cards.ts";
 
 /** Default model for query expansion when the session has none selected. */
 const DEFAULT_EXPANSION_MODEL = "claude-sonnet-4-5";
@@ -111,6 +112,14 @@ export default function berilLiterature(pi: ExtensionAPI) {
       const text = `${records.length} result(s) for "${params.query}"`;
       return { content: [{ type: "text", text }], details: { records } };
     },
+    renderCall(args, theme) {
+      return callLine(theme, `lit search · ${args.query}`);
+    },
+    renderResult(result, { expanded, isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Searching the literature…");
+      const { records } = result.details as { records: LitRecord[] };
+      return litCard(theme, records, expanded);
+    },
   });
 
   pi.registerTool({
@@ -123,6 +132,13 @@ export default function berilLiterature(pi: ExtensionAPI) {
     async execute(_id, params, signal, _onUpdate, _ctx) {
       const record = await fetchArticle(params.pmid, signal);
       return { content: [{ type: "text", text: record.title ?? `PMID ${params.pmid}` }], details: record };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `lit fetch · PMID ${args.pmid}`);
+    },
+    renderResult(result, { isPartial }, theme) {
+      if (isPartial) return partialLine(theme, "Fetching article…");
+      return articleCard(theme, result.details as LitRecord);
     },
   });
 
