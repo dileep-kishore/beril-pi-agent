@@ -151,3 +151,6 @@ __pycache__/
 .venv/
 .venv-berdl/
 *.pyc
+
+resources/
+.DS_Store
