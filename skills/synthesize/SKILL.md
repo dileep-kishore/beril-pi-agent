@@ -42,7 +42,7 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 3. **Statistical significance** — report p-values, effect sizes, and confidence intervals where available. Distinguish statistical significance from biological/effect-size significance.
 4. **Unexpected patterns** — surprising results, anomalies, coverage gaps.
 
-**Present the draft to the user** and ask whether the interpretation is correct, whether any results were missed or misread, and whether additional context should be included. Revise on feedback before moving to Pass 2.
+**Present the draft to the user** and ask whether the interpretation is correct, whether any results were missed or misread, and whether additional context should be included. **Explicitly flag the one or two findings you are least confident in** — and why (thin coverage, an unfamiliar method, a borderline p-value) — rather than presenting everything with equal authority. Offer to show the data or the notebook cell behind any finding so the user can check it cheaply. Revise on feedback before moving to Pass 2.
 
 ### Pass 2 — Literature cross-reference and synthesis
 
@@ -87,11 +87,11 @@ Write or update `REPORT.md` with these sections. Place figures inline near the f
 - Use `lifecycle_transition` to move the project to `analysis`. Do **not** edit `beril.yaml`, the status field, or approval blocks by hand — the tool handles the forward flip (`active` → `analysis`), the idempotent no-op (already `analysis`), and the legal demote (`reviewed`/`complete` → `analysis`).
 - If interpretation surfaced data surprises (missing data, anomalous distributions, coverage gaps), capture them per the project's pitfall-capture protocol so they land in `memories/pitfalls.md`.
 
-**Suggest next steps to the user:**
+**Suggest next steps to the user — make verification the easy default, not an afterthought.** Don't just list the commands and wait; proactively offer the single most useful check next:
 
-1. Review the Key Findings and Interpretation sections.
-2. Run `/berdl-review <project>` to produce a numbered review against the current report (each review embeds the report hash so `/submit` knows which is current). Iterate freely.
-3. When ready to stand behind the project, run `/submit <project>` to approve and archive it to the lakehouse (ORCID-gated, irreversible).
+1. Walk the user through the Key Findings and Interpretation, leading with the findings you flagged as least confident and offering to open the data or notebook cell behind any of them.
+2. **Offer to run `/berdl-review <project>` now** — an independent reviewer pass against the current report (each review embeds the report hash so `/submit` knows which is current). Frame it as the natural next step, not an optional extra; iterate freely.
+3. When the findings hold up and the user is ready to stand behind the project, run `/submit <project>` to approve and archive it to the lakehouse (ORCID-gated, irreversible).
 
 ## Integration
 
