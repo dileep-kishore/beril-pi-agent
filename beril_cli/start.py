@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from beril_cli.config import get_default_agent, get_vertex_config
+from beril_cli.config import get_default_agent
 from beril_cli.detect import print_jupyterhub_path_hint
 from beril_cli.paths import find_repo_root
 
@@ -152,7 +152,6 @@ def _checkout_release(repo_root: Path, requested_version: str | None) -> int:
 def run_start(
     agent: str | None = None,
     extra_args: list[str] | None = None,
-    skip_onboard: bool = False,
     version: str | None = None,
 ) -> int:
     """Launch the selected coding agent from the repo root."""
@@ -180,39 +179,6 @@ def run_start(
 
     # Refresh KBASE_AUTH_TOKEN in .env from live environment (tokens expire)
     _sync_auth_token(repo_root / ".env")
-
-    # Pi handles onboarding + status via the beril-env extension's session_start hook,
-    # so we do NOT inject /berdl_start for pi.
-    if agent == "pi":
-        skip_onboard = True
-
-    # Auto-run the onboarding skill unless skipped or the user already passed a prompt
-    if not skip_onboard and not extra_args:
-        extra_args = ["/berdl_start"]
-
-    # Configure Google Vertex if enabled (shared BERIL Anthropic key)
-    if agent == "claude":
-        vertex = get_vertex_config()
-        if vertex.get("enabled"):
-            creds = vertex.get("credentials_file", "")
-            if creds and Path(creds).exists():
-                os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
-                os.environ["CLOUD_ML_REGION"] = vertex.get("region", "global")
-                os.environ["ANTHROPIC_VERTEX_PROJECT_ID"] = vertex.get("project_id", "")
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds
-                os.environ["VERTEX_REGION_CLAUDE_HAIKU_4_5"] = "us-east5"
-                os.environ["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = "claude-haiku-4-5@20251001"
-                print("Using BERIL Anthropic key (Google Vertex)")
-            else:
-                print(
-                    "Warning: Vertex enabled but credentials file not found. "
-                    "Falling back to personal API key.",
-                    file=sys.stderr,
-                )
-
-    # Default to Opus model for Claude
-    if agent == "claude" and "--model" not in extra_args:
-        extra_args = ["--model", "opus", *extra_args]
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)

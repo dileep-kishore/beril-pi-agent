@@ -226,14 +226,14 @@ def run_setup() -> int:
     _step(7, "Coding agent")
 
     agents_found: list[str] = []
-    for agent in ("claude", "codex", "gemini"):
+    for agent in ("pi", "claude", "codex", "gemini"):
         if shutil.which(agent):
             agents_found.append(agent)
 
     if agents_found:
         print(f"  Detected: {', '.join(agents_found)}")
     else:
-        print("  No agents detected (claude, codex, gemini).")
+        print("  No agents detected (pi, claude, codex, gemini).")
         print("  Install one and re-run setup, or use beril start --agent <name>.")
 
     default_agent = existing_cfg.get("defaults", {}).get("agent", "")
@@ -245,61 +245,26 @@ def run_setup() -> int:
         if chosen not in agents_found:
             print(f"  Warning: '{chosen}' was not detected on PATH.")
     else:
-        chosen = default_agent or "claude"
-
-    # ── Step 8: BERIL Anthropic key (Google Vertex) ──
-    vertex_cfg: dict = {}
-    _VERTEX_CREDENTIALS = Path("/global_share/BERIL-setup/20260507_hackathon.json")
-    _VERTEX_PROJECT_ID = "beril-hackathon-2026"
-    _VERTEX_REGION = "global"
-
-    if chosen == "claude" and _VERTEX_CREDENTIALS.exists():
-        _step(8, "BERIL Anthropic key (Google Vertex)")
-        print("  A shared BERIL Anthropic API key is available via Google Vertex.")
-        print("  This lets you use Claude without a personal API key or subscription.")
-        if _confirm("  Use the BERIL Anthropic key?"):
-            vertex_cfg = {
-                "enabled": True,
-                "project_id": _VERTEX_PROJECT_ID,
-                "region": _VERTEX_REGION,
-                "credentials_file": str(_VERTEX_CREDENTIALS),
-            }
-            print("  Vertex enabled — Claude will use the shared BERIL key.")
-        else:
-            print("  Skipped — Claude will use your personal API key / subscription.")
-    elif chosen == "claude":
-        _step(8, "BERIL Anthropic key (Google Vertex)")
-        print("  Shared Vertex credentials not found at expected location.")
-        print("  Claude will use your personal API key / subscription.")
+        chosen = default_agent or "pi"
 
     # ── Save config ─────────────────────────────────
     cfg: dict = {}
     if user_cfg:
         cfg["user"] = user_cfg
     cfg["defaults"] = {"agent": chosen}
-    if vertex_cfg:
-        cfg["vertex"] = vertex_cfg
     config.save(cfg)
     print(f"\n  Config saved to {config.CONFIG_PATH}")
 
-    # ── Step 9: Launch ──────────────────────────────
-    _step(9, "Launch")
+    # ── Step 8: Launch ──────────────────────────────
+    _step(8, "Launch")
 
     if agents_found and _confirm(f"  Launch {chosen} now?"):
-        print(f"\n  Starting {chosen} with /berdl_start...\n")
+        print(f"\n  Starting {chosen}...\n")
         print_jupyterhub_path_hint(repo_root)
         binary = shutil.which(chosen)
         if binary:
             os.chdir(repo_root)
-            # Inject Vertex env vars if enabled
-            if chosen == "claude" and vertex_cfg.get("enabled"):
-                os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
-                os.environ["CLOUD_ML_REGION"] = vertex_cfg.get("region", "global")
-                os.environ["ANTHROPIC_VERTEX_PROJECT_ID"] = vertex_cfg.get("project_id", "")
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = vertex_cfg.get("credentials_file", "")
-                os.environ["VERTEX_REGION_CLAUDE_HAIKU_4_5"] = "us-east5"
-                os.environ["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = "claude-haiku-4-5@20251001"
-            os.execvp(binary, [chosen, "--model", "opus", "/berdl_start"])
+            os.execvp(binary, [chosen])
         else:
             print(f"  Error: '{chosen}' not found on PATH.", file=sys.stderr)
             return 1

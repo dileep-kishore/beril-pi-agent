@@ -1,34 +1,33 @@
 #!/usr/bin/env bash
-# Usage: tools/review.sh <project_id> [--type project|plan] [--reviewer claude|codex] [--model <model_id>] [--output <path>]
+# Usage: tools/review.sh <project_id> [--type project|plan] [--reviewer codex] [--model <model_id>] [--output <path>]
 #
 # Invoke a CLI reviewer agent to review a BERDL analysis project or research plan.
-# Supports Claude Code and Codex CLI as reviewer backends.
+# Supports the Codex CLI as the reviewer backend.
 
 set -euo pipefail
 
 # --- Defaults ---
-REVIEWER="claude"
+REVIEWER="codex"
 MODEL=""
 PROJECT_ID=""
 REVIEW_TYPE="project"
 OUTPUT_FILE=""
 
-CLAUDE_DEFAULT_MODEL="claude-sonnet-4-20250514"
 CODEX_DEFAULT_MODEL="gpt-5.4"
 
 # --- Usage ---
 usage() {
   local exit_code="${1:-0}"
   cat <<EOF
-Usage: tools/review.sh <project_id> [--type project|plan] [--reviewer claude|codex] [--model <model_id>] [--output <path>]
+Usage: tools/review.sh <project_id> [--type project|plan] [--reviewer codex] [--model <model_id>] [--output <path>]
 
 Arguments:
   project_id              Project directory name under projects/
 
 Options:
   --type project|plan     Review type (default: project)
-  --reviewer claude|codex Reviewer backend (default: claude)
-  --model <model_id>      Model override (default: claude-sonnet-4-20250514 for claude, gpt-5.4 for codex)
+  --reviewer codex        Reviewer backend (default: codex)
+  --model <model_id>      Model override (default: gpt-5.4 for codex)
   --output <path>         Output file path (default: auto-numbered REVIEW_N.md in project dir)
   --help                  Show this help message
 
@@ -95,8 +94,8 @@ if [[ "$REVIEW_TYPE" != "project" && "$REVIEW_TYPE" != "plan" ]]; then
   exit 1
 fi
 
-if [[ "$REVIEWER" != "claude" && "$REVIEWER" != "codex" ]]; then
-  echo "Error: --reviewer must be 'claude' or 'codex', got '$REVIEWER'" >&2
+if [[ "$REVIEWER" != "codex" ]]; then
+  echo "Error: --reviewer must be 'codex', got '$REVIEWER'" >&2
   exit 1
 fi
 
@@ -126,11 +125,7 @@ fi
 
 # --- Resolve model ---
 if [[ -z "$MODEL" ]]; then
-  if [[ "$REVIEWER" == "claude" ]]; then
-    MODEL="$CLAUDE_DEFAULT_MODEL"
-  else
-    MODEL="$CODEX_DEFAULT_MODEL"
-  fi
+  MODEL="$CODEX_DEFAULT_MODEL"
 fi
 
 # --- Resolve output file ---
@@ -162,9 +157,9 @@ fi
 
 # --- Select system prompt based on type ---
 if [[ "$REVIEW_TYPE" == "project" ]]; then
-  SYSTEM_PROMPT_FILE=".claude/reviewer/SYSTEM_PROMPT.md"
+  SYSTEM_PROMPT_FILE="reviewer/SYSTEM_PROMPT.md"
 else
-  SYSTEM_PROMPT_FILE=".claude/reviewer/PLAN_REVIEW_PROMPT.md"
+  SYSTEM_PROMPT_FILE="reviewer/PLAN_REVIEW_PROMPT.md"
 fi
 
 if [[ ! -f "$SYSTEM_PROMPT_FILE" ]]; then
@@ -175,11 +170,7 @@ fi
 SYSTEM_PROMPT="$(cat "$SYSTEM_PROMPT_FILE")"
 
 # --- Build reviewer label for metadata ---
-if [[ "$REVIEWER" == "claude" ]]; then
-  REVIEWER_LABEL="Claude"
-else
-  REVIEWER_LABEL="Codex"
-fi
+REVIEWER_LABEL="Codex"
 
 # --- Build the review prompt based on type ---
 if [[ "$REVIEW_TYPE" == "project" ]]; then
@@ -194,38 +185,29 @@ echo "Output: ${OUTPUT_FILE}"
 
 REVIEW_EXIT=0
 REVIEW_STDERR=""
-if [[ "$REVIEWER" == "claude" ]]; then
-  CLAUDECODE= claude -p \
-    --model "$MODEL" \
-    --system-prompt "$SYSTEM_PROMPT" \
-    --allowedTools "Read,Write" \
-    --dangerously-skip-permissions \
-    "$REVIEW_PROMPT" || REVIEW_EXIT=$?
-else
-  # Codex has no --system-prompt flag; prepend system prompt to user prompt
-  FULL_PROMPT="${SYSTEM_PROMPT}
+# Codex has no --system-prompt flag; prepend system prompt to user prompt
+FULL_PROMPT="${SYSTEM_PROMPT}
 
 ---
 
 ${REVIEW_PROMPT}"
 
-  REVIEW_STDERR=$(codex exec \
-    --model "$MODEL" \
-    --sandbox workspace-write \
-    --ephemeral \
-    "$FULL_PROMPT" 2>&1) || REVIEW_EXIT=$?
+REVIEW_STDERR=$(codex exec \
+  --model "$MODEL" \
+  --sandbox workspace-write \
+  --ephemeral \
+  "$FULL_PROMPT" 2>&1) || REVIEW_EXIT=$?
 
-  # --- Friendly codex error messages ---
-  if [[ $REVIEW_EXIT -ne 0 && -n "$REVIEW_STDERR" ]]; then
-    if echo "$REVIEW_STDERR" | grep -qi "sign in again\|refresh token\|token.*expired\|401 Unauthorized"; then
-      echo "Error: Codex authentication expired. Run 'codex login' to re-authenticate." >&2
-      rm -f "$OUTPUT_FILE"
-      exit 1
-    elif echo "$REVIEW_STDERR" | grep -qi "not supported when using Codex with a ChatGPT account"; then
-      echo "Error: Model '${MODEL}' is not available with your Codex account. Try a different model or check 'codex' for available models." >&2
-      rm -f "$OUTPUT_FILE"
-      exit 1
-    fi
+# --- Friendly codex error messages ---
+if [[ $REVIEW_EXIT -ne 0 && -n "$REVIEW_STDERR" ]]; then
+  if echo "$REVIEW_STDERR" | grep -qi "sign in again\|refresh token\|token.*expired\|401 Unauthorized"; then
+    echo "Error: Codex authentication expired. Run 'codex login' to re-authenticate." >&2
+    rm -f "$OUTPUT_FILE"
+    exit 1
+  elif echo "$REVIEW_STDERR" | grep -qi "not supported when using Codex with a ChatGPT account"; then
+    echo "Error: Model '${MODEL}' is not available with your Codex account. Try a different model or check 'codex' for available models." >&2
+    rm -f "$OUTPUT_FILE"
+    exit 1
   fi
 fi
 

@@ -44,26 +44,10 @@ def save(cfg: dict[str, Any]) -> None:
                 lines.append(f'{key} = "{_toml_escape(val)}"')
         lines.append("")
 
-    if "vertex" in cfg:
-        lines.append("[vertex]")
-        v = cfg["vertex"]
-        lines.append(f'enabled = {"true" if v.get("enabled") else "false"}')
-        for key in ("project_id", "region", "credentials_file"):
-            val = v.get(key, "")
-            if val:
-                lines.append(f'{key} = "{_toml_escape(val)}"')
-        lines.append("")
-
     CONFIG_PATH.write_text("\n".join(lines) + "\n")
 
 
 def get_default_agent() -> str:
-    """Return the user's default agent, or 'claude' as fallback."""
+    """Return the user's default agent, or 'pi' as fallback."""
     cfg = load()
-    return cfg.get("defaults", {}).get("agent", "claude")
-
-
-def get_vertex_config() -> dict[str, Any]:
-    """Return the [vertex] section, or empty dict if not configured."""
-    cfg = load()
-    return cfg.get("vertex", {})
+    return cfg.get("defaults", {}).get("agent", "pi")

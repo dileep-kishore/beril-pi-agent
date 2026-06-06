@@ -25,15 +25,9 @@ def main(argv: list[str] | None = None) -> int:
     start_parser = sub.add_parser("start", help="Launch a coding agent")
     start_parser.add_argument(
         "--agent",
-        choices=["claude", "codex", "gemini", "pi"],
+        choices=["pi", "claude", "codex", "gemini"],
         default=None,
-        help="Agent to launch (default: from config, or claude)",
-    )
-    start_parser.add_argument(
-        "--skip-onboard",
-        action="store_true",
-        default=False,
-        help="Skip the automatic /berdl_start onboarding prompt",
+        help="Agent to launch (default: from config, or pi)",
     )
     start_parser.add_argument(
         "--version",
@@ -77,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     review_parser = sub.add_parser("review", help="Run a CLI reviewer agent over a project")
     review_parser.add_argument("project", help="Project directory name under projects/")
     review_parser.add_argument("--type", dest="type", default="project", choices=["project", "plan"])
-    review_parser.add_argument("--reviewer", default="claude", choices=["claude", "codex"])
+    review_parser.add_argument("--reviewer", default="codex", choices=["codex"])
     review_parser.add_argument("--model", default=None)
 
     # submit
@@ -129,7 +123,6 @@ def main(argv: list[str] | None = None) -> int:
         return run_start(
             agent=args.agent,
             extra_args=remaining,
-            skip_onboard=args.skip_onboard,
             version=args.version,
         )
 

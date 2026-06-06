@@ -162,7 +162,7 @@ def detect_environment() -> dict[str, Any]:
         if not pproxy_running:
             result["next_steps"].append(
                 "❌ pproxy not running on port 8123. "
-                "See .claude/skills/berdl-query/references/proxy-setup.md for startup instructions."
+                "See skills/berdl-query/SKILL.md for startup instructions."
             )
 
         # Overall readiness
@@ -181,7 +181,7 @@ def detect_environment() -> dict[str, Any]:
             ]
         else:
             result["next_steps"].append(
-                "\nFull setup guide: .claude/skills/berdl-query/references/proxy-setup.md"
+                "\nFull setup guide: skills/berdl-query/SKILL.md"
             )
 
     return result

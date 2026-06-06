@@ -9,7 +9,7 @@ from beril_cli import review_cmd
 
 
 def _ns(**kw) -> argparse.Namespace:
-    base = {"project": "demo", "type": "project", "reviewer": "claude", "model": None}
+    base = {"project": "demo", "type": "project", "reviewer": "codex", "model": None}
     base.update(kw)
     return argparse.Namespace(**base)
 

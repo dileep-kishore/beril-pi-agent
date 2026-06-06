@@ -5,7 +5,7 @@ a local Spark session on the compute node.  This version creates a remote
 Spark Connect session through the BERDL proxy chain, so the same notebooks
 work on a local machine without code changes.
 
-Prerequisites (see .claude/skills/berdl-query/references/proxy-setup.md):
+Prerequisites (see skills/berdl-query/SKILL.md):
   - KBASE_AUTH_TOKEN in environment or .env
   - SSH SOCKS tunnels on ports 1337/1338
   - pproxy on port 8123
