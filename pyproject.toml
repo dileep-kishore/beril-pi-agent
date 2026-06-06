@@ -4,13 +4,15 @@ version = "0.1.0"
 description = "BERIL Pi workbench — bundled `beril` CLI (execution substrate for the Pi extensions)"
 requires-python = ">=3.11"
 license = "MIT"
-dependencies = ["pyyaml>=6"]
+dependencies = ["pyyaml>=6", "nbformat>=5"]
 
 [project.scripts]
 beril = "beril_cli.cli:main"
 
 [dependency-groups]
-test = ["pytest>=8"]
+# nbconvert/jupyter-client/ipykernel let the notebook-execution path be tested
+# against the current interpreter; production execution uses the .venv-berdl jupyter.
+test = ["pytest>=8", "nbconvert>=7", "jupyter-client>=8", "ipykernel>=6"]
 
 [build-system]
 requires = ["hatchling"]

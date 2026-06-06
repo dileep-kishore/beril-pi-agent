@@ -17,7 +17,11 @@ python -m pip install \
   "boto3>=1.34.0" \
   "pproxy" \
   "pandas" \
-  "matplotlib"
+  "matplotlib" \
+  "jupyter" \
+  "nbconvert" \
+  "ipykernel" \
+  "nbformat"
 
 # Make scripts/ importable so notebooks can do:
 #   from get_spark_session import get_spark_session
