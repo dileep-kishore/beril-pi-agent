@@ -156,63 +156,69 @@ def test_list_reports_cells_and_outputs(tmp_path, monkeypatch, capsys):
 # --- run --------------------------------------------------------------------
 
 
-def _find_jupyter() -> str | None:
-    """Locate a jupyter usable for the run test: .venv-berdl, then PATH."""
-    from beril_cli.paths import find_repo_root
-
-    root = find_repo_root(Path(__file__).resolve().parent)
-    if root is not None:
-        candidate = root / ".venv-berdl" / "bin" / "jupyter"
-        if candidate.exists():
-            return str(candidate)
-    return shutil.which("jupyter")
-
-
-@pytest.mark.skipif(
-    _find_jupyter() is None,
-    reason="no jupyter available (.venv-berdl not bootstrapped and none on PATH)",
-)
-def test_run_executes_and_saves_outputs(tmp_path, monkeypatch, capsys):
+def test_run_orchestration_all_ok(tmp_path, monkeypatch, capsys):
+    """All notebooks succeed → exit 0 and per-notebook ok:true with no error."""
     project_dir = _project(tmp_path, monkeypatch)
     notebooks_dir = project_dir / "notebooks"
     notebooks_dir.mkdir()
+    (notebooks_dir / "01_a.ipynb").write_text("{}")
+    (notebooks_dir / "02_b.ipynb").write_text("{}")
 
-    import nbformat
-    from nbformat.v4 import new_code_cell, new_notebook
+    def fake_run(argv, **kw):
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
 
-    nb = new_notebook(cells=[new_code_cell("1 + 1")])
-    nb.metadata["kernelspec"] = {
-        "name": "python3",
-        "display_name": "Python 3",
-        "language": "python",
-    }
-    path = notebooks_dir / "01_trivial.ipynb"
-    nbformat.write(nb, path.open("w"))
+        return R()
 
-    ns = _ns(action="run", timeout=120)
-    ns._jupyter_override = _find_jupyter()
+    monkeypatch.setattr(notebook_cmd.subprocess, "run", fake_run)
+    ns = _ns(action="run", timeout=10)
+    ns._with_override = []  # don't resolve the heavy deps in the orchestration test
     rc = notebook_cmd.run_notebook(ns)
     payload = json.loads(capsys.readouterr().out)
 
     assert rc == 0
+    assert payload["project"] == "demo"
     assert payload["ok"] is True
     assert payload["executed"] == [
-        {"notebook": "notebooks/01_trivial.ipynb", "ok": True, "error": None}
+        {"notebook": "notebooks/01_a.ipynb", "ok": True, "error": None},
+        {"notebook": "notebooks/02_b.ipynb", "ok": True, "error": None},
     ]
 
-    # Outputs were saved in place.
-    executed = nbformat.read(path, as_version=4)
-    code_cells = [c for c in executed.cells if c.cell_type == "code"]
-    assert any(c.outputs for c in code_cells)
 
+def test_run_uses_uv_runner(tmp_path, monkeypatch, capsys):
+    """The orchestrator invokes `uv run scripts/run_notebook.py NB --timeout N`."""
+    project_dir = _project(tmp_path, monkeypatch)
+    notebooks_dir = project_dir / "notebooks"
+    notebooks_dir.mkdir()
+    (notebooks_dir / "01_a.ipynb").write_text("{}")
 
-def test_run_missing_venv_returns_2(tmp_path, monkeypatch, capsys):
-    _project(tmp_path, monkeypatch)
-    # No .venv-berdl in tmp repo, and no override → env error.
-    monkeypatch.setattr(notebook_cmd, "_resolve_jupyter", lambda root: None)
-    rc = notebook_cmd.run_notebook(_ns(action="run"))
-    assert rc == 2
-    assert "bootstrap" in capsys.readouterr().err
+    seen: dict = {}
+
+    def fake_run(argv, **kw):
+        seen["argv"] = argv
+        seen["cwd"] = kw.get("cwd")
+
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setattr(notebook_cmd.subprocess, "run", fake_run)
+    ns = _ns(action="run", timeout=42)
+    ns._with_override = ["--with", "nbclient"]
+    notebook_cmd.run_notebook(ns)
+    capsys.readouterr()
+
+    argv = seen["argv"]
+    assert argv[:2] == ["uv", "run"]
+    assert "--with" in argv and "nbclient" in argv
+    assert str(tmp_path / "scripts" / "run_notebook.py") in argv
+    assert argv[-2:] == ["--timeout", "42"]
+    assert seen["cwd"] == tmp_path
 
 
 def test_run_continues_on_failing_cell(tmp_path, monkeypatch, capsys):
@@ -232,13 +238,68 @@ def test_run_continues_on_failing_cell(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(notebook_cmd.subprocess, "run", fake_run)
     ns = _ns(action="run", timeout=10)
-    ns._jupyter_override = "/fake/jupyter"
+    ns._with_override = []
     rc = notebook_cmd.run_notebook(ns)
     payload = json.loads(capsys.readouterr().out)
     assert rc == 1
     assert payload["ok"] is False
     assert payload["executed"][0]["ok"] is False
     assert "CellExecutionError" in payload["executed"][0]["error"]
+
+
+def test_run_missing_project_returns_2(tmp_path, monkeypatch, capsys):
+    (tmp_path / "PROJECT.md").write_text("x")
+    monkeypatch.setattr(notebook_cmd, "find_repo_root", lambda: tmp_path)
+    ns = _ns(action="run", project="nope")
+    ns._with_override = []
+    rc = notebook_cmd.run_notebook(ns)
+    assert rc == 2
+    assert "project not found" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(shutil.which("uv") is None, reason="uv not available")
+def test_run_executes_and_saves_outputs(tmp_path, monkeypatch, capsys):
+    """End-to-end: uv resolves only the light PEP 723 deps and runs a 1+1 notebook."""
+    project_dir = _project(tmp_path, monkeypatch)
+    notebooks_dir = project_dir / "notebooks"
+    notebooks_dir.mkdir()
+
+    # `_run` invokes <root>/scripts/run_notebook.py; copy the real PEP 723 runner
+    # into the tmp repo so `uv run` resolves only the inline (light) deps.
+    from beril_cli.paths import find_repo_root as _real_find_root
+
+    real_root = _real_find_root(Path(__file__).resolve().parent)
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    shutil.copy(real_root / "scripts" / "run_notebook.py", scripts_dir / "run_notebook.py")
+
+    import nbformat
+    from nbformat.v4 import new_code_cell, new_notebook
+
+    nb = new_notebook(cells=[new_code_cell("1 + 1")])
+    nb.metadata["kernelspec"] = {
+        "name": "python3",
+        "display_name": "Python 3",
+        "language": "python",
+    }
+    path = notebooks_dir / "01_trivial.ipynb"
+    nbformat.write(nb, path.open("w"))
+
+    ns = _ns(action="run", timeout=120)
+    ns._with_override = []  # empty --with → uv resolves only nbclient/nbformat/ipykernel
+    rc = notebook_cmd.run_notebook(ns)
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert payload["ok"] is True
+    assert payload["executed"] == [
+        {"notebook": "notebooks/01_trivial.ipynb", "ok": True, "error": None}
+    ]
+
+    # Outputs were saved in place.
+    executed = nbformat.read(path, as_version=4)
+    code_cells = [c for c in executed.cells if c.cell_type == "code"]
+    assert any(c.outputs for c in code_cells)
 
 
 def test_no_repo_returns_2(monkeypatch, capsys):

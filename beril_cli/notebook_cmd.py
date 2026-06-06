@@ -4,8 +4,9 @@ This is the execution substrate for the BERIL Jupyter notebook workflow:
 
   - ``scaffold`` writes numbered skeleton notebooks (via ``nbformat``) parsed from
     the project's ``RESEARCH_PLAN.md`` analysis plan (or a sensible default set).
-  - ``run`` executes notebooks in place via the ``.venv-berdl`` jupyter, saving
-    outputs (the BERIL reproducibility requirement).
+  - ``run`` executes notebooks in place in a uv-managed env (``uv run`` of
+    ``scripts/run_notebook.py``), saving outputs (the BERIL reproducibility
+    requirement). No hand-bootstrapped ``.venv-berdl`` is needed.
   - ``list`` reports the notebooks and whether each carries saved outputs.
 
 Per the subcommand I/O contract, each action prints a single JSON object/array to
@@ -22,6 +23,18 @@ import sys
 from pathlib import Path
 
 from beril_cli.paths import find_repo_root
+
+# Heavy notebook-content deps, layered onto the light PEP 723 runner env via
+# `uv run --with`. Mirrors the dependency list in scripts/bootstrap_client.sh.
+# uv caches the resolved env per dep-set, so repeat runs are fast.
+NOTEBOOK_WITH: list[str] = [
+    "--with", "pyspark",
+    "--with", "spark_connect_remote @ git+https://github.com/BERDataLakehouse/spark_connect_remote.git",
+    "--with", "berdl_remote @ git+https://github.com/BERDataLakehouse/berdl_remote.git",
+    "--with", "pandas",
+    "--with", "matplotlib",
+    "--with", "boto3",
+]
 
 # Default analysis plan used when RESEARCH_PLAN.md has no parseable notebooks.
 _DEFAULT_NOTEBOOKS: list[tuple[str, str]] = [
@@ -106,7 +119,7 @@ def _setup_source() -> str:
     return (
         "# Setup — works off-cluster via the BERDL proxy chain.\n"
         "# On JupyterHub get_spark_session() is injected; locally it is provided\n"
-        "# by scripts/get_spark_session.py (on the .venv-berdl path).\n"
+        "# by scripts/get_spark_session.py (on PYTHONPATH in the uv-managed env).\n"
         "from get_spark_session import get_spark_session\n"
         "\n"
         "spark = get_spark_session()"
@@ -220,7 +233,13 @@ def _rel(path: Path, project_dir: Path) -> str:
         return path.name
 
 
-def _run(root: Path, project: str, notebook: str | None, timeout: int, jupyter: Path) -> int:
+def _run(
+    root: Path,
+    project: str,
+    notebook: str | None,
+    timeout: int,
+    extra_with: list[str] | None = None,
+) -> int:
     project_dir = root / "projects" / project
     if not project_dir.is_dir():
         json.dump({"error": f"project not found: projects/{project}"}, sys.stderr)
@@ -233,23 +252,25 @@ def _run(root: Path, project: str, notebook: str | None, timeout: int, jupyter: 
         sys.stderr.write("\n")
         return 2
 
+    with_flags = NOTEBOOK_WITH if extra_with is None else extra_with
+    runner = root / "scripts" / "run_notebook.py"
+
     executed: list[dict] = []
     for path in targets:
         argv = [
-            str(jupyter),
-            "nbconvert",
-            "--to",
-            "notebook",
-            "--execute",
-            "--inplace",
-            f"--ExecutePreprocessor.timeout={timeout}",
+            "uv",
+            "run",
+            *with_flags,
+            str(runner),
             str(path),
+            "--timeout",
+            str(timeout),
         ]
-        proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+        proc = subprocess.run(argv, capture_output=True, text=True, check=False, cwd=root)
         ok = proc.returncode == 0
         error = None
         if not ok:
-            error = (proc.stderr or proc.stdout or f"nbconvert exited {proc.returncode}").strip()
+            error = (proc.stderr or proc.stdout or f"uv run exited {proc.returncode}").strip()
             sys.stderr.write(error + "\n")
         executed.append({"notebook": _rel(path, project_dir), "ok": ok, "error": error})
 
@@ -292,12 +313,6 @@ def _list(root: Path, project: str) -> int:
     return 0
 
 
-def _resolve_jupyter(root: Path) -> Path | None:
-    """Return the .venv-berdl jupyter executable, or None if it is not bootstrapped."""
-    jupyter = root / ".venv-berdl" / "bin" / "jupyter"
-    return jupyter if jupyter.exists() else None
-
-
 def run_notebook(args: argparse.Namespace) -> int:
     """Dispatch the ``beril notebook`` action and emit its JSON payload to stdout."""
     root = find_repo_root()
@@ -311,18 +326,10 @@ def run_notebook(args: argparse.Namespace) -> int:
     if args.action == "list":
         return _list(root, args.project)
     if args.action == "run":
-        jupyter = getattr(args, "_jupyter_override", None) or _resolve_jupyter(root)
-        if jupyter is None:
-            json.dump(
-                {
-                    "error": ".venv-berdl jupyter not found — bootstrap it with "
-                    "scripts/bootstrap_client.sh before running notebooks."
-                },
-                sys.stderr,
-            )
-            sys.stderr.write("\n")
-            return 2
-        return _run(root, args.project, args.notebook, args.timeout, Path(jupyter))
+        # Test seam: an injected `_with_override` (e.g. []) swaps the heavy
+        # `--with` deps for a light/empty set so a trivial notebook runs fast.
+        extra_with = getattr(args, "_with_override", None)
+        return _run(root, args.project, args.notebook, args.timeout, extra_with)
 
     json.dump({"error": f"unknown action: {args.action}"}, sys.stderr)
     sys.stderr.write("\n")
