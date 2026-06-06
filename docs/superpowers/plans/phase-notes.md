@@ -92,3 +92,41 @@ Final whole-branch review verdict: **SHIP**. Gate at every commit: `bunx tsc --n
 cell-escaping), `export/submit confirm-with-facts overlay`, `hash-diff card` (needs a new read-only
 `beril verify`), `registerProvider` Vertex/ADC, `before_agent_start` context injection, `appendEntry`
 persistence. Keep-in-Python unchanged (Spark/MinIO, both sha256 primitives, lifecycle/ORCID).
+
+## De-Claude + pi default + versioning ✅
+
+`config`/`cli`/`setup`/`doctor` default to the **pi** agent; removed the Claude-Code launch baggage
+(Vertex env injection, `--model opus`, `/berdl_start` inject, the `[vertex]` config + setup step, the
+dead `--skip-onboard`), de-Claude'd the reviewer surface, and fixed stale `.claude/skills` doc-paths.
+`beril start` no longer hard-fails without a published release (`fix(start)`). Tagged **`v0.1.0`** +
+GitHub release (first tracked release; makes the default version-pin resolve). Commits `ad50ab9`,
+`95d868d`, `d18c3d3`, etc. Reproducibility/safety files untouched.
+
+## Pi-native `/berdl-review` — in-process review subagent ✅
+
+Replaced the bash/Python/codex review path with an **in-process Pi subagent**. Spec:
+`docs/superpowers/specs/2026-06-05-pi-native-review-design.md`; plan:
+`docs/superpowers/plans/2026-06-05-pi-native-review.md`. Brainstormed → SDK-verified (4-agent
+read-only verification of `createAgentSession`/`ResourceLoader`/`getModel`) → subagent-driven TDD.
+Final whole-feature review: **SHIP** (one re-review edge fixed: `d1b0a01`).
+
+- `lib/review-rubric.ts` — project + plan reviewer system prompts (re-homed from `skills/berdl-review`
+  **and the original `.claude/reviewer/*.md`, which were never migrated**).
+- `lib/review-finalize.ts` — raw-`sha256` `report_hash` footer + TOCTOU + `REVIEW_N` numbering, ported
+  to TS, **verified byte-identical** to the old `review.sh` `printf`-append + `sha256sum` (test-pinned).
+- `lib/review-agent.ts` — `runReviewSubagent`: isolated read-only `createAgentSession` on **Opus 4.8**
+  (overridable; falls back to `ctx.model`), custom `ResourceLoader` with **empty extensions** so it can't
+  recurse into `beril-safety` (Inv 5); tools `read/grep/find/ls`. Injectable factory for tests;
+  `isolatedLoader` exported + tested.
+- `extensions/beril-review.ts` — `/berdl-review <project> [--plan] [--model <id>]`: validate → PRE-hash →
+  run subagent → POST-hash/TOCTOU → write `REVIEW_N.md` + footer → advance lifecycle **only from `analysis`**.
+- Removed: `tools/review.sh`, `beril_cli/review_cmd.py`, the cli `review` subcommand, the governance
+  `/berdl-review` command, `tests/test_cli_review.py`. Commits `b1eb39a` (libs), `b60d2be` (swap),
+  `d1b0a01` (fix). Gate: tsc/biome/86 TS/175 Python/`pi install` green; protected hash + safety files untouched.
+
+### `.claude/skills` migration audit (requested)
+20 original skills → 8 here. Core loop + literature migrated; `berdl`→`berdl-query`, `berdl_start`→prompt +
+`session_start`, reviewer prompts→`lib/review-rubric.ts`. **Intentionally out of scope:** `berdl-ingest`,
+`berdl-minio`, `remote-compute`, `phenix`, `linkml-schema` (design §10), `build-registry` + `knowledge`
+(OpenViking-bound). **Candidate gaps** (not core-loop MVP, not explicitly cut — decide later):
+`status`, `interpret`, `discovery-capture`, `compare`.
