@@ -139,3 +139,49 @@ export function userCard(
 export function destructiveResultCard(theme: Theme, title: string, lines: string[]): Component {
   return linesCard(theme, { title, accent: "warning", lines, maxBodyLines: 12 });
 }
+
+/** Notebook scaffold result → created (success) + skipped-existing (dim). */
+export function scaffoldCard(theme: Theme, r: { created: string[]; skipped: string[] }): Component {
+  const lines = [
+    ...r.created.map((p) => `${theme.fg("success", "+")} ${theme.fg("text", p)}`),
+    ...r.skipped.map((p) => theme.fg("dim", `· ${p} (exists)`)),
+  ];
+  if (!lines.length) lines.push(theme.fg("muted", "(no notebooks)"));
+  return linesCard(theme, { title: `Notebooks scaffolded · ${r.created.length} new`, lines, maxBodyLines: 24 });
+}
+
+export interface NotebookInfo {
+  path: string;
+  cells: number;
+  has_outputs: boolean;
+}
+
+/** Notebook listing → each with cell count and a saved-outputs indicator. */
+export function notebookListCard(theme: Theme, notebooks: NotebookInfo[]): Component {
+  if (!notebooks.length) {
+    return linesCard(theme, { title: "Notebooks", lines: [theme.fg("muted", "(none — scaffold first)")] });
+  }
+  const lines = notebooks.map((n) => {
+    const mark = n.has_outputs ? theme.fg("success", "✓ outputs") : theme.fg("warning", "○ no outputs");
+    return `${theme.fg("text", n.path)}  ${theme.fg("dim", `${n.cells} cells`)}  ${mark}`;
+  });
+  return linesCard(theme, { title: `Notebooks · ${notebooks.length}`, lines, maxBodyLines: 24 });
+}
+
+export interface NotebookRun {
+  notebook: string;
+  ok: boolean;
+  error: string | null;
+}
+
+/** Notebook execution result → per-notebook ✓/✗ with the first error line. */
+export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: boolean }): Component {
+  const lines = r.executed.map((e) =>
+    e.ok
+      ? `${theme.fg("success", "✓")} ${theme.fg("text", e.notebook)}`
+      : `${theme.fg("error", "✗")} ${theme.fg("text", e.notebook)} ${theme.fg("dim", e.error ? `— ${e.error.split("\n")[0]}` : "")}`,
+  );
+  if (!lines.length) lines.push(theme.fg("muted", "(nothing executed)"));
+  const title = r.ok ? `Notebooks executed · ${r.executed.length} ✓` : "Notebooks executed · some failed";
+  return linesCard(theme, { title, accent: r.ok ? "success" : "warning", lines, maxBodyLines: 30 });
+}
