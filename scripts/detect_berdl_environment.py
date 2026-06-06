@@ -2,13 +2,14 @@
 """Detect BERDL environment and check prerequisites.
 
 Determines if running on-cluster (BERDL JupyterHub) or off-cluster (local machine).
-Checks proxy status, KBASE_AUTH_TOKEN, venv setup, and provides actionable next steps.
+Checks proxy status, KBASE_AUTH_TOKEN, uv availability, and provides actionable next steps.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -86,7 +87,6 @@ def detect_environment() -> dict[str, Any]:
     """Detect environment and return status report."""
     repo_root = Path(__file__).resolve().parent.parent
     env_file = repo_root / ".env"
-    venv_path = repo_root / ".venv-berdl"
 
     result: dict[str, Any] = {
         "location": "unknown",
@@ -145,13 +145,14 @@ def detect_environment() -> dict[str, Any]:
                 "and add: KBASE_AUTH_TOKEN=\"your-token-here\""
             )
 
-        # Check .venv-berdl
-        venv_exists = venv_path.exists()
-        result["checks"]["venv_berdl"] = venv_exists
+        # Check uv (used to run scripts via PEP 723 and to launch pproxy via
+        # `uv run --with pproxy ...` — no hand-bootstrapped venv required).
+        uv_available = shutil.which("uv") is not None
+        result["checks"]["uv_available"] = uv_available
 
-        if not venv_exists:
+        if not uv_available:
             result["next_steps"].append(
-                "❌ .venv-berdl not found. Run: bash scripts/bootstrap_client.sh"
+                "❌ uv not found on PATH. Install it from https://docs.astral.sh/uv/"
             )
 
         # Check SSH tunnels
@@ -184,7 +185,7 @@ def detect_environment() -> dict[str, Any]:
         # Overall readiness
         result["ready"] = all([
             token_in_env,
-            venv_exists,
+            uv_available,
             tunnel_1337,
             tunnel_1338,
             pproxy_running,

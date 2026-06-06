@@ -2,14 +2,18 @@
 # Start pproxy HTTP-to-SOCKS5 bridge on port 8123
 # This bridges HTTP requests (used by Spark Connect and MinIO) to the SSH SOCKS5 tunnel on port 1338.
 # Prerequisites: SSH tunnels on ports 1337 and 1338 must be running.
+#
+# pproxy runs in a cached `uv` environment (`uv run --with pproxy ...`), so there
+# is no hand-bootstrapped .venv-berdl to maintain. The proxy is launched detached
+# (nohup + background) and keeps running after this script exits.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VENV_PATH="${REPO_ROOT}/.venv-berdl"
+LOG_FILE="${REPO_ROOT}/pproxy.log"
 
-if [[ ! -d "${VENV_PATH}" ]]; then
-  echo "Error: .venv-berdl not found. Run: bash scripts/bootstrap_client.sh" >&2
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Error: uv not found on PATH. Install it from https://docs.astral.sh/uv/" >&2
   exit 1
 fi
 
@@ -28,16 +32,24 @@ fi
 
 echo "Starting pproxy on port 8123..."
 echo "Routes HTTP → SOCKS5 (127.0.0.1:1338)"
-echo "Press Ctrl+C to stop."
-echo ""
+echo "Logging to ${LOG_FILE}"
 
-# shellcheck source=/dev/null
-source "${VENV_PATH}/bin/activate"
+# Launch pproxy detached so it survives this script exiting. uv resolves pproxy
+# into a cached environment without touching the project venv.
+nohup uv run --with pproxy python -m pproxy \
+  -l http://:8123 \
+  -r socks5://127.0.0.1:1338 \
+  -v \
+  >"${LOG_FILE}" 2>&1 &
 
-python -c "
-import sys, asyncio
-sys.argv = ['pproxy', '-l', 'http://:8123', '-r', 'socks5://127.0.0.1:1338', '-v']
-asyncio.set_event_loop(asyncio.new_event_loop())
-from pproxy.server import main
-main()
-"
+# Give it a moment to bind the port, then report.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if lsof -i :8123 2>/dev/null | grep -q LISTEN; then
+    echo "pproxy is listening on port 8123."
+    exit 0
+  fi
+  sleep 0.5
+done
+
+echo "Error: pproxy did not start listening on port 8123. See ${LOG_FILE}." >&2
+exit 1

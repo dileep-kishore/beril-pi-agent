@@ -151,6 +151,7 @@ __pycache__/
 .venv/
 .venv-berdl/
 *.pyc
+pproxy.log
 
 resources/
 .DS_Store
