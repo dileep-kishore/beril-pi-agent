@@ -124,9 +124,18 @@ Final whole-feature review: **SHIP** (one re-review edge fixed: `d1b0a01`).
   `/berdl-review` command, `tests/test_cli_review.py`. Commits `b1eb39a` (libs), `b60d2be` (swap),
   `d1b0a01` (fix). Gate: tsc/biome/86 TS/175 Python/`pi install` green; protected hash + safety files untouched.
 
-### `.claude/skills` migration audit (requested)
-20 original skills → 8 here. Core loop + literature migrated; `berdl`→`berdl-query`, `berdl_start`→prompt +
-`session_start`, reviewer prompts→`lib/review-rubric.ts`. **Intentionally out of scope:** `berdl-ingest`,
-`berdl-minio`, `remote-compute`, `phenix`, `linkml-schema` (design §10), `build-registry` + `knowledge`
-(OpenViking-bound). **Candidate gaps** (not core-loop MVP, not explicitly cut — decide later):
-`status`, `interpret`, `discovery-capture`, `compare`.
+### `.claude/skills` migration audit + refresh (corrected)
+**Source of truth:** the real BERIL repo, **main @ `940c3b0e`**, at
+`/Users/g8k/.superset/projects/BERIL-research-observatory` (remote `kbaseincubator/BERIL-research-observatory`).
+⚠️ An earlier audit mistakenly used a stale `~/Documents/Work/Collaborations/BERIL-research-observatory` clone on
+an **OpenViking feature branch** — its OpenViking dependencies and the "candidate gaps"
+(`interpret`/`status`/`compare`/`discovery-capture`/`knowledge`/`build-registry`) **do not exist on main** and are
+disregarded (OpenViking / `query_knowledge_unified.py` is PR-only — 0 files on main).
+
+On main there are **16 skills; 9 are now in this repo.** The 8 core/literature skills were **refreshed against
+current-main judgment** and **`berdl-minio` was added** (commit `00b5001`) — all kept **Pi-optimized** (reference the
+Pi tools/commands + vendored scripts, never CC `scripts/`/`.claude/` paths/OpenViking). `berdl-minio` drives the
+vendored `get_minio_creds`/`configure_mc`/`berdl_env` scripts via bash, routes off-cluster proxy through
+`/berdl-connect`, and sends `mc rm` through the safety gate. **Not migrated (separate subsystems, all OpenViking-free,
+deferred per the user):** `berdl-ingest`, `berdl-ingest-remote`, `remote-compute` (CTS), `phenix` (Phenix/NERSC),
+`linkml-schema`.
