@@ -95,7 +95,16 @@ From the repo root:
 uv run beril start --agent pi      # or just `beril start --agent pi` if the CLI is on PATH
 ```
 
-`beril start` pins a release tag, refreshes your KBase token, ensures the model provider, and execs `pi` with this package. Onboarding/status is handled by the `beril-env` extension (no prompt injection) — run `/berdl-start` any time to re-orient.
+This is the seamless one-command launch: `beril start` refreshes your KBase
+token in `.env`, execs `pi` with this package and the bundled `beril` already on
+PATH (so the extensions resolve it — **no manual `source .venv/bin/activate`**),
+and hands off onboarding/status to the `beril-env` extension (run `/berdl-start`
+any time to re-orient).
+
+It **stays on your current branch/commit** — the release pin only ever moves
+*forward* (it checks out a newer published release only when you're behind one,
+never downgrades newer work). Pass `--version vX.Y.Z` to pin to a specific
+release explicitly.
 
 ### Connecting to BERDL (off-cluster)
 
@@ -109,7 +118,16 @@ Run `/berdl-status` to confirm; the footer widget shows `BERDL off-cluster ✓ r
 
 ## Model provider
 
-Route to your org/Vertex/vLLM endpoint with a `models.json` (Pi does not use BERIL's `CLAUDE_CODE_USE_VERTEX` env). Example for an Anthropic-compatible gateway:
+beril uses **whatever model your `pi` is configured with** — your existing
+provider/subscription drives the co-scientist (e.g. an OpenAI/Codex or Google
+default). **No Anthropic key is required.** The one exception is the independent
+`/berdl-review` subagent: it *prefers* Anthropic Opus 4.8 for a strong,
+separate-from-the-author read, but **falls back to your session model
+automatically** when no Anthropic auth is present, and is overridable per call
+(`/berdl-review <project> --model <id>`).
+
+To route to an org/Vertex/vLLM endpoint, use a `models.json` (Pi does not use
+BERIL's `CLAUDE_CODE_USE_VERTEX` env). Example for an Anthropic-compatible gateway:
 
 ```json
 {
