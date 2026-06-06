@@ -105,6 +105,9 @@ def _post_json(url: str, token: str, payload: dict[str, Any], timeout: float) ->
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
+            # The hub sits behind Cloudflare, which 403s the default
+            # "Python-urllib/x.y" agent (error 1010). A curl-style UA passes.
+            "User-Agent": "curl/8.7.1",
         },
         method="POST",
     )

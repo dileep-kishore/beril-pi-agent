@@ -25,6 +25,21 @@ def test_connectivity(host: str, port: int, timeout: float = 2.0) -> bool:
         return False
 
 
+def is_on_cluster() -> bool:
+    """Return True only when running inside the BERDL JupyterHub.
+
+    ``spark.berdl.kbase.us`` is publicly routable, so plain TCP reachability is
+    not a reliable on-cluster signal. The Hub injects ``berdl_notebook_utils``
+    into the kernel; its importability is the dependable discriminator (matching
+    discover_berdl_collections._load_berdl_helpers).
+    """
+    try:
+        import berdl_notebook_utils  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def check_port_listening(port: int) -> bool:
     """Check if a local port has something listening."""
     result = subprocess.run(
@@ -80,13 +95,14 @@ def detect_environment() -> dict[str, Any]:
         "next_steps": [],
     }
 
-    # Test connectivity to BERDL Spark endpoint
+    # Test connectivity to BERDL Spark endpoint (informational only; the host is
+    # publicly routable, so this alone does not imply on-cluster).
     spark_reachable = test_connectivity("spark.berdl.kbase.us", 443, timeout=2.0)
 
-    if spark_reachable:
+    if is_on_cluster():
         # On-cluster (BERDL JupyterHub)
         result["location"] = "on-cluster"
-        result["checks"]["spark_direct"] = True
+        result["checks"]["spark_direct"] = spark_reachable
 
         # Check for KBASE_AUTH_TOKEN in environment
         token = os.getenv("KBASE_AUTH_TOKEN")
