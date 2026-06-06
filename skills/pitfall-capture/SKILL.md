@@ -1,6 +1,6 @@
 ---
 name: pitfall-capture
-description: Use when BERDL work hits an error, retry, or data surprise — a query failure (504/524/503, empty response, SQL syntax/semantic error), incorrect results (bad join key, string-vs-numeric mismatch, wrong table), a substantial retry/correction cycle, a slow or OOM query, a data surprise (missing data, unexpected NULLs, coverage gaps, schema drift vs. docs), or an environment issue (Spark session, imports, JupyterHub). Provides the judgment for deciding whether a gotcha is worth recording, checking it isn't a known duplicate, and drafting a clear, specific, human-reviewed pitfall entry for the project's memory. Referenced by other BERDL skills (berdl, berdl-discover, hypothesis, submit) rather than invoked directly by the user.
+description: Use when BERDL work hits an error, retry, or data surprise — a query failure (504/524/503, empty response, SQL syntax/semantic error), incorrect results (bad join key, string-vs-numeric mismatch, wrong table), a substantial retry/correction cycle, a slow or OOM query, a data surprise (missing data, unexpected NULLs, coverage gaps, schema drift vs. docs), or an environment issue (Spark session, imports, JupyterHub). Provides the judgment for deciding whether a gotcha is worth recording, checking it isn't a known duplicate, and drafting a clear, specific, human-reviewed pitfall entry for the project's pitfalls memory. Referenced by other BERDL skills (berdl-query, berdl-discover, suggest-research, submit) rather than invoked directly by the user.
 ---
 
 # Pitfall Capture Protocol
@@ -32,23 +32,29 @@ Activate when any of the following occur during BERDL work:
 
 ## Where Pitfalls Live
 
-Pitfalls belong to the **active project's memory**, append-only. They are not
-written to any frozen central archive. If a pitfall genuinely doesn't belong to
-any specific project (e.g. a global BERDL gotcha hit during free exploration
-with no current project), prefer either (a) attaching it to the most-relevant
-active project, or (b) asking the user where it should live. The project memory
-is the source of truth; do not invent file mechanics — recording happens
-through the project's memory rather than ad-hoc files.
+Pitfalls belong to the **active project's `memories/pitfalls.md`**, append-only.
+This file is LIVE: unlike discoveries and performance notes — which `/synthesize`
+stages as `## Discoveries` / `## Performance Notes` in REPORT.md and `/submit`
+promotes into `memories/` only *after* the author approves — a pitfall is
+recorded as soon as the user confirms it, without waiting on submission. The
+project's own pitfalls memory is the source of truth; new pitfalls are never
+written to any frozen central archive.
+
+If a pitfall genuinely doesn't belong to any specific project (e.g. a global
+BERDL gotcha hit during free exploration with no current project), prefer either
+(a) attaching it to the most-relevant active project, or (b) asking the user
+where it should live. Always include the project tag in the entry body so the
+gotcha stays attributable and cross-project search stays consistent.
 
 ## Protocol
 
 ### Step 1 — Check for Duplicates
 
 Iteration on the same project commonly hits the same gotcha twice, so check
-before drafting. Search the project's memory (and any known central archive of
-historical gotchas) for a matching entry. Use `berdl_discover` if you need to
-re-confirm a schema or coverage fact while judging whether two issues are
-really the same.
+before drafting. Search the project's `memories/pitfalls.md` (and any older
+historical gotcha notes the project carries) for a matching entry. Use
+`berdl_discover` if you need to re-confirm a schema or coverage fact while
+judging whether two issues are really the same.
 
 Dedup heuristics — treat as the *same* pitfall when entries share the **root
 cause**, not merely the surface symptom:
@@ -127,7 +133,8 @@ earlier guidance.
 
 The correction references the earlier entry by title (and date if helpful), but
 the earlier entry stays unchanged. This preserves the audit trail of "what we
-thought when, and how our understanding evolved."
+thought when, and how our understanding evolved" — valuable for future
+readers/agents.
 
 Adapt the templates — not every pitfall involves SQL. Some are about Python,
 environment setup, or data interpretation (e.g. COG category coverage, GTDB
@@ -138,17 +145,20 @@ before finalizing the entry.
 
 ### Step 4 — Present for Review
 
-Show the user: (1) the full drafted entry, (2) the destination (the active
-project's memory), and (3) whether it's a new entry or a correction-to-existing.
+Show the user: (1) the full drafted entry, (2) the destination — the active
+project's `memories/pitfalls.md` — and (3) whether it's a new entry or a
+correction-to-existing.
 
 Ask: "Here's the draft entry. Does this look accurate? Should I add it to the
 project's pitfalls memory?" Wait for approval; revise and re-present on request.
 
 ### Step 5 — Record
 
-On approval, record the entry in the active project's memory (append-only).
-Confirm it was added, then **resume the original task** — pitfall capture must
-not derail the user's workflow.
+On approval, append the entry to the active project's `memories/pitfalls.md`
+(append-only). If the file doesn't exist yet, this entry is its first content —
+start it with a brief one-line preamble (e.g. `# Pitfalls — <project name>`)
+before the entry. Confirm it was added, then **resume the original task** —
+pitfall capture must not derail the user's workflow.
 
 ## Important Notes
 
@@ -160,3 +170,6 @@ not derail the user's workflow.
 - **Always include the project tag** `[project_id]` at the start of the body.
 - **Append-only.** Never rewrite historical entries; add a "Correction to ..."
   follow-up instead, preserving the audit trail of evolving understanding.
+- **Pitfalls record on confirmation, not on submit.** They are the one project
+  memory that doesn't wait for `/submit`'s approval gate — so a known gotcha is
+  available the moment it's understood.

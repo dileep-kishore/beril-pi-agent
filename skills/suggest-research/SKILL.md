@@ -129,8 +129,16 @@ When the recommendation extends an existing project or proposed idea rather than
 
 ## After the Recommendation
 
-If the user wants to act on the chosen idea, hand off to the relevant Pi command/tool rather than editing files yourself:
+Once the top candidate is presented, ask whether the user wants to register and start it:
 
-- To advance the idea's standing in the research lifecycle, use **`lifecycle_transition`** (e.g., exploration → proposed).
+> "Would you like me to register this idea and start it as a new project?"
+
+If yes, hand off to the relevant Pi command/tool rather than editing files yourself:
+
+- To scaffold and begin the new project from the confirmed idea (title, research question, hypotheses, approach, and BERDL data sources from the recommendation), run **`/berdl-start`** — pass the idea as starting context so the new project picks up the ideation already done here.
+- To advance the idea's standing in the research lifecycle, use **`lifecycle_transition`** (e.g., exploration → proposed → active).
 - To pull the synthesized recommendation into a working project write-up, run **`/synthesize <project>`**.
-- Project registration, notebook scaffolding, and state/UI are owned by Pi extensions — delegate to them; do not write registry or backlog files directly.
+
+When the recommendation extends or builds on an existing project or proposed idea (rather than opening a new direction), state that lineage in the handoff context — never silently overwrite or restate prior work as new.
+
+Project registration, the idea backlog, notebook scaffolding, and all state/UI are owned by Pi extensions — delegate to them; do not write registry or backlog files directly. If the user declines, leave everything unmodified.

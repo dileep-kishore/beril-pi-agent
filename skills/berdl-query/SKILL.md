@@ -1,6 +1,6 @@
 ---
 name: berdl-query
-description: Use when writing or interpreting SQL against BERDL lakehouse databases (ke_pangenome, msd_biochemistry, fitnessbrowser, kbase_genomes) — for species/gene/genome/AMR/annotation lookups, cross-database joins (EC/KEGG/COG bridges), metabolic reconstruction, or fitness analysis. Provides query-construction safety rules, partition-filter and result-size rubrics, ID formats (genome_id, gtdb_species_clade_id, gene_cluster_id, ModelSEED), cross-database linking recipes, and critical pitfalls (NULL/`-` annotation handling, string-typed numeric CAST, JOIN-key gotchas). Execution is handled by the berdl_query, berdl_discover, and berdl_export tools and the /berdl-connect and /berdl-status commands — this skill supplies the scientific judgment, not the plumbing.
+description: Use when writing or interpreting SQL against BERDL lakehouse databases (ke_pangenome, msd_biochemistry, fitnessbrowser, kbase_genomes) — for species/gene/genome/AMR/annotation lookups, cross-database joins (EC/KEGG/COG bridges), metabolic reconstruction, or fitness analysis. Provides query-construction safety rules, partition-filter and result-size rubrics, ID formats (genome_id, gtdb_species_clade_id, gene_cluster_id, ModelSEED), cross-database linking recipes, error-interpretation, and critical pitfalls (NULL/`-` annotation handling, string-typed numeric CAST, JOIN-key gotchas). Execution is handled by the berdl_query, berdl_discover, and berdl_export tools and the /berdl-connect and /berdl-status commands — this skill supplies the scientific judgment, not the plumbing.
 ---
 
 # BERDL Query Skill
@@ -12,17 +12,28 @@ this skill is about *what* to query and *how to read the answer*, not *how to co
 ## Execution model (delegate the doing)
 
 - **Connectivity / readiness**: assume `berdl_env_check` (or `/berdl-connect`,
-  `/berdl-status`) has confirmed access. Do not reason about proxies, tunnels, or sessions.
+  `/berdl-status`) has confirmed access. Do not reason about proxies, tunnels, or
+  JupyterHub sessions — if a query fails on connectivity, point the user at `/berdl-connect`.
 - **Discovery**: use **`berdl_discover`** for access-aware listing of databases, tables,
-  and schemas. Never use raw `SHOW DATABASES` / `SHOW TABLES` — they bypass access filtering.
-  Verify a database is accessible to you *before* adapting any example below.
-- **Bounded reads**: use **`berdl_query`** for a bounded SELECT (returns at most 100 rows).
-  Always pass an explicit `LIMIT` and prefer `ORDER BY` for deterministic results.
+  and schemas. Never use raw `SHOW DATABASES` / `SHOW TABLES` — they bypass access
+  filtering. The accessible set depends on the authenticated user, so **verify a database
+  is accessible to you *before* adapting any example below**; do not assume from prose.
+  For column-level detail (partition flags, data types, descriptions) and table-level
+  `COMMENT`/`TBLPROPERTIES`, `berdl_discover` is the access-aware path; if you need a raw
+  schema dump in a one-off read, `DESCRIBE EXTENDED <db>.<table>` works but is not
+  access-filtered.
+- **Bounded reads**: use **`berdl_query`** for a read-only SELECT. It returns the first
+  `limit` rows (default 100); raise `limit` for more, or pass `limit: -1` to disable the
+  cap (only after you've bounded the result in SQL). Always pass an explicit `LIMIT` in the
+  SQL too and prefer `ORDER BY` for deterministic results — the tool cap and the SQL `LIMIT`
+  are independent guards.
 - **Large outputs**: use **`berdl_export`** (DESTRUCTIVE, gated) to write large result sets
   to object storage instead of returning them inline.
 - **Access denied** (`403`, `Token denied`, `AccessControlException`, S3 denial): the user
   lacks permission for that tenant's data. Do **not** surface raw error text. Say:
   *"You don't have access to `<database>.<table>`. To request access, use the BERDL Tenant Browser."*
+  This is normal when exploring databases outside your tenant membership — treat it as a
+  permissions prompt, not a system failure.
 
 ## Mandatory validation checklist
 
@@ -51,7 +62,7 @@ Verify ALL before constructing a query:
 
 Estimate size BEFORE querying. If uncertain, run a bounded `SELECT COUNT(*)` or a filtered
 preview first. Aggregate (`GROUP BY`, `COUNT`, `AVG`, `SUM`, `PERCENTILE_APPROX`) in SQL —
-never pull raw rows to aggregate locally.
+never pull raw rows to aggregate locally. Only return small, aggregated results inline.
 
 ## Query patterns
 
@@ -84,6 +95,7 @@ ORDER BY gc.is_core DESC, ann.COG_category
 An unfiltered join on a huge table is a full table scan.
 
 **Aggregation before transfer** — `GROUP BY` + `COUNT` in SQL; transfer only the summary.
+For distributions, use `PERCENTILE_APPROX(col, 0.5)` in SQL rather than pulling raw rows.
 
 **Safe numeric comparison (string-typed columns)** — fitnessbrowser stores all columns as
 strings, so `CAST` before comparing or ordering; `orgId` is case-sensitive:
@@ -116,19 +128,29 @@ ID pattern, or external mapping). Always validate that matched records make biol
 - **EC numbers are the best bridge** (pangenome ↔ biochemistry). Match annotation `EC` to
   ModelSEED `reaction.abbreviation` with `LIKE` (EC is embedded in strings like `2.7.1.150-RXN.c`).
   Some clusters carry comma-separated multi-EC — split before matching. Filter `deltag` outliers
-  (`deltag > -10000000`). Get stoichiometry via `reaction → reagent → molecule`.
+  (`deltag > -10000000`). Get stoichiometry via `reaction → reagent → molecule`:
+  ```sql
+  SELECT r.id, r.name, r.deltag, m.name AS compound, m.formula, rg.stoichiometry,
+    CASE WHEN rg.stoichiometry < 0 THEN 'reactant' ELSE 'product' END AS role
+  FROM kbase.msd_biochemistry.reaction r
+  JOIN kbase.msd_biochemistry.reagent rg ON r.id = rg.reaction_id
+  JOIN kbase.msd_biochemistry.molecule m ON rg.molecule_id = m.id
+  WHERE r.abbreviation LIKE '%{ec_number}%'
+  ORDER BY r.id, rg.stoichiometry
+  ```
 - **KEGG/BiGG IDs require external mapping** — KEGG `R00001` does NOT equal ModelSEED
   `seed.reaction:rxn00001`; that mapping isn't in BERDL. Prefer the EC bridge.
 - **Pangenome ↔ fitnessbrowser** — no ID mapping; fitnessbrowser covers 48 organisms (limited
   overlap). Link by gene name or functional annotation (COG/KEGG), not by ID; always CAST.
+  Resolve the organism first (`SELECT DISTINCT orgId, organism FROM …organism WHERE organism LIKE …`).
 - **Pangenome ↔ kbase_genomes** — genomes uses CDM UUID primary keys; map external IDs via the
   `name` table. Junction tables are very large — never query unfiltered.
 - **Cross-species comparison** — gene cluster IDs are species-specific and cannot be matched
   across species; compare via functional annotation (COG, KEGG, EC) instead.
-- **NCBI Entrez enrichment** (when available): organism name → NCBI taxonomy → GTDB species via
-  name match; gene name → EC/COG/KEGG → which species carry it as core vs accessory; protein/
-  assembly accession → `genome.genome_id`; PubMed findings → validate against BERDL at scale.
-  Use `lit_search` / `lit_fetch` for the literature side.
+- **NCBI Entrez / literature enrichment** (when available): organism name → NCBI taxonomy → GTDB
+  species via name match; gene name → EC/COG/KEGG → which species carry it as core vs accessory;
+  protein/assembly accession → `genome.genome_id`; PubMed findings → validate against BERDL at
+  scale. Use `lit_search` / `lit_fetch` for the literature side.
 
 ## Common ID formats
 
@@ -140,6 +162,18 @@ ID pattern, or external mapping). Always validate that matched records make biol
 | ModelSEED reaction | `seed.reaction:rxnNNNNN` | `seed.reaction:rxn00001` |
 | ModelSEED compound | `seed.compound:cpdNNNNN` | `seed.compound:cpd00001` |
 | Fitness `orgId` | case-sensitive string | `Keio` |
+
+## Interpreting query failures
+
+Distinguish a *permissions* signal from a *transient* one before retrying or surfacing anything:
+
+| Symptom | Meaning | What to do |
+|---|---|---|
+| `403` / `Token denied` / `AccessControlException` / S3 denial | No access to that tenant's data | Plain-language message + Tenant Browser (see Execution model); never retry, never show raw text. |
+| Gateway/origin timeout (504/524) | Query too heavy | Add filters, aggregate in SQL, or shrink the scope; then retry. |
+| "cannot schedule new futures" (503) | Spark executor restarting | Wait ~30s and retry once. |
+| Empty result where rows expected | Silent failure or wrong table/column | Re-check the table exists via `berdl_discover` and verify column names/spelling. |
+| Connectivity / auth-expired errors | Session or proxy not ready | Point the user at `/berdl-connect` (or `/berdl-status`); do not reason about plumbing here. |
 
 ## Critical pitfalls
 
@@ -155,3 +189,6 @@ ID pattern, or external mapping). Always validate that matched records make biol
 7. **Case-sensitive `orgId`** in fitnessbrowser — use exact case.
 8. **Assuming coverage** — embeddings, environment metadata, and coordinates are sparse; check
    coverage before designing an analysis around them.
+
+When a query surprises you (retry cycles, unexpected NULLs, schema mismatches, performance
+cliffs), capture the lesson via the `pitfall-capture` skill so the next run benefits.

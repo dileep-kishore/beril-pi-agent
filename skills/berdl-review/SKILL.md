@@ -5,14 +5,14 @@ description: Use when reviewing a BERDL analysis project or research plan and yo
 
 # BERDL Review
 
-Independent, constructive assessment of a BERDL (BER Data Lakehouse) analysis project or research plan. The reviewer is a *separate* opinion from the author: surface strengths and concrete weaknesses, reference exact files/cells/queries, and never fabricate issues — only report what is verifiable from the files and live discovery.
+Independent, constructive assessment of a BERDL (BER Data Lakehouse) analysis project or research plan. The reviewer is a *separate* opinion from the author: surface strengths and concrete weaknesses, reference exact files/cells/queries, and never fabricate issues — only report what is verifiable from the files and live discovery. An AI-generated review is input to the author's judgment, not a definitive verdict.
 
-Execution is handled by the `/berdl-review <project>` command (it numbers the output file, embeds the report-hash footer, runs the TOCTOU/hash checks, and advances lifecycle status). This skill is the *judgment*: what a good review looks like and how to act on it.
+Execution is handled by the `/berdl-review <project> [--plan] [--model <id>]` command. It runs an isolated, read-only review subagent (Opus 4.8 by default, overridable with `--model`), then numbers the output file, embeds the report-hash footer, runs the TOCTOU/hash checks, and advances lifecycle status. This skill is the *judgment*: what a good review looks like, the rubrics, and how to act on the result.
 
 ## When to use which review type
 
-- **Project review** (default): a `REPORT.md` exists. Valid only once the project has reached `analysis`, `reviewed`, or `complete` — earlier states (`exploration`, `proposed`, `active`) have nothing to review yet; run `/synthesize <project>` first.
-- **Plan review**: evaluates a `RESEARCH_PLAN.md` *before* analysis begins. Independent of the lifecycle — it touches no status.
+- **Project review** (default): a `REPORT.md` exists. Valid only once the project has reached `analysis`, `reviewed`, or `complete` — earlier states (`exploration`, `proposed`, `active`) have nothing to review yet; run `/synthesize <project>` first. A run from `analysis` advances the project to `reviewed`; re-running on an already `reviewed`/`complete` project just adds another opinion file without a status change.
+- **Plan review** (`--plan`): evaluates a `RESEARCH_PLAN.md` *before* analysis begins. Independent of the lifecycle — it touches no status, and writes `PLAN_REVIEW_N.md` instead of `REVIEW_N.md`.
 
 ## What to read before reviewing
 
@@ -48,18 +48,19 @@ A pre-analysis review catches feasibility issues and wasted effort before notebo
 
 ## Reading a review and guiding fixes
 
-After `/berdl-review` produces the review, summarize for the user: overall assessment, count of suggestions by priority (critical / important / nice-to-have), and the key issues.
+After `/berdl-review` produces the review, summarize for the user: overall assessment (from the Summary section), count of suggestions by priority (critical / important / nice-to-have), and the key issues to address.
 
 - **No critical or important issues** → the project looks ready for `/submit <project>`. The latest review (by numeric order) becomes the canonical record; the user's explicit approval and lakehouse upload turn it into the formal submission.
-- **Critical or important issues** → list them, offer to help fix. If fixes touch `REPORT.md`, re-run `/synthesize <project>` first (which demotes to `analysis`), then run `/berdl-review` again to produce a current review. Existing reviews go stale once the report changes.
+- **Critical or important issues** → list them, offer to help fix. If fixes touch `REPORT.md`, re-run `/synthesize <project>` first (which demotes to `analysis`), then run `/berdl-review` again to produce a current review. Existing reviews go stale once the report changes (their `report_hash` footer no longer matches).
 
 ## Hash / report-mismatch meaning
 
-Each project review records the SHA-256 of `REPORT.md` at review time (a `report_hash` footer). This lets a later step confirm a review still covers the *current* report. Use `notebook_hash` to check whether a notebook/report has changed since it was reviewed or approved.
+Each project review records the SHA-256 of `REPORT.md` at review time as a `<!-- report_hash: sha256:<hex> -->` footer (the final non-empty line of the file). This lets a later step confirm a review still covers the *current* report. Use `notebook_hash <project>` to recompute the project's reproducibility hashes and check whether notebooks/report have changed since they were reviewed or approved.
 
-A mismatch means **the report changed after it was reviewed/approved** — the review is stale and no longer describes what's on disk. For an already-`complete` project, this is the signal that producing a fresh review would leave the project in a confusing state (`complete`, but with a review for an unapproved report); the safe path is to demote to `analysis` (archiving the prior approval) before reviewing again. `/berdl-review` performs this check and prompts; `lifecycle_transition` handles the demote. Interpret a mismatch as "let the report stabilize, then re-review" — never as a reason to hand-edit the review file or its footer.
+A mismatch means **the report changed after it was reviewed/approved** — the review is stale and no longer describes what's on disk. For an already-`complete` project, this is the signal that producing a fresh review would leave the project in a confusing state (`complete`, but with a review for an unapproved report); the safe path is to demote to `analysis` (archiving the prior approval) before reviewing again. The `/berdl-review` command performs this hash check and prompts; `lifecycle_transition` handles the demote. Interpret a mismatch as "let the report stabilize, then re-review" — never as a reason to hand-edit the review file or its footer. The command also runs a TOCTOU re-check: if `REPORT.md` changes *during* the review, the output is discarded and you should re-run once the report is stable.
 
 ## Notes
 
-- Reviews are numbered (`REVIEW_1`, `REVIEW_2`, …) and preserved as a history; the latest by number is canonical. Plan reviews are separate working documents and never affect the lifecycle.
+- Reviews are numbered (`REVIEW_1`, `REVIEW_2`, …) and **preserved** as a history across `/submit` runs; the latest by number is canonical. Plan reviews (`PLAN_REVIEW_1`, …) are separate working documents and never affect the lifecycle.
+- The report-hash footer must stay the single final non-empty line in the canonical form `<!-- report_hash: sha256:[0-9a-f]{64} -->` (exactly one occurrence). The command writes it automatically — don't add, edit, or duplicate it by hand, or `/submit` will reject the file.
 - The reviewer is advisory: an AI-generated review is input to the author's judgment, not a definitive verdict.
