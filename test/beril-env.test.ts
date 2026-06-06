@@ -35,17 +35,25 @@ function harness(execResult: any = READY) {
 
 function uiCtx(hasUI: boolean) {
   const set: Array<[string, string | undefined]> = [];
+  const widgets: Array<[string, string[] | undefined]> = [];
   const notes: string[] = [];
   const ctx: any = {
     hasUI,
     mode: hasUI ? "tui" : "json",
     ui: {
       setStatus: (k: string, v?: string) => set.push([k, v]),
+      setWidget: (k: string, v?: string[]) => widgets.push([k, v]),
       notify: (m: string) => notes.push(m),
-      theme: { fg: (_c: string, s: string) => s },
+      theme: { fg: (_c: string, s: string) => s, bold: (s: string) => s },
     },
   };
-  return { ctx, set, notes };
+  return { ctx, set, widgets, notes };
+}
+
+/** The lines most recently pushed to the workflow widget, joined for matching. */
+function lastWidget(widgets: Array<[string, string[] | undefined]>): string {
+  const entry = [...widgets].reverse().find(([k]) => k === "beril-workflow");
+  return (entry?.[1] ?? []).join("\n");
 }
 
 test("registers env tool + connect/status commands + session hooks", () => {
@@ -56,20 +64,29 @@ test("registers env tool + connect/status commands + session hooks", () => {
   assert.ok(h.handlers.session_start && h.handlers.session_shutdown, "session hooks");
 });
 
-test("session_start sets a connection status widget when hasUI", async () => {
+test("session_start sets the connection footer and the workflow widget when hasUI", async () => {
   const h = harness();
   berilEnv(h.pi);
-  const { ctx, set } = uiCtx(true);
+  const { ctx, set, widgets } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
-  assert.ok(set.find(([k]) => k === "beril-connection"));
+  assert.ok(
+    set.find(([k]) => k === "beril-connection"),
+    "connection footer set",
+  );
+  assert.ok(
+    widgets.find(([k]) => k === "beril-workflow"),
+    "workflow widget set",
+  );
+  assert.match(lastWidget(widgets), /BERDL off-cluster ✓ ready/);
 });
 
 test("session_start is a no-op without UI", async () => {
   const h = harness();
   berilEnv(h.pi);
-  const { ctx, set } = uiCtx(false);
+  const { ctx, set, widgets } = uiCtx(false);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   assert.equal(set.length, 0);
+  assert.equal(widgets.length, 0);
 });
 
 test("berdl_env_check tool returns readiness in details", async () => {
@@ -81,52 +98,48 @@ test("berdl_env_check tool returns readiness in details", async () => {
   assert.match(res.content[0].text, /ready/);
 });
 
-test("session_shutdown clears the status widget", async () => {
+test("session_shutdown clears the connection footer and the widget", async () => {
   const h = harness();
   berilEnv(h.pi);
-  const { ctx, set } = uiCtx(true);
+  const { ctx, set, widgets } = uiCtx(true);
   h.handlers.session_shutdown({ type: "session_shutdown", reason: "quit" }, ctx);
   assert.deepEqual(
     set.find(([k]) => k === "beril-connection"),
     ["beril-connection", undefined],
   );
+  assert.deepEqual(
+    widgets.find(([k]) => k === "beril-workflow"),
+    ["beril-workflow", undefined],
+  );
 });
 
-test("beril:lifecycle event sets the lifecycle footer key under hasUI", async () => {
+test("beril:lifecycle event updates the workflow HUD with the current step + next action", async () => {
   const h = harness();
   berilEnv(h.pi);
-  const { ctx, set } = uiCtx(true);
+  const { ctx, widgets } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   h.events.emit("beril:lifecycle", { project: "demo", state: "analysis" });
-  const entry = set.find(([k]) => k === "beril-3-lifecycle");
-  assert.ok(entry, "set beril-3-lifecycle");
-  assert.match(String(entry?.[1]), /analysis/);
-  // The research-step breadcrumb segment renders alongside, marking the current step.
-  const step = set.find(([k]) => k === "beril-4-step");
-  assert.ok(step, "set beril-4-step");
-  assert.match(String(step?.[1]), /▸review/);
+  const hud = lastWidget(widgets);
+  assert.match(hud, /▣ demo/, "shows the active project");
+  // analysis points the scientist at the review step, with a 'Next' hint.
+  assert.match(hud, /▸ review/, "marks the current step");
+  assert.match(hud, /Next:.*review the report/, "shows the next action");
 });
 
 test("beril:lifecycle event is a no-op without UI", async () => {
   const h = harness();
   berilEnv(h.pi);
-  const { ctx, set } = uiCtx(false);
+  const { ctx, widgets } = uiCtx(false);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   h.events.emit("beril:lifecycle", { project: "demo", state: "analysis" });
-  assert.equal(
-    set.find(([k]) => k === "beril-3-lifecycle"),
-    undefined,
-    "no lifecycle status when headless",
-  );
+  assert.equal(widgets.length, 0, "no widget when headless");
 });
 
-test("beril:submitted event sets a distinct footer indicator under hasUI", async () => {
+test("beril:submitted event marks the arc submitted in the HUD", async () => {
   const h = harness();
   berilEnv(h.pi);
-  const { ctx, set } = uiCtx(true);
+  const { ctx, widgets } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   h.events.emit("beril:submitted", { project: "demo" });
-  const entry = set.find(([k]) => k === "beril-3-lifecycle");
-  assert.ok(entry, "set beril-3-lifecycle for submitted");
-  assert.match(String(entry?.[1]), /submit/i);
+  assert.match(lastWidget(widgets), /submitted/i);
 });
