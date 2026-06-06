@@ -129,8 +129,8 @@ export default function berilAnalysis(pi: ExtensionAPI) {
         `Follow the analysis-notebooks skill to run the analysis for project "${project}". ` +
           `Use notebook_scaffold to create the numbered notebooks from RESEARCH_PLAN.md (if not already present), ` +
           `then move "${project}" to "active" with lifecycle_transition. Execute them with notebook_run. ` +
-          `After the FIRST notebook's results are in, pause: show the scientist the first result or figure and ask whether ` +
-          `it looks right before continuing the rest. When all notebooks are executed with saved outputs, run /synthesize.`,
+          `After the FIRST notebook's results are in, pause: show the scientist the first result or figure and use request_checkpoint ` +
+          `to ask whether it looks right before continuing the rest. When all notebooks are executed with saved outputs, run /synthesize.`,
       );
     },
   });
