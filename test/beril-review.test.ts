@@ -98,6 +98,31 @@ test("project review writes REVIEW_1.md with a single footer and marks reviewed"
   }
 });
 
+test("re-reviewing an already-reviewed project writes a review without an illegal transition", async () => {
+  const { root, dir } = await makeProject("demo", { "REPORT.md": "report body\n" });
+  try {
+    const calls: string[][] = [];
+    const { commands } = harness(async (_c, args) => {
+      calls.push(args);
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      // `lifecycle set reviewed` from `reviewed` is illegal (exit 2) — fail loudly if attempted.
+      return { stdout: "", stderr: "illegal transition", code: 2, killed: false };
+    });
+    const { fn } = fakeSubagent("---\nreviewer: x\n---\n\n# Re-review\nstill good\n");
+    const { ctx, notes } = cmdCtx(root, fn);
+    await commands["berdl-review"].handler("demo", ctx);
+
+    const review = await readFile(join(dir, "REVIEW_1.md"), "utf8");
+    assert.match(review, /Re-review/);
+    assert.ok(!calls.find((a) => a[0] === "lifecycle" && a[1] === "set"), "no set reviewed from reviewed");
+    assert.match(notes.join(" "), /Review written/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("plan review writes PLAN_REVIEW_1.md with NO footer and NO lifecycle call", async () => {
   const { root, dir } = await makeProject("demo", { "RESEARCH_PLAN.md": "plan body\n" });
   try {

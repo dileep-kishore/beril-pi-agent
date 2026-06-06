@@ -64,18 +64,23 @@ export default function berilReview(pi: ExtensionAPI) {
 
       const reportPath = join(projectDir, "REPORT.md");
       let reportHashPre: string | undefined;
+      let advanceToReviewed = false;
       if (!plan) {
         if (!existsSync(reportPath)) {
           if (ctx.hasUI) ctx.ui.notify(`REPORT.md not found — run /synthesize first for "${project}".`, "error");
           return;
         }
         const proj = await berilExec<{ status?: string }>(pi, ["lifecycle", "status", project]);
-        if (!REVIEWABLE_STATES.has(proj.status ?? "")) {
+        const status = proj.status ?? "";
+        if (!REVIEWABLE_STATES.has(status)) {
           if (ctx.hasUI) {
-            ctx.ui.notify(`Project "${project}" is "${proj.status}" — run /synthesize first.`, "error");
+            ctx.ui.notify(`Project "${project}" is "${status}" — run /synthesize first.`, "error");
           }
           return;
         }
+        // `set reviewed` is only legal from `analysis`; re-reviewing an already
+        // reviewed/complete project just adds a new REVIEW_N.md without a transition.
+        advanceToReviewed = status === "analysis";
         reportHashPre = sha256File(reportPath);
       }
 
@@ -104,13 +109,14 @@ export default function berilReview(pi: ExtensionAPI) {
       const body = plan ? text : appendReportHashFooter(text, reportHashPre as string);
       await writeFile(path, body, "utf8");
 
-      if (!plan) {
+      if (advanceToReviewed) {
         const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
         pi.events.emit("beril:lifecycle", { project, state: result.status });
       }
 
       if (ctx.hasUI) {
-        ctx.ui.notify(`Review written: ${path}${plan ? "" : "; project marked reviewed."}`, "info");
+        const suffix = advanceToReviewed ? "; project marked reviewed." : "";
+        ctx.ui.notify(`Review written: ${path}${suffix}`, "info");
       }
       pi.sendUserMessage(
         `An independent ${plan ? "plan " : ""}review of "${project}" is at ${path}. Follow the berdl-review skill to read it and guide any fixes.`,
