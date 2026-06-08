@@ -70,6 +70,7 @@ them.
 - [Pi](https://pi.dev) `@earendil-works/pi-coding-agent` (verified against **0.78.1**).
 - Python ≥ 3.11 and [`uv`](https://docs.astral.sh/uv/) (the bundled `beril` CLI ships in this repo).
 - A KBase account + `KBASE_AUTH_TOKEN` (from <https://narrative.kbase.us/#auth2/account>) in a `.env` at the repo root.
+- Optional: `NCBI_API_KEY` (and `NCBI_EMAIL`) in `.env` to lift the PubMed rate limit from ~3 to ~10 req/s — useful when the co-scientist fans out many `lit_search` calls. Get a key at <https://www.ncbi.nlm.nih.gov/account/settings/>.
 
 ## Install
 
