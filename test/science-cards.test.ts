@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { discoverCard, envCard, formatLitMarkdown, kvLines, peekMarkdown, queryCard } from "../lib/ui/science-cards.ts";
+import {
+  discoverCard,
+  envCard,
+  errorCard,
+  formatLitMarkdown,
+  kvLines,
+  peekMarkdown,
+  queryCard,
+  toolErrorText,
+} from "../lib/ui/science-cards.ts";
 
 // Pass-through theme so rendered widths are easy to assert (no ANSI inflation).
 // `getColorMode` is required by the per-domain `palette.ts` styler.
@@ -90,6 +99,26 @@ test("envCard surfaces readiness, checks, and next steps", () => {
   assert.ok(text.includes("not ready"), "status");
   assert.ok(text.includes("token") && text.includes("tunnels"), "per-check lines");
   assert.ok(text.includes("open the SSH tunnels"), "next steps when not ready");
+});
+
+test("toolErrorText joins text content parts and ignores non-text/empty", () => {
+  assert.equal(toolErrorText({ content: [{ type: "text", text: "boom" }] }), "boom");
+  assert.equal(toolErrorText({ content: [{ type: "image" }, { type: "text", text: "x" }] }), "x");
+  assert.equal(toolErrorText({}), "");
+});
+
+test("errorCard frames the real error message (width-exact), not a success card", () => {
+  const card = errorCard(theme, "NCBI request failed: 429 Too Many Requests");
+  const lines = card.render(60);
+  for (const line of lines) assert.equal(visibleWidth(line), 60);
+  const text = lines.join("\n");
+  assert.ok(text.includes("Error"), "titled Error");
+  assert.ok(text.includes("429"), "carries the real message, not 'undefined'");
+});
+
+test("errorCard degrades to a generic message when the error text is empty", () => {
+  const text = errorCard(theme, "").render(60).join("\n");
+  assert.ok(text.includes("failed"), "shows a fallback rather than a blank card");
 });
 
 test("kvLines renders labeled scalar fields and skips nested objects", () => {

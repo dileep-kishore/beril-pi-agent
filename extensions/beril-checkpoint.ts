@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { DEFAULT_CHECKPOINT_OPTIONS, checkpointCard } from "../lib/ui/checkpoint.ts";
-import { callLine } from "../lib/ui/science-cards.ts";
+import { callLine, errorCard, toolErrorText } from "../lib/ui/science-cards.ts";
 
 /**
  * The science-checkpoint tool. Approval in this workbench is reserved for two
@@ -46,7 +46,8 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `checkpoint · ${args.title}`);
     },
-    renderResult(result, _opts, theme) {
+    renderResult(result, _opts, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       return checkpointCard(theme, result.details as { title: string; summary?: string; choice: string });
     },
   });

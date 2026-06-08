@@ -6,10 +6,12 @@ import { requireReady } from "../lib/readiness.ts";
 import {
   callLine,
   destructiveResultCard,
+  errorCard,
   hashCard,
   kvLines,
   lifecycleCard,
   partialLine,
+  toolErrorText,
   userCard,
 } from "../lib/ui/science-cards.ts";
 
@@ -64,7 +66,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `hash · ${args.project}`);
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Hashing notebooks…");
       return hashCard(theme, result.details as Record<string, string>);
     },
@@ -90,6 +93,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
       return callLine(theme, `lifecycle · ${args.project} → ${args.state}`);
     },
     renderResult(res, { isPartial }, theme, ctx) {
+      if (ctx?.isError) return errorCard(theme, toolErrorText(res));
       if (isPartial) return partialLine(theme, "Updating lifecycle…");
       const d = res.details as { status: string };
       return lifecycleCard(theme, ctx.args.project, d.status);
@@ -119,7 +123,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
     renderCall(_args, theme) {
       return callLine(theme, "researcher identity");
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Reading identity…");
       return userCard(
         theme,
@@ -152,6 +157,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
       return callLine(theme, `submit → lakehouse · ${args.project} (irreversible)`);
     },
     renderResult(result, { isPartial }, theme, ctx) {
+      if (ctx?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Uploading to lakehouse…");
       const manifest = result.details as Record<string, unknown>;
       return destructiveResultCard(theme, `Submitted ${ctx.args.project}`, kvLines(theme, manifest));

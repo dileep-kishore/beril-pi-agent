@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { markdownCard } from "../lib/ui/card.ts";
-import { callLine, partialLine } from "../lib/ui/science-cards.ts";
+import { callLine, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
 
 /**
  * Research-plan generation: the bridge from data exploration to analysis.
@@ -37,7 +37,8 @@ export default function berilPlan(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `research plan · ${args.project}`);
     },
-    renderResult(result, { expanded, isPartial }, theme) {
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Reading plan…");
       const d = result.details as { project: string; markdown: string };
       return markdownCard(theme, {

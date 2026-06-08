@@ -11,10 +11,12 @@ import {
   callLine,
   destructiveResultCard,
   discoverCard,
+  errorCard,
   kvLines,
   partialLine,
   peekCard,
   queryCard,
+  toolErrorText,
 } from "../lib/ui/science-cards.ts";
 
 const EXPORT_FORMATS = ["parquet", "delta", "json", "csv"] as const;
@@ -53,7 +55,8 @@ export default function berilData(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `query · ${sqlPreview(args.query)} (limit ${args.limit ?? 100})`);
     },
-    renderResult(result, { expanded, isPartial }, theme) {
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Querying…");
       return queryCard(theme, result.details as QueryView, expanded);
     },
@@ -86,7 +89,8 @@ export default function berilData(pi: ExtensionAPI) {
         args.database ? `discover · tables in ${args.database}` : "discover · accessible collections",
       );
     },
-    renderResult(result, { expanded, isPartial }, theme) {
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Discovering collections…");
       return discoverCard(theme, result.details as DiscoverSnapshot, expanded);
     },
@@ -124,7 +128,8 @@ export default function berilData(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `peek · ${args.table.trim()}`);
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Previewing table…");
       const d = result.details as {
         table: string;
@@ -172,7 +177,8 @@ export default function berilData(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `export → ${args.path} (${args.mode ?? "overwrite"}, destructive)`);
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Exporting…");
       const manifest = result.details as Record<string, unknown>;
       return destructiveResultCard(theme, "Export complete", kvLines(theme, manifest));

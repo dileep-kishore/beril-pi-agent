@@ -5,7 +5,7 @@ import type { AssistantMessage, Context, Model, ProviderStreamOptions } from "@e
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type LitRecord, fetchArticle, searchPubmed } from "../lib/lit.ts";
-import { articleCard, callLine, litCard, partialLine } from "../lib/ui/science-cards.ts";
+import { articleCard, callLine, errorCard, litCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
 
 /** Default model for query expansion when the session has none selected. */
 const DEFAULT_EXPANSION_MODEL = "claude-sonnet-4-5";
@@ -115,7 +115,8 @@ export default function berilLiterature(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `lit search · ${args.query}`);
     },
-    renderResult(result, { expanded, isPartial }, theme) {
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Searching the literature…");
       const { records } = result.details as { records: LitRecord[] };
       return litCard(theme, records, expanded);
@@ -136,7 +137,8 @@ export default function berilLiterature(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `lit fetch · PMID ${args.pmid}`);
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Fetching article…");
       return articleCard(theme, result.details as LitRecord);
     },

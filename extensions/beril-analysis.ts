@@ -5,10 +5,12 @@ import {
   type NotebookInfo,
   type NotebookRun,
   callLine,
+  errorCard,
   notebookListCard,
   notebookRunCard,
   partialLine,
   scaffoldCard,
+  toolErrorText,
 } from "../lib/ui/science-cards.ts";
 
 // Notebook execution can run for many minutes (Spark queries, large scans), so
@@ -44,7 +46,8 @@ export default function berilAnalysis(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `notebook scaffold · ${args.project}`);
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Scaffolding notebooks…");
       return scaffoldCard(theme, result.details as { created: string[]; skipped: string[] });
     },
@@ -70,7 +73,8 @@ export default function berilAnalysis(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `notebook list · ${args.project}`);
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Listing notebooks…");
       return notebookListCard(theme, (result.details as { notebooks: NotebookInfo[] }).notebooks);
     },
@@ -111,7 +115,8 @@ export default function berilAnalysis(pi: ExtensionAPI) {
     renderCall(args, theme) {
       return callLine(theme, `notebook run · ${args.project}${args.notebook ? ` · ${args.notebook}` : ""}`);
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Executing notebooks…");
       return notebookRunCard(theme, result.details as { executed: NotebookRun[]; ok: boolean });
     },

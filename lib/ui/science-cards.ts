@@ -1,7 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, Text } from "@earendil-works/pi-tui";
 import type { LitRecord } from "../lit.ts";
-import { linesCard, markdownCard } from "./card.ts";
+import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
 import { GLYPH } from "./glyphs.ts";
 import { hyperlink } from "./links.ts";
@@ -29,6 +29,34 @@ export function callLine(theme: Theme, summary: string): Component {
 /** A transient one-liner while a tool is still streaming. */
 export function partialLine(theme: Theme, message: string): Component {
   return new Text(theme.fg("warning", message), 0, 0);
+}
+
+/** A tool result's text content joined into one string — the message to surface on failure. */
+export function toolErrorText(result: { content?: { type: string; text?: string }[] }): string {
+  return (result.content ?? [])
+    .filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
+    .map((c) => c.text)
+    .join("\n")
+    .trim();
+}
+
+/**
+ * A failed tool → a red-framed card surfacing the actual error message.
+ *
+ * On error, pi replaces the tool's `details` with `{}` and puts the message in
+ * `content` (and sets `context.isError`). Every science-card `renderResult` must
+ * branch on that and call this — otherwise it frames the success card against the
+ * empty `{}` and shows "undefined / (schema unavailable)" instead of the error.
+ * The message is shown verbatim (width-aware wrapped, no markdown) so SQL,
+ * identifiers, and stderr aren't mangled.
+ */
+export function errorCard(theme: Theme, message: string): Component {
+  return textCard(theme, {
+    title: `${GLYPH.bad} Error`,
+    accentStyle: domainStyle(theme, "error"),
+    text: message.trim() || "The tool failed without a message.",
+    maxBodyLines: 16,
+  });
 }
 
 /** Labeled `key  value` lines for a flat manifest — replaces raw JSON in result cards. */
@@ -74,13 +102,19 @@ export function peekCard(
   });
 }
 
-/** Discover snapshot → a structured tenant/database/table list (never raw JSON). */
+/**
+ * Discover snapshot → a structured tenant/database/table list (never raw JSON).
+ *
+ * Discovery is the one artifact a scientist explicitly asks to *see*, so the
+ * collapsed cap is generous (a full 7-tenant inventory fits) rather than the
+ * 16-line cap that hid most collections behind "… N more line(s)".
+ */
 export function discoverCard(theme: Theme, snapshot: DiscoverSnapshot, expanded: boolean): Component {
   return linesCard(theme, {
     title: discoverTitle(snapshot),
     accentStyle: domainStyle(theme, "data"),
     lines: discoverLines(theme, snapshot),
-    maxBodyLines: expanded ? 200 : 16,
+    maxBodyLines: expanded ? 400 : 60,
   });
 }
 

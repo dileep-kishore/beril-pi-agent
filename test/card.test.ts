@@ -43,6 +43,10 @@ test("maxBodyLines collapses overflow into a muted footer", () => {
     lines.some((l) => /more line\(s\)/.test(l)),
     "shows a more-lines footer",
   );
+  assert.ok(
+    lines.some((l) => /Ctrl\+O/.test(l)),
+    "the footer tells the user how to expand",
+  );
 });
 
 test("a very long title is truncated but the border stays width-exact", () => {

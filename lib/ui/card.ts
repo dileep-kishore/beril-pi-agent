@@ -1,5 +1,5 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import { type Component, Markdown, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, Markdown, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { markdownTheme } from "./markdown-theme.ts";
 
 /**
@@ -61,7 +61,7 @@ export function frameCard(theme: CardTheme, opts: CardOptions, width: number): s
   let body = opts.body;
   if (opts.maxBodyLines != null && body.length > opts.maxBodyLines) {
     const shown = Math.max(1, opts.maxBodyLines - 1);
-    const note = theme.fg("muted", `… ${body.length - shown} more line(s)`);
+    const note = theme.fg("muted", `… ${body.length - shown} more line(s) · Ctrl+O to expand`);
     body = [...body.slice(0, shown), note];
   }
 
@@ -122,6 +122,34 @@ export function linesCard(
     accentStyle: opts.accentStyle,
     maxBodyLines: opts.maxBodyLines,
     getBody: () => opts.lines,
+  });
+}
+
+/**
+ * A card whose body is plain text, hard-wrapped to the inner width and shown
+ * verbatim. Unlike `markdownCard`, nothing is interpreted — so SQL, identifiers
+ * with underscores, and stderr render exactly as written (and it needs no
+ * initialised theme for syntax highlighting). Used for error cards.
+ */
+export function textCard(
+  theme: Theme,
+  opts: {
+    title: string;
+    text: string;
+    accent?: ThemeColor;
+    accentStyle?: (s: string) => string;
+    maxBodyLines?: number;
+    /** Per-line styler for the wrapped body (default: theme "text"). */
+    style?: (s: string) => string;
+  },
+): Component {
+  const style = opts.style ?? ((s: string) => theme.fg("text", s));
+  return cardComponent(theme, {
+    title: opts.title,
+    accent: opts.accent,
+    accentStyle: opts.accentStyle,
+    maxBodyLines: opts.maxBodyLines,
+    getBody: (inner) => (opts.text.length ? wrapTextWithAnsi(opts.text, inner) : [""]).map(style),
   });
 }
 
