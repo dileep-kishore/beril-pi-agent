@@ -26,6 +26,12 @@ export interface CardOptions {
   body: string[];
   /** Border + title colour token. Default "borderAccent". */
   accent?: ThemeColor;
+  /**
+   * Override border + title colouring with a custom styler (e.g. a per-domain
+   * hex from `palette.ts`). Takes precedence over `accent` when present, so each
+   * science domain can carry its own frame colour beyond the fixed theme keys.
+   */
+  accentStyle?: (s: string) => string;
   /** Cap body lines; excess collapses into a muted "… N more line(s)" footer. */
   maxBodyLines?: number;
 }
@@ -39,6 +45,9 @@ function padTo(line: string, width: number): string {
 /** Frame pre-rendered body lines as a titled card. Pure; lines are exactly `width` wide. */
 export function frameCard(theme: CardTheme, opts: CardOptions, width: number): string[] {
   const accent = opts.accent ?? "borderAccent";
+  // `paint` styles the border + title: a custom per-domain styler when given,
+  // else the theme accent token. `accentStyle` resets fg only, so `bold` composes.
+  const paint = opts.accentStyle ?? ((s: string) => theme.fg(accent, s));
   const w = Math.max(MIN_WIDTH, Math.floor(width));
   const inner = w - 4; // 1 border + 1 pad on each side
 
@@ -46,8 +55,8 @@ export function frameCard(theme: CardTheme, opts: CardOptions, width: number): s
   const title = truncateToWidth(opts.title, Math.max(1, w - 6));
   const titleLen = visibleWidth(title);
   const dashes = Math.max(1, w - 5 - titleLen);
-  const top = `${theme.fg(accent, "╭─ ")}${theme.bold(theme.fg(accent, title))}${theme.fg(accent, ` ${"─".repeat(dashes)}╮`)}`;
-  const bottom = theme.fg(accent, `╰${"─".repeat(w - 2)}╯`);
+  const top = `${paint("╭─ ")}${theme.bold(paint(title))}${paint(` ${"─".repeat(dashes)}╮`)}`;
+  const bottom = paint(`╰${"─".repeat(w - 2)}╯`);
 
   let body = opts.body;
   if (opts.maxBodyLines != null && body.length > opts.maxBodyLines) {
@@ -56,7 +65,7 @@ export function frameCard(theme: CardTheme, opts: CardOptions, width: number): s
     body = [...body.slice(0, shown), note];
   }
 
-  const bar = theme.fg(accent, "│");
+  const bar = paint("│");
   const rows = body.map((line) => `${bar} ${padTo(line, inner)}${RESET} ${bar}`);
   return [top, ...rows, bottom];
 }
@@ -64,6 +73,7 @@ export function frameCard(theme: CardTheme, opts: CardOptions, width: number): s
 interface CardComponentSpec {
   title: string;
   accent?: ThemeColor;
+  accentStyle?: (s: string) => string;
   maxBodyLines?: number;
   /** Produce the (pre-styled) body lines for a given inner width. */
   getBody: (innerWidth: number) => string[];
@@ -77,7 +87,13 @@ function cardComponent(theme: Theme, spec: CardComponentSpec): Component {
       const inner = Math.max(MIN_WIDTH, Math.floor(width)) - 4;
       const lines = frameCard(
         theme,
-        { title: spec.title, accent: spec.accent, body: spec.getBody(inner), maxBodyLines: spec.maxBodyLines },
+        {
+          title: spec.title,
+          accent: spec.accent,
+          accentStyle: spec.accentStyle,
+          body: spec.getBody(inner),
+          maxBodyLines: spec.maxBodyLines,
+        },
         width,
       );
       cache = { width, lines };
@@ -92,11 +108,18 @@ function cardComponent(theme: Theme, spec: CardComponentSpec): Component {
 /** A card whose body is a list of already-styled text lines. */
 export function linesCard(
   theme: Theme,
-  opts: { title: string; lines: string[]; accent?: ThemeColor; maxBodyLines?: number },
+  opts: {
+    title: string;
+    lines: string[];
+    accent?: ThemeColor;
+    accentStyle?: (s: string) => string;
+    maxBodyLines?: number;
+  },
 ): Component {
   return cardComponent(theme, {
     title: opts.title,
     accent: opts.accent,
+    accentStyle: opts.accentStyle,
     maxBodyLines: opts.maxBodyLines,
     getBody: () => opts.lines,
   });
@@ -105,12 +128,19 @@ export function linesCard(
 /** A card whose body is markdown, rendered by pi-tui's `Markdown` to the inner width. */
 export function markdownCard(
   theme: Theme,
-  opts: { title: string; markdown: string; accent?: ThemeColor; maxBodyLines?: number },
+  opts: {
+    title: string;
+    markdown: string;
+    accent?: ThemeColor;
+    accentStyle?: (s: string) => string;
+    maxBodyLines?: number;
+  },
 ): Component {
   const mdTheme = markdownTheme(theme);
   return cardComponent(theme, {
     title: opts.title,
     accent: opts.accent,
+    accentStyle: opts.accentStyle,
     maxBodyLines: opts.maxBodyLines,
     getBody: (inner) => new Markdown(opts.markdown, 0, 0, mdTheme).render(inner),
   });

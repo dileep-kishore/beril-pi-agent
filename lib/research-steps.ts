@@ -47,6 +47,18 @@ export function stepIndex(state: string): number {
 }
 
 /**
+ * The current step's label for a lifecycle state — `"explore"`…`"submit"`, or
+ * `"complete"` for a finished project, or `undefined` for an unknown state.
+ * Used by the statusline's compact phase segment.
+ */
+export function currentStep(state: string): string | undefined {
+  const idx = stepIndex(state);
+  if (idx < 0) return undefined;
+  if (idx >= RESEARCH_STEPS.length) return "complete";
+  return RESEARCH_STEPS[idx];
+}
+
+/**
  * The single most useful next action for a lifecycle state, phrased for a
  * scientist. Kept independent of exact slash-command names where a step has no
  * single command, so the hint stays accurate as the surface grows.

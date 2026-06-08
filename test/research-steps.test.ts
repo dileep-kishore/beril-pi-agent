@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RESEARCH_STEPS, stepBreadcrumb } from "../lib/research-steps.ts";
+import { RESEARCH_STEPS, currentStep, stepBreadcrumb } from "../lib/research-steps.ts";
 
 test("breadcrumb marks the current step per lifecycle state", () => {
   assert.match(stepBreadcrumb("exploration"), /▸explore/);
@@ -23,4 +23,12 @@ test("complete shows a finished checklist; unknown state marks nothing", () => {
   const unknown = stepBreadcrumb("nonsense");
   assert.doesNotMatch(unknown, /▸/);
   assert.doesNotMatch(unknown, /✓/);
+});
+
+test("currentStep gives the statusline phase label per state", () => {
+  assert.equal(currentStep("exploration"), "explore");
+  assert.equal(currentStep("active"), "analyze");
+  assert.equal(currentStep("analysis"), "review");
+  assert.equal(currentStep("complete"), "complete");
+  assert.equal(currentStep("nonsense"), undefined);
 });

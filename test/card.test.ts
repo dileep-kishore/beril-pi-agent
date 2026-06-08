@@ -57,3 +57,14 @@ test("never throws and stays width-exact at the minimum width", () => {
   const w = visibleWidth(lines[0]);
   for (const line of lines) assert.equal(visibleWidth(line), w);
 });
+
+test("accentStyle overrides the theme accent for the border + title", () => {
+  // A styler that injects a zero-width marker so we can see where it was applied.
+  const mark = "​";
+  const styled = (s: string) => `${mark}${s}${mark}`;
+  const lines = frameCard(fakeTheme, { title: "Data", accentStyle: styled, body: ["row"] }, 40);
+  assert.ok(lines[0].includes(mark), "top border is painted by accentStyle");
+  assert.ok(lines.at(-1)?.includes(mark), "bottom border is painted by accentStyle");
+  // The marker is zero-width, so the frame stays exactly `width` columns.
+  for (const line of lines) assert.equal(visibleWidth(line), 40);
+});
