@@ -7,6 +7,7 @@ import {
   callLine,
   destructiveResultCard,
   hashCard,
+  kvLines,
   lifecycleCard,
   partialLine,
   userCard,
@@ -52,7 +53,13 @@ export default function berilGovernance(pi: ExtensionAPI) {
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       const hashes = await berilExec<Record<string, string>>(pi, ["hash", params.project]);
-      return { content: [{ type: "text", text: JSON.stringify(hashes, null, 2) }], details: hashes };
+      const entries = Object.entries(hashes);
+      // Hand the model a compact summary (the card renders the full digest from
+      // details) so it doesn't echo the raw JSON hash map.
+      const summary = entries.length
+        ? `${entries.length} notebook hash(es):\n${entries.map(([nb, h]) => `- ${nb}  ${h.slice(0, 19)}…`).join("\n")}`
+        : "No notebooks to hash.";
+      return { content: [{ type: "text", text: summary }], details: hashes };
     },
     renderCall(args, theme) {
       return callLine(theme, `hash · ${args.project}`);
@@ -134,8 +141,10 @@ export default function berilGovernance(pi: ExtensionAPI) {
       // Exit 2 (partial archive) and exit 1 both surface as a thrown BerilError.
       const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", params.project]);
       setActiveProject(ctx, params.project);
+      const files = manifest.file_count != null ? `${manifest.file_count} files` : "archived";
+      const key = manifest.archive_key != null ? ` → ${manifest.archive_key}` : "";
       return {
-        content: [{ type: "text", text: `Submitted ${params.project}: ${JSON.stringify(manifest)}` }],
+        content: [{ type: "text", text: `Submitted ${params.project} (${files})${key}.` }],
         details: manifest,
       };
     },
@@ -145,11 +154,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
     renderResult(result, { isPartial }, theme, ctx) {
       if (isPartial) return partialLine(theme, "Uploading to lakehouse…");
       const manifest = result.details as Record<string, unknown>;
-      return destructiveResultCard(
-        theme,
-        `Submitted ${ctx.args.project}`,
-        JSON.stringify(manifest, null, 2).split("\n"),
-      );
+      return destructiveResultCard(theme, `Submitted ${ctx.args.project}`, kvLines(theme, manifest));
     },
   });
 
@@ -209,7 +214,10 @@ export default function berilGovernance(pi: ExtensionAPI) {
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "submitted"]);
         // A marker, not a state transition: signal submission distinctly, never claim a lifecycle state.
         pi.events.emit("beril:submitted", { project });
-        if (ctx.hasUI) ctx.ui.notify(`Submitted ${project}: ${JSON.stringify(manifest)}`, "info");
+        if (ctx.hasUI) {
+          const files = manifest.file_count != null ? ` (${manifest.file_count} files)` : "";
+          ctx.ui.notify(`Submitted ${project}${files}.`, "info");
+        }
       } catch (err) {
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "failed"]).catch(() => {});
         if (ctx.hasUI) ctx.ui.notify(`Submission failed: ${(err as Error).message}`, "error");

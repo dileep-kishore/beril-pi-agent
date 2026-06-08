@@ -5,11 +5,13 @@ import { berilExec } from "../lib/beril-exec.ts";
 import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql } from "../lib/peek.ts";
 import { requireReady } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
+import { type DiscoverSnapshot, discoverSummary } from "../lib/ui/discover.ts";
 import {
   type QueryView,
   callLine,
   destructiveResultCard,
   discoverCard,
+  kvLines,
   partialLine,
   peekCard,
   queryCard,
@@ -73,8 +75,10 @@ export default function berilData(pi: ExtensionAPI) {
       const args = ["discover"];
       if (params.database) args.push("--database", params.database);
       if (params.max_databases != null) args.push("--max-databases", String(params.max_databases));
-      const snap = await berilExec<Record<string, unknown>>(pi, args);
-      return { content: [{ type: "text", text: JSON.stringify(snap, null, 2) }], details: snap };
+      const snap = await berilExec<DiscoverSnapshot>(pi, args);
+      // Hand the model a compact summary (full snapshot stays in details for the
+      // card) so it leads with the structure instead of echoing raw JSON.
+      return { content: [{ type: "text", text: discoverSummary(snap) }], details: snap };
     },
     renderCall(args, theme) {
       return callLine(
@@ -84,7 +88,7 @@ export default function berilData(pi: ExtensionAPI) {
     },
     renderResult(result, { expanded, isPartial }, theme) {
       if (isPartial) return partialLine(theme, "Discovering collections…");
-      return discoverCard(theme, result.details as Record<string, unknown>, expanded);
+      return discoverCard(theme, result.details as DiscoverSnapshot, expanded);
     },
   });
 
@@ -162,10 +166,8 @@ export default function berilData(pi: ExtensionAPI) {
       if (params.format) args.push("--format", params.format);
       if (params.mode) args.push("--mode", params.mode);
       const manifest = await berilExec<Record<string, unknown>>(pi, args);
-      return {
-        content: [{ type: "text", text: `Exported to ${params.path}: ${JSON.stringify(manifest)}` }],
-        details: manifest,
-      };
+      const summary = `Exported the query result to ${params.path} (${params.format ?? "parquet"}, ${params.mode ?? "overwrite"}).`;
+      return { content: [{ type: "text", text: summary }], details: { ...manifest, path: params.path } };
     },
     renderCall(args, theme) {
       return callLine(theme, `export → ${args.path} (${args.mode ?? "overwrite"}, destructive)`);
@@ -173,7 +175,7 @@ export default function berilData(pi: ExtensionAPI) {
     renderResult(result, { isPartial }, theme) {
       if (isPartial) return partialLine(theme, "Exporting…");
       const manifest = result.details as Record<string, unknown>;
-      return destructiveResultCard(theme, "Export complete", JSON.stringify(manifest, null, 2).split("\n"));
+      return destructiveResultCard(theme, "Export complete", kvLines(theme, manifest));
     },
   });
 }

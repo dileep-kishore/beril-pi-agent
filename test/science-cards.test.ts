@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { formatLitMarkdown, peekMarkdown, queryCard } from "../lib/ui/science-cards.ts";
+import { discoverCard, envCard, formatLitMarkdown, kvLines, peekMarkdown, queryCard } from "../lib/ui/science-cards.ts";
 
 // Pass-through theme so rendered widths are easy to assert (no ANSI inflation).
+// `getColorMode` is required by the per-domain `palette.ts` styler.
 const theme = {
   fg: (_c: string, s: string) => s,
   bold: (s: string) => s,
   italic: (s: string) => s,
   strikethrough: (s: string) => s,
   underline: (s: string) => s,
+  getColorMode: () => "truecolor",
 } as unknown as Theme;
 
 test("formatLitMarkdown renders a bullet with authors, venue, and a PMID link", () => {
@@ -60,4 +62,41 @@ test("queryCard shows a no-rows card when the result is empty", () => {
   const card = queryCard(theme, { returned_rows: 0, rows: [], limit_applied: null }, false);
   const lines = card.render(40);
   assert.ok(lines.some((l) => l.includes("no rows returned")));
+});
+
+test("discoverCard renders a structured, width-exact list (not JSON)", () => {
+  const card = discoverCard(
+    theme,
+    { tenants: [{ id: "kbase", name: "KBase", collections: [{ id: "kbase.x", name: "X", tables: [] }] }] },
+    false,
+  );
+  const lines = card.render(60);
+  for (const line of lines) assert.equal(visibleWidth(line), 60);
+  const text = lines.join("\n");
+  assert.ok(text.includes("Collections · 1 tenant · 1 database"), "summary title");
+  assert.ok(text.includes("KBase") && text.includes("X"));
+  assert.ok(!text.includes('"tables"'), "no JSON keys");
+});
+
+test("envCard surfaces readiness, checks, and next steps", () => {
+  const card = envCard(theme, {
+    location: "off-cluster",
+    ready: false,
+    checks: { token: true, tunnels: false },
+    next_steps: ["open the SSH tunnels"],
+  });
+  const text = card.render(60).join("\n");
+  assert.ok(text.includes("BERDL · off-cluster"), "title");
+  assert.ok(text.includes("not ready"), "status");
+  assert.ok(text.includes("token") && text.includes("tunnels"), "per-check lines");
+  assert.ok(text.includes("open the SSH tunnels"), "next steps when not ready");
+});
+
+test("kvLines renders labeled scalar fields and skips nested objects", () => {
+  const lines = kvLines(theme, { path: "s3a://x", count: 42, nested: { a: 1 }, missing: null });
+  const text = lines.join("\n");
+  assert.ok(text.includes("path") && text.includes("s3a://x"));
+  assert.ok(text.includes("count") && text.includes("42"));
+  assert.ok(text.includes("missing") && text.includes("—"), "null renders as em-dash");
+  assert.ok(!text.includes("nested"), "object-valued keys are skipped");
 });
