@@ -9,16 +9,20 @@ Discovery answers two questions before any analysis: **what data exists** and **
 
 ## Tools
 
-- Use **`berdl_discover`** for access-aware introspection. It returns one snapshot, scoped to what the user can actually see: tenants → databases (with `description`, `provider`) → tables (with `name`, `description`, `row_count`) → columns (each carrying `name`, `data_type`, and `description`). It only returns objects the user can reach — **never reason from `SHOW DATABASES` / `SHOW TABLES`**, which bypasses access filtering and will mislead you about what's reachable. Use `max_databases` to cap a broad scan.
-- Use **`berdl_query`** for bounded sampling (`SELECT`, default limit 100) when you need to see real values to confirm a relationship, an ID format, or a NULL convention, or to read richer table metadata that the snapshot doesn't carry (e.g. `DESCRIBE EXTENDED <db>.<table>` for COMMENT / TBLPROPERTIES / storage format / owner / created date). Never run unbounded counts blindly (see large-table guards).
+- Use **`berdl_discover`** for access-aware introspection, in two cheap depths — it never scans every table:
+  - **Inventory (no args):** tenants → databases (with `name`, `description`, `provider`). One fast call. This is the concise "what can I reach" list. Use `max_databases` only to cap a debugging scan.
+  - **Scoped (`database=<id>`):** that one database's tables (`name`, `description`, `row_count`). One fast call. No column schemas.
+  It only returns objects the user can reach — **never reason from `SHOW DATABASES` / `SHOW TABLES`**, which bypasses access filtering and will mislead you about what's reachable.
+- Use **`berdl_peek`** to read a specific table's **columns** (types + comments) and a few sample rows in one call — this is how you inspect schema, not `berdl_discover` (which deliberately stops at table names to stay fast).
+- Use **`berdl_query`** for bounded sampling (`SELECT`, default limit 100) when you need to see real values to confirm a relationship, an ID format, or a NULL convention, or to read richer table metadata (e.g. `DESCRIBE EXTENDED <db>.<table>` for COMMENT / TBLPROPERTIES / storage format / owner / created date). Never run unbounded counts blindly (see large-table guards).
 - If anything seems unconfigured or empty, run **`/berdl-status`** (or **`/berdl-connect`** for off-cluster setup) before assuming the data is missing.
 
 ## Discovery Workflow
 
-1. **List accessible databases, then tables** in the target database, via `berdl_discover`. An empty result means the user has no access — say so plainly; do not pretend tables exist.
-2. **Read per-column schema** from the snapshot. The `description` field is the column COMMENT set at ingest. Legacy tables often have empty descriptions — that is normal. **Never fabricate a meaning for an undocumented column**; flag it as undocumented and, if it matters, sample values with `berdl_query` to infer cautiously.
-3. **Read table-level metadata** — the snapshot gives table `description` and `row_count`, useful for provenance and for judging size/freshness. For deeper metadata (properties, storage format, owner, created date), run `DESCRIBE EXTENDED` through `berdl_query` only when it actually matters.
-4. **Counts are optional and gated.** The snapshot may already carry `row_count`; otherwise only count rows on explicit request, and ask first for any table without a known size. Treat tables like `gene`, `genome_ani`, and `reaction_similarity` as large by default and avoid `COUNT(*)` / full scans on them.
+1. **List accessible databases** with `berdl_discover` (inventory), then list **tables** in the target database with `berdl_discover(database=<id>)`. An empty result means the user has no access — say so plainly; do not pretend tables exist.
+2. **Read per-column schema with `berdl_peek`** on the specific table (discover stops at table names to stay fast). Each column's `description` is the COMMENT set at ingest. Legacy tables often have empty descriptions — that is normal. **Never fabricate a meaning for an undocumented column**; flag it as undocumented and, if it matters, sample values (peek already returns a few) to infer cautiously.
+3. **Read table-level metadata** — the scoped snapshot gives table `description` and `row_count`, useful for provenance and for judging size/freshness. For deeper metadata (properties, storage format, owner, created date), run `DESCRIBE EXTENDED` through `berdl_query` only when it actually matters.
+4. **Counts are optional and gated.** The scoped snapshot may already carry `row_count`; otherwise only count rows on explicit request, and ask first for any table without a known size. Treat tables like `gene`, `genome_ani`, and `reaction_similarity` as large by default and avoid `COUNT(*)` / full scans on them.
 
 ## Relationship Inference (the core judgment)
 

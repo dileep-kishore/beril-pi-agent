@@ -145,16 +145,24 @@ def _load_berdl_helpers() -> Any | None:
 
 def discover_collections(
     *,
+    database: str | None = None,
     max_databases: int | None = None,
-    include_schemas: bool = True,
     token: str | None = None,
     base_url: str = DEFAULT_BASE_URL,
     timeout: float = 30.0,
 ) -> dict[str, Any]:
-    """Discover databases, tables, and schemas.
+    """Discover the accessible BERDL inventory, or one database's tables.
 
-    Uses berdl_notebook_utils on-cluster (access-aware).
-    Falls back to the REST API when berdl_notebook_utils is unavailable (off-cluster).
+    Two cheap depths — neither scans the whole lakehouse:
+
+    - ``database is None`` (inventory): list accessible databases grouped by
+      tenant. One round-trip. No table or schema crawl.
+    - ``database`` set (scoped): list that one database's tables (name,
+      description, row_count). One round-trip. No schema crawl — use
+      ``berdl_peek`` / ``berdl_query`` to read a specific table's columns.
+
+    Uses berdl_notebook_utils on-cluster (access-aware), falling back to the
+    REST API off-cluster.
     """
     helpers = _load_berdl_helpers()
 
@@ -164,9 +172,6 @@ def discover_collections(
 
         def _get_tables(db_id):
             return _extract_tables(helpers.get_tables(db_id))
-
-        def _get_schema(db_id, table_name):
-            return _extract_columns(helpers.get_table_schema(db_id, table_name))
 
         discovery_method = "berdl_notebook_utils"
         source_url = "berdl-notebook-utils"
@@ -194,75 +199,79 @@ def discover_collections(
                 )
             )
 
-        def _get_schema(db_id, table_name):
-            return _extract_columns(
-                _post_json(
-                    f"{base_url}/delta/databases/tables/schema", token,
-                    {"database": db_id, "table": table_name}, timeout,
-                )
-            )
-
         discovery_method = "rest"
         source_url = base_url
+
+    snapshot: dict[str, Any] = {
+        "schema_version": 1,
+        "source_url": source_url,
+        "discovery_method": discovery_method,
+        "discovered_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if database is not None:
+        snapshot["scope"] = {"database": database}
+        snapshot["tenants"] = [_discover_one_database(database, _get_tables)]
+        return snapshot
 
     databases = sorted(_get_databases(), key=lambda item: item["id"])
     if max_databases is not None:
         databases = databases[:max_databases]
 
     tenants: dict[str, dict[str, Any]] = {}
-    for database in databases:
-        tenant_id = database.get("tenant_id") or infer_tenant_id(database["id"])
-        tenant = tenants.setdefault(
-            tenant_id,
+    for db in databases:
+        tenant_id = db.get("tenant_id") or infer_tenant_id(db["id"])
+        tenant = tenants.setdefault(tenant_id, _new_tenant(tenant_id))
+        tenant["collections"].append(
             {
-                "id": tenant_id,
-                "name": TENANT_NAMES.get(tenant_id, tenant_id.replace("_", " ").title()),
-                "collections": [],
-            },
+                "id": db["id"],
+                "name": db.get("name") or title_from_id(db["id"]),
+                "description": db.get("description", ""),
+                "provider": db.get("provider"),
+                "tables": [],
+                "discovery_errors": [],
+            }
         )
-        collection = {
-            "id": database["id"],
-            "name": database.get("name") or title_from_id(database["id"]),
-            "description": database.get("description", ""),
-            "provider": database.get("provider"),
-            "tables": [],
-            "discovery_errors": [],
-        }
-        try:
-            tables = _get_tables(database["id"])
-        except Exception as exc:
-            collection["discovery_errors"].append(
-                f"table list failed: {_format_error(exc)}"
-            )
-            tables = []
 
-        for table in tables:
-            table_record = {
+    snapshot["tenants"] = list(tenants.values())
+    return snapshot
+
+
+def _new_tenant(tenant_id: str) -> dict[str, Any]:
+    return {
+        "id": tenant_id,
+        "name": TENANT_NAMES.get(tenant_id, tenant_id.replace("_", " ").title()),
+        "collections": [],
+    }
+
+
+def _discover_one_database(database: str, get_tables: Any) -> dict[str, Any]:
+    """Scoped depth: one database's tables (no schema crawl), wrapped in a tenant."""
+    collection = {
+        "id": database,
+        "name": title_from_id(database),
+        "description": "",
+        "provider": None,
+        "tables": [],
+        "discovery_errors": [],
+    }
+    try:
+        tables = get_tables(database)
+    except Exception as exc:
+        collection["discovery_errors"].append(f"table list failed: {_format_error(exc)}")
+        tables = []
+    for table in tables:
+        collection["tables"].append(
+            {
                 "name": table["name"],
                 "description": table.get("description", ""),
                 "row_count": table.get("row_count"),
                 "columns": [],
             }
-            if not include_schemas:
-                collection["tables"].append(table_record)
-                continue
-            try:
-                table_record["columns"] = _get_schema(database["id"], table["name"])
-            except Exception as exc:
-                collection["discovery_errors"].append(
-                    f"{table['name']} schema failed: {_format_error(exc)}"
-                )
-            collection["tables"].append(table_record)
-
-        tenant["collections"].append(collection)
-
-    return {
-        "schema_version": 1,
-        "source_url": source_url,
-        "discovery_method": discovery_method,
-        "discovered_at": datetime.now(timezone.utc).isoformat(),
-        "tenants": list(tenants.values()),
-    }
+        )
+    tenant = _new_tenant(infer_tenant_id(database))
+    tenant["collections"].append(collection)
+    return tenant
 
 
 def write_snapshot_atomic(snapshot: dict[str, Any], output: Path) -> None:
@@ -403,39 +412,6 @@ def _extract_tables(payload: Any) -> list[dict[str, Any]]:
     return tables
 
 
-def _extract_columns(payload: Any) -> list[dict[str, str | None]]:
-    items = _first_list(payload, ("columns", "schema", "fields", "data", "result"))
-    columns = []
-    for item in items:
-        if isinstance(item, str):
-            columns.append({"name": item, "data_type": "", "description": None})
-            continue
-        if isinstance(item, tuple):
-            column_name = item[0] if item else None
-            if column_name:
-                columns.append(
-                    {
-                        "name": str(column_name),
-                        "data_type": str(item[1]) if len(item) > 1 and item[1] else "",
-                        "description": str(item[2]) if len(item) > 2 and item[2] else None,
-                    }
-                )
-            continue
-        if not isinstance(item, dict):
-            continue
-        column_name = item.get("name") or item.get("column") or item.get("column_name")
-        if not column_name:
-            continue
-        columns.append(
-            {
-                "name": str(column_name),
-                "data_type": str(item.get("type") or item.get("data_type") or ""),
-                "description": item.get("description") or item.get("comment"),
-            }
-        )
-    return columns
-
-
 def _first_list(payload: Any, keys: tuple[str, ...]) -> list[Any]:
     if isinstance(payload, str):
         return [payload]
@@ -505,14 +481,15 @@ def main(argv: list[str] | None = None) -> int:
         help="REST request timeout in seconds (off-cluster only).",
     )
     parser.add_argument(
-        "--max-databases",
-        type=int,
-        help="Optional debugging cap on discovered databases.",
+        "--database",
+        default=None,
+        help="Scope to one database: list its tables (no schema crawl). "
+        "Omit for the accessible-collections inventory.",
     )
     parser.add_argument(
-        "--skip-schemas",
-        action="store_true",
-        help="Collect databases and tables but skip schema discovery.",
+        "--max-databases",
+        type=int,
+        help="Optional debugging cap on discovered databases (inventory only).",
     )
     parser.add_argument(
         "--include-non-user-facing",
@@ -528,8 +505,8 @@ def main(argv: list[str] | None = None) -> int:
     token = read_auth_token(args.env_file)
     try:
         snapshot = discover_collections(
+            database=args.database,
             max_databases=args.max_databases,
-            include_schemas=not args.skip_schemas,
             token=token,
             base_url=args.base_url,
             timeout=args.timeout,
@@ -538,14 +515,22 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    if not args.include_non_user_facing:
+    # The user-facing curation applies to the broad inventory only; an explicit
+    # --database request is honored verbatim.
+    if args.database is None and not args.include_non_user_facing:
         snapshot = filter_user_facing_snapshot(snapshot)
     write_snapshot_atomic(snapshot, args.output)
-    collection_count = sum(len(t["collections"]) for t in snapshot["tenants"])
-    print(
-        f"Wrote {collection_count} collections across "
-        f"{len(snapshot['tenants'])} tenants to {args.output}"
-    )
+    if args.database is not None:
+        table_count = sum(
+            len(c["tables"]) for t in snapshot["tenants"] for c in t["collections"]
+        )
+        print(f"Wrote {table_count} tables for {args.database} to {args.output}")
+    else:
+        collection_count = sum(len(t["collections"]) for t in snapshot["tenants"])
+        print(
+            f"Wrote {collection_count} collections across "
+            f"{len(snapshot['tenants'])} tenants to {args.output}"
+        )
     return 0
 
 

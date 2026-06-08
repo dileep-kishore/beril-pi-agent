@@ -60,19 +60,27 @@ export default function berilData(pi: ExtensionAPI) {
   pi.registerTool({
     name: "berdl_discover",
     label: "Discover BERDL collections",
-    description: "List accessible BERDL databases/collections (access-aware). Use before querying to find tables.",
+    description:
+      "Explore BERDL access-awarely in two cheap steps. Default (no args): the accessible-collections INVENTORY — databases grouped by tenant, fast. Pass `database` to list THAT database's tables (names + descriptions, no column schemas). To read a table's columns + sample rows, use `berdl_peek`. Never scans every table.",
     parameters: Type.Object({
-      max_databases: Type.Optional(Type.Integer({ description: "Cap databases scanned." })),
+      database: Type.Optional(
+        Type.String({ description: "Scope to one database to list its tables. Omit for the inventory." }),
+      ),
+      max_databases: Type.Optional(Type.Integer({ description: "Cap databases in the inventory." })),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       await requireReady(pi);
       const args = ["discover"];
+      if (params.database) args.push("--database", params.database);
       if (params.max_databases != null) args.push("--max-databases", String(params.max_databases));
       const snap = await berilExec<Record<string, unknown>>(pi, args);
       return { content: [{ type: "text", text: JSON.stringify(snap, null, 2) }], details: snap };
     },
-    renderCall(_args, theme) {
-      return callLine(theme, "discover · accessible collections");
+    renderCall(args, theme) {
+      return callLine(
+        theme,
+        args.database ? `discover · tables in ${args.database}` : "discover · accessible collections",
+      );
     },
     renderResult(result, { expanded, isPartial }, theme) {
       if (isPartial) return partialLine(theme, "Discovering collections…");

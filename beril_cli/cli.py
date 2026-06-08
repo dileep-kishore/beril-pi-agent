@@ -53,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # discover
     discover_parser = sub.add_parser("discover", help="Introspect accessible BERDL collections")
+    discover_parser.add_argument(
+        "--database",
+        default=None,
+        help="Scope to one database: list its tables (no schema crawl). Omit for the inventory.",
+    )
     discover_parser.add_argument("--max-databases", type=int, default=None)
 
     # hash
