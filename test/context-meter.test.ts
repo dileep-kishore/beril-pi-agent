@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { contextColor, formatContext } from "../lib/ui/context-meter.ts";
+import { contextColor, contextGauge, formatTokens } from "../lib/ui/context-meter.ts";
 
 test("contextColor stays green well under the thresholds", () => {
   assert.equal(contextColor(10, 1000), "success");
@@ -17,8 +17,16 @@ test("contextColor alarms on EITHER 90% or 500k tokens", () => {
   assert.equal(contextColor(10, 600_000), "error");
 });
 
-test("formatContext renders a percent, or an em-dash when unknown", () => {
-  assert.equal(formatContext({ tokens: 1000, percent: 38 }), "ctx 38%");
-  assert.equal(formatContext({ tokens: null, percent: null }), "ctx —");
-  assert.equal(formatContext(undefined), "ctx —");
+test("contextGauge fills cells proportionally to percent", () => {
+  assert.equal(contextGauge(0, 6), "▱▱▱▱▱▱");
+  assert.equal(contextGauge(100, 6), "▰▰▰▰▰▰");
+  assert.equal(contextGauge(50, 6), "▰▰▰▱▱▱");
+  assert.equal(contextGauge(null, 6), "▱▱▱▱▱▱", "unknown reads as empty");
+});
+
+test("formatTokens is compact and human, em-dash when unknown", () => {
+  assert.equal(formatTokens(980), "980");
+  assert.equal(formatTokens(12_300), "12.3k");
+  assert.equal(formatTokens(1_200_000), "1.2M");
+  assert.equal(formatTokens(null), "—");
 });

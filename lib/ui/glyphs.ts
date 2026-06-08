@@ -24,4 +24,10 @@ export const GLYPH = {
   project: "▣",
   /** Submitted / promoted upward. */
   up: "↑",
+  /** Working directory / location. */
+  folder: "📁",
+  /** A filled gauge cell (context meter). */
+  gaugeFull: "▰",
+  /** An empty gauge cell (context meter). */
+  gaugeEmpty: "▱",
 } as const;

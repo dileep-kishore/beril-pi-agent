@@ -1,12 +1,13 @@
+import { basename } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type BerdlEnv, setCachedEnv } from "../lib/readiness.ts";
 import { currentStep, nextAction } from "../lib/research-steps.ts";
-import { type FooterData, footerLine } from "../lib/ui/footer.ts";
+import { type FooterData, footerLines } from "../lib/ui/footer.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
-import { callLine, envCard, partialLine } from "../lib/ui/science-cards.ts";
+import { callLine, envCard, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
 import { TIPS, type WelcomeState, pickTip, welcomePanel } from "../lib/ui/welcome.ts";
 import { type HudState, workflowHud } from "../lib/ui/workflow-hud.ts";
 
@@ -162,13 +163,15 @@ export default function berilEnv(pi: ExtensionAPI) {
           const data: FooterData = {
             connection: hud.location,
             ready: hud.ready,
+            cwd: uiCtx?.cwd ? basename(uiCtx.cwd) : undefined,
             project: hud.project,
             phase: hud.state ? currentStep(hud.state) : undefined,
-            context: usage ? { tokens: usage.tokens, percent: usage.percent } : undefined,
+            context: usage
+              ? { tokens: usage.tokens, percent: usage.percent, contextWindow: usage.contextWindow }
+              : undefined,
             model: uiCtx?.model?.id,
           };
-          const line = footerLine(theme, data, width);
-          return line ? [line] : [];
+          return footerLines(theme, data, width);
         },
       };
     });
@@ -208,7 +211,8 @@ export default function berilEnv(pi: ExtensionAPI) {
     renderCall(_args, theme) {
       return callLine(theme, "env · BERDL readiness");
     },
-    renderResult(result, { isPartial }, theme) {
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Checking BERDL…");
       return envCard(theme, result.details as BerdlEnv);
     },

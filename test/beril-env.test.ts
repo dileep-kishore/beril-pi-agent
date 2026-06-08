@@ -109,7 +109,8 @@ test("session_start sets the connection chip, the HUD, and the rich footer when 
   const footer = renderFooter();
   assert.match(footer, /BERDL off-cluster ✓/, "footer shows the compact connection");
   assert.match(footer, /opus-4\.8/, "footer shows the model");
-  assert.match(footer, /ctx 12%/, "footer shows context usage");
+  assert.match(footer, /ctx .*12%/, "footer shows context usage with a gauge");
+  assert.match(footer, /1\.0k \/ 200\.0k/, "footer shows tokens / context window");
 });
 
 test("session_start greets with the welcome header on a fresh start", async () => {

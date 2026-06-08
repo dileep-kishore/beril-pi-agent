@@ -1,4 +1,5 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
+import { GLYPH } from "./glyphs.ts";
 
 /**
  * Context-window usage → a traffic-light colour + a compact label for the
@@ -17,8 +18,17 @@ export function contextColor(percent: number | null, tokens: number | null): The
   return "success";
 }
 
-/** `ctx 38%` (or `ctx —` when usage is unknown, e.g. right after compaction). */
-export function formatContext(usage: { tokens: number | null; percent: number | null } | undefined): string {
-  if (!usage || usage.percent == null) return "ctx —";
-  return `ctx ${Math.round(usage.percent)}%`;
+/** A tiny `cells`-wide usage bar, e.g. `▰▰▱▱▱▱` for ~33%. Clamps to [0,100]; unknown → empty. */
+export function contextGauge(percent: number | null, cells = 6): string {
+  const p = percent == null ? 0 : Math.min(100, Math.max(0, percent));
+  const filled = Math.round((p / 100) * cells);
+  return GLYPH.gaugeFull.repeat(filled) + GLYPH.gaugeEmpty.repeat(cells - filled);
+}
+
+/** Compact token count for the statusline: `980`, `12.3k`, `1.2M`; `—` when unknown. */
+export function formatTokens(tokens: number | null | undefined): string {
+  if (tokens == null) return "—";
+  if (tokens < 1000) return String(tokens);
+  if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}k`;
+  return `${(tokens / 1_000_000).toFixed(1)}M`;
 }
