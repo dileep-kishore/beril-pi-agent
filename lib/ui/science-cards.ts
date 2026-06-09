@@ -8,6 +8,8 @@ import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.
 import { GLYPH } from "./glyphs.ts";
 import { hyperlink } from "./links.ts";
 import { domainStyle, roleStyle } from "./palette.ts";
+import { type CardState, statusIcon } from "./render-utils.ts";
+import { cardHeader } from "./status-line-header.ts";
 import { markdownTable } from "./table.ts";
 
 /**
@@ -78,12 +80,17 @@ export interface QueryView {
 export function queryCard(theme: Theme, p: QueryView, expanded: boolean): Component {
   const noun = p.returned_rows === 1 ? "row" : "rows";
   const limitNote = p.limit_applied != null ? ` ${GLYPH.bullet} limit ${p.limit_applied}` : "";
-  const title = `Query ${GLYPH.bullet} ${p.returned_rows} ${noun}${limitNote}`;
+  const title = cardHeader(theme, { title: `Query ${GLYPH.bullet} ${p.returned_rows} ${noun}${limitNote}` });
   const accentStyle = domainStyle(theme, "data");
   if (!p.rows?.length) {
-    return linesCard(theme, { title, accentStyle, lines: [theme.fg("muted", "(no rows returned)")] });
+    return linesCard(theme, { title, accentStyle, state: "settled", lines: [theme.fg("muted", "(no rows returned)")] });
   }
-  return markdownCard(theme, { title, accentStyle, markdown: markdownTable(p.rows, { maxRows: expanded ? 60 : 8 }) });
+  return markdownCard(theme, {
+    title,
+    accentStyle,
+    state: "settled",
+    markdown: markdownTable(p.rows, { maxRows: expanded ? 60 : 8 }),
+  });
 }
 
 /** DESCRIBE columns + a sample → a one-glance table-preview body. Pure. */
@@ -98,8 +105,9 @@ export function peekCard(
   view: { table: string; columns: Record<string, unknown>[]; sample: Record<string, unknown>[] },
 ): Component {
   return markdownCard(theme, {
-    title: `Table ${GLYPH.bullet} ${view.table}`,
+    title: cardHeader(theme, { title: `Table ${GLYPH.bullet} ${view.table}` }),
     accentStyle: domainStyle(theme, "data"),
+    state: "settled",
     markdown: peekMarkdown(view.columns, view.sample),
   });
 }
@@ -113,8 +121,9 @@ export function peekCard(
  */
 export function discoverCard(theme: Theme, snapshot: DiscoverSnapshot, expanded: boolean): Component {
   return linesCard(theme, {
-    title: discoverTitle(snapshot),
+    title: cardHeader(theme, { title: discoverTitle(snapshot) }),
     accentStyle: domainStyle(theme, "data"),
+    state: "settled",
     lines: discoverLines(theme, snapshot),
     maxBodyLines: expanded ? 400 : 60,
   });
@@ -163,8 +172,11 @@ export function formatLitMarkdown(records: LitRecord[], limit: number): string {
 
 export function litCard(theme: Theme, records: LitRecord[], expanded: boolean): Component {
   return markdownCard(theme, {
-    title: `Literature ${GLYPH.bullet} ${records.length} result${records.length === 1 ? "" : "s"}`,
+    title: cardHeader(theme, {
+      title: `Literature ${GLYPH.bullet} ${records.length} result${records.length === 1 ? "" : "s"}`,
+    }),
     accentStyle: domainStyle(theme, "literature"),
+    state: "settled",
     markdown: formatLitMarkdown(records, expanded ? 25 : 6),
   });
 }
@@ -183,14 +195,20 @@ export function hashCard(theme: Theme, hashes: Record<string, string>): Componen
   const entries = Object.entries(hashes);
   const accentStyle = domainStyle(theme, "governance");
   if (!entries.length)
-    return linesCard(theme, { title: "Notebook hashes", accentStyle, lines: [theme.fg("muted", "(no notebooks)")] });
+    return linesCard(theme, {
+      title: cardHeader(theme, { title: "Notebook hashes" }),
+      accentStyle,
+      state: "settled",
+      lines: [theme.fg("muted", "(no notebooks)")],
+    });
   const lines = entries.map(([nb, h]) => {
     const short = h.replace(/^sha256:/, "").slice(0, 12);
     return `${theme.fg("text", nb)}  ${theme.fg("dim", `sha256:${short}…`)}`;
   });
   return linesCard(theme, {
-    title: `Notebook hashes ${GLYPH.bullet} ${entries.length}`,
+    title: cardHeader(theme, { title: `Notebook hashes ${GLYPH.bullet} ${entries.length}` }),
     accentStyle,
+    state: "settled",
     lines,
     maxBodyLines: 12,
   });
@@ -198,8 +216,9 @@ export function hashCard(theme: Theme, hashes: Record<string, string>): Componen
 
 export function lifecycleCard(theme: Theme, project: string, status: string): Component {
   return linesCard(theme, {
-    title: "Lifecycle",
+    title: cardHeader(theme, { title: "Lifecycle" }),
     accentStyle: domainStyle(theme, "governance"),
+    state: "settled",
     lines: [`${theme.fg("text", project)} ${theme.fg("dim", GLYPH.arrow)} ${theme.fg("success", status)}`],
   });
 }
@@ -214,8 +233,9 @@ export function userCard(
     : theme.fg("muted", "(unset)");
   const status = id.complete ? theme.fg("success", "complete") : theme.fg("warning", "incomplete (run `beril setup`)");
   return linesCard(theme, {
-    title: "Researcher",
+    title: cardHeader(theme, { title: "Researcher" }),
     accentStyle: domainStyle(theme, id.complete ? "governance" : "destructive"),
+    state: id.complete ? "settled" : "warning",
     lines: [
       `Name        ${v(id.name)}`,
       `Affiliation ${v(id.affiliation)}`,
@@ -227,7 +247,13 @@ export function userCard(
 
 /** Generic destructive-result card (export / submit) — amber frame. */
 export function destructiveResultCard(theme: Theme, title: string, lines: string[]): Component {
-  return linesCard(theme, { title, accentStyle: domainStyle(theme, "destructive"), lines, maxBodyLines: 16 });
+  return linesCard(theme, {
+    title: cardHeader(theme, { title }),
+    accentStyle: domainStyle(theme, "destructive"),
+    state: "warning",
+    lines,
+    maxBodyLines: 16,
+  });
 }
 
 /** Notebook scaffold result → created (success) + skipped-existing (dim). */
@@ -238,8 +264,9 @@ export function scaffoldCard(theme: Theme, r: { created: string[]; skipped: stri
   ];
   if (!lines.length) lines.push(theme.fg("muted", "(no notebooks)"));
   return linesCard(theme, {
-    title: `Notebooks scaffolded ${GLYPH.bullet} ${r.created.length} new`,
+    title: cardHeader(theme, { title: `Notebooks scaffolded ${GLYPH.bullet} ${r.created.length} new` }),
     accentStyle: domainStyle(theme, "analysis"),
+    state: "settled",
     lines,
     maxBodyLines: 24,
   });
@@ -285,12 +312,16 @@ export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: 
       : `${theme.fg("error", GLYPH.bad)} ${theme.fg("text", e.notebook)} ${theme.fg("dim", e.error ? `— ${e.error.split("\n")[0]}` : "")}`,
   );
   if (!lines.length) lines.push(theme.fg("muted", "(nothing executed)"));
-  const title = r.ok
-    ? `Notebooks executed ${GLYPH.bullet} ${r.executed.length} ${GLYPH.ok}`
-    : "Notebooks executed · some failed";
+  const title = cardHeader(theme, {
+    title: r.ok
+      ? `Notebooks executed ${GLYPH.bullet} ${r.executed.length} ${GLYPH.ok}`
+      : "Notebooks executed · some failed",
+    meta: [`${r.executed.length} run`],
+  });
   return linesCard(theme, {
     title,
     accentStyle: domainStyle(theme, r.ok ? "analysis" : "destructive"),
+    state: r.ok ? "success" : "error",
     lines,
     maxBodyLines: 30,
   });
@@ -357,28 +388,45 @@ function evidenceLines(theme: Theme, items: EvidencePointer[]): string[] {
   });
 }
 
+/** Map a claim status to the operational card state driving the border paint. */
+function evidenceState(status: ClaimStatus): CardState {
+  if (status === "refuted") return "error";
+  if (status === "supported") return "success";
+  return "settled";
+}
+
 /** A claim with its supporting AND refuting evidence, each a re-openable pointer. */
 export function evidenceCard(theme: Theme, v: EvidenceView): Component {
-  const lines: string[] = [
+  const evState = evidenceState(v.status);
+  const body: string[] = [
     `${statusGlyph(theme, v.status)}  ${confidenceFooter(theme, v.confidence)}`,
     theme.fg("text", v.claim),
-    "",
-    roleStyle(theme, "supports")(`${GLYPH.supports} Supports (${v.supports.length})`),
-    ...(v.supports.length ? evidenceLines(theme, v.supports) : [theme.fg("muted", "  (none)")]),
-    "",
-    roleStyle(theme, "refutes")(`${GLYPH.refutes} Refutes (${v.refutes.length})`),
-    ...(v.refutes.length
-      ? evidenceLines(theme, v.refutes)
-      : [theme.fg("muted", `  none found${v.refutesSearched ? ` — searched ${v.refutesSearched}` : ""}`)]),
+  ];
+  const supportLines = v.supports.length ? evidenceLines(theme, v.supports) : [theme.fg("muted", "  (none)")];
+  const refuteLines = v.refutes.length
+    ? evidenceLines(theme, v.refutes)
+    : [theme.fg("muted", `  none found${v.refutesSearched ? ` — searched ${v.refutesSearched}` : ""}`)];
+  const sections = [
+    { label: roleStyle(theme, "supports")(`${GLYPH.supports} Supports (${v.supports.length})`), lines: supportLines },
+    { label: roleStyle(theme, "refutes")(`${GLYPH.refutes} Refutes (${v.refutes.length})`), lines: refuteLines },
   ];
   if (v.unresolved?.length) {
-    lines.push("", theme.fg("muted", `${GLYPH.unresolved} Unresolved (${v.unresolved.length})`));
-    for (const u of v.unresolved) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", u)}`);
+    sections.push({
+      label: theme.fg("muted", `${GLYPH.unresolved} Unresolved (${v.unresolved.length})`),
+      lines: v.unresolved.map((u) => `  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", u)}`),
+    });
   }
   return linesCard(theme, {
-    title: `Evidence ${GLYPH.bullet} ${v.status}`,
+    title: cardHeader(theme, {
+      icon: statusIcon(theme, evState),
+      title: "Evidence",
+      summary: v.status,
+      meta: [`${GLYPH.supports} ${v.supports.length}`, `${GLYPH.refutes} ${v.refutes.length}`],
+    }),
     accentStyle: domainStyle(theme, "analysis"),
-    lines,
+    state: evState,
+    lines: body,
+    sections,
     maxBodyLines: 40,
   });
 }
@@ -414,24 +462,32 @@ export function feasibilityCard(theme: Theme, v: FeasibilityView): Component {
     "not-answerable": [GLYPH.blocked, "error"],
   };
   const [g, color] = vc[v.verdict];
+  const state: CardState = v.verdict === "answerable" ? "success" : v.verdict === "partial" ? "warning" : "error";
   const lines: string[] = [`${theme.fg(color, `${g} ${v.verdict}`)}  ${theme.fg("muted", v.question)}`, ""];
   for (const c of v.checked) {
     const cov = c.coverage != null ? ` ${theme.fg("dim", `${Math.round(c.coverage * 100)}% non-null`)}` : "";
     const mark = c.exists ? theme.fg("success", GLYPH.ok) : theme.fg("error", GLYPH.bad);
     lines.push(`  ${mark} ${theme.fg("text", c.table + (c.column ? `.${c.column}` : ""))}${cov}`);
   }
+  const sections: { label: string; lines: string[] }[] = [];
   if (v.blockers.length) {
-    lines.push("", theme.fg("error", "Blockers"));
-    for (const b of v.blockers) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", b)}`);
+    sections.push({
+      label: theme.fg("error", "Blockers"),
+      lines: v.blockers.map((b) => `  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", b)}`),
+    });
   }
   if (v.opportunities.length) {
-    lines.push("", theme.fg("success", "Opportunities"));
-    for (const o of v.opportunities) lines.push(`  ${theme.fg("dim", GLYPH.arrow)} ${theme.fg("text", o)}`);
+    sections.push({
+      label: theme.fg("success", "Opportunities"),
+      lines: v.opportunities.map((o) => `  ${theme.fg("dim", GLYPH.arrow)} ${theme.fg("text", o)}`),
+    });
   }
   return linesCard(theme, {
-    title: `Feasibility ${GLYPH.bullet} ${v.verdict}`,
+    title: cardHeader(theme, { title: `Feasibility ${GLYPH.bullet} ${v.verdict}` }),
     accentStyle: domainStyle(theme, "data"),
+    state,
     lines,
+    sections,
     maxBodyLines: 30,
   });
 }
@@ -472,8 +528,9 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
   const accentStyle = domainStyle(theme, "governance");
   if (!rows.length) {
     return linesCard(theme, {
-      title: "Claim ledger",
+      title: cardHeader(theme, { title: "Claim ledger" }),
       accentStyle,
+      state: "settled",
       lines: [theme.fg("muted", "(no hypotheses/findings parsed yet)")],
     });
   }
@@ -503,8 +560,9 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
       .trimEnd(),
   );
   return linesCard(theme, {
-    title: `Claim ledger ${GLYPH.bullet} ${rows.length}`,
+    title: cardHeader(theme, { title: `Claim ledger ${GLYPH.bullet} ${rows.length}` }),
     accentStyle,
+    state: "settled",
     lines,
     maxBodyLines: 60,
   });

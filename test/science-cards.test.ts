@@ -143,10 +143,19 @@ test("evidenceCard renders the new glyphs/words with empty refutes (shows 'none 
     refutes: [],
     refutesSearched: "accessory-gene dN/dS",
   });
-  const text = card.render(60).join("\n");
-  // Section headers carry their leading role glyph + word.
-  assert.ok(text.includes(`${GLYPH.supports} Supports (1)`), "supports header glyph + count");
-  assert.ok(text.includes(`${GLYPH.refutes} Refutes (0)`), "refutes header glyph + count");
+  const lines = card.render(60);
+  for (const line of lines) assert.equal(visibleWidth(line), 60);
+  const text = lines.join("\n");
+  // Supports/Refutes are now labeled sections, each preceded by a `┤`-terminated divider.
+  assert.ok(
+    lines.some((l) => l.includes("┤")),
+    "section dividers rendered (┤)",
+  );
+  assert.ok(text.includes(`${GLYPH.supports} Supports (1)`), "supports section label glyph + count");
+  assert.ok(text.includes(`${GLYPH.refutes} Refutes (0)`), "refutes section label glyph + count");
+  // Header: a bold "Evidence" title with the status summary + supports/refutes meta.
+  assert.ok(text.includes("Evidence"), "cardHeader title");
+  assert.ok(text.includes("supported"), "header summary carries the status");
   // Status row reads as the supported glyph + word (the word is role-coloured via
   // palette's hexFg, so an ANSI escape sits between glyph and word — assert each).
   assert.ok(text.includes(GLYPH.supports) && text.includes("supported"), "status glyph + word");
@@ -154,6 +163,38 @@ test("evidenceCard renders the new glyphs/words with empty refutes (shows 'none 
   // Each pointer is prefixed by its kind glyph (notebook here).
   assert.ok(text.includes(`${GLYPH.kindNotebook} 02.ipynb`), "notebook kind glyph on the pointer");
   assert.ok(text.includes("none found"), "auditable 'none found' on empty refutes");
+});
+
+test("evidenceCard renders width-exact for populated and empty inputs", () => {
+  // Fully populated, refuted (error state) with an unresolved section.
+  const populated = evidenceCard(theme, {
+    claim: "horizontal transfer drives the resistance signal",
+    status: "refuted",
+    confidence: "medium",
+    supports: [{ kind: "query", locator: "q1", exact: "n=37", relevance: "co-occurrence" }],
+    refutes: [{ kind: "paper", locator: "PMID 999", exact: "no linkage", relevance: "GWAS" }],
+    unresolved: ["strain coverage below 0.5"],
+  });
+  // Empty everything — must still render every section label, never throw.
+  const empty = evidenceCard(theme, {
+    claim: "open question",
+    status: "needs-evidence",
+    confidence: "low",
+    supports: [],
+    refutes: [],
+  });
+  for (const card of [populated, empty]) {
+    const lines = card.render(60);
+    for (const line of lines) assert.equal(visibleWidth(line), 60);
+    const text = lines.join("\n");
+    assert.ok(
+      lines.some((l) => l.includes("┤")),
+      "section dividers present",
+    );
+    assert.ok(text.includes("Supports") && text.includes("Refutes"), "both section labels appear");
+  }
+  // The populated card surfaces its Unresolved section.
+  assert.ok(populated.render(60).join("\n").includes("Unresolved (1)"), "unresolved section label");
 });
 
 test("confidenceFooter pairs a meter glyph with the tier word", () => {
