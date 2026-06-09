@@ -14,9 +14,14 @@ test("conduct contract names the behaviors we want by default", () => {
   assert.match(CONDUCT_CONTRACT, /berdl_peek/);
   // Make verification easy (offer the check by default).
   assert.match(lower, /make verification easy/);
+  // Back claims with artifacts and surface refuting evidence (calibrated trust).
+  assert.match(lower, /evidence in its own slot/);
+  assert.match(lower, /needs-evidence/);
 });
 
 test("conduct contract stays short enough not to dilute the directives", () => {
   // A guardrail, not a precise budget: a long contract buries the few rules that matter.
-  assert.ok(CONDUCT_CONTRACT.length < 2000, `contract too long: ${CONDUCT_CONTRACT.length} chars`);
+  // Raised 2000 → 2500 when the contract gained the artifact-backing / refutation
+  // directive (the core of the calibrated-trust workflow update); still a real ceiling.
+  assert.ok(CONDUCT_CONTRACT.length < 2500, `contract too long: ${CONDUCT_CONTRACT.length} chars`);
 });
