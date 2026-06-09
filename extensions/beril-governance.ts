@@ -4,14 +4,17 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
-import { type ClaimRow, parseClaimLedger } from "../lib/claim-ledger.ts";
+import { type ClaimRow, parseClaimLedger, parseEvidence } from "../lib/claim-ledger.ts";
 import { requireReady } from "../lib/readiness.ts";
+import type { EvidenceView } from "../lib/science.ts";
+import { linesCard } from "../lib/ui/card.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import {
   callLine,
   claimLedgerCard,
   destructiveResultCard,
   errorCard,
+  evidenceCard,
   hashCard,
   kvLines,
   lifecycleCard,
@@ -104,6 +107,39 @@ export default function berilGovernance(pi: ExtensionAPI) {
       if (isPartial) return partialLine(theme, "Reading claim ledger…");
       const d = result.details as { rows: ClaimRow[] };
       return claimLedgerCard(theme, d.rows);
+    },
+  });
+
+  pi.registerTool({
+    name: "evidence",
+    label: "Show evidence for a finding",
+    description:
+      "Read-only: parse a project's REPORT.md into the supporting AND refuting evidence behind one finding — each a re-openable pointer (query/notebook/figure/paper) — with its read-off status and confidence. Optionally pick a finding by substring; defaults to the first. Persists nothing; renders a card only.",
+    parameters: Type.Object({
+      project: Type.String({ description: "Project id (directory under projects/)." }),
+      finding: Type.Optional(
+        Type.String({ description: "Substring of the finding to show (case-insensitive). Defaults to the first." }),
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
+      const dir = join(ctx.cwd, "projects", params.project);
+      const reportMd = await readFile(join(dir, "REPORT.md"), "utf8").catch(() => "");
+      const view = parseEvidence(reportMd, params.finding);
+      const text = view
+        ? `${view.status}/${view.confidence} · ${view.supports.length} support(s), ${view.refutes.length} refute(s): ${view.claim}`
+        : `No evidence parsed for ${params.finding ?? params.project}.`;
+      return { content: [{ type: "text", text }], details: { view } };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `evidence · ${args.project}${args.finding ? ` (${args.finding})` : ""}`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Reading evidence…");
+      const d = result.details as { view: EvidenceView | null };
+      if (d.view) return evidenceCard(theme, d.view);
+      const what = context.args.finding ?? context.args.project;
+      return linesCard(theme, { title: "Evidence", lines: [theme.fg("muted", `(no evidence parsed for ${what})`)] });
     },
   });
 

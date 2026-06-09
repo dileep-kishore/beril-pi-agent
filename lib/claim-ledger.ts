@@ -8,7 +8,7 @@
  * "Supporting vs Refuting" pointer bullets.
  */
 
-import type { ClaimStatus, ConfidenceTier } from "./science.ts";
+import type { ClaimStatus, ConfidenceTier, EvidencePointer, EvidenceView } from "./science.ts";
 
 /** One claim's distilled state, as the read-only ledger card consumes it. */
 export interface ClaimRow {
@@ -183,4 +183,99 @@ export function parseClaimLedger(planMd: string, reportMd: string): ClaimRow[] {
       refutes: f?.refutes ?? 0,
     };
   });
+}
+
+/** Infer an `EvidencePointer["kind"]` from a bullet's `[tag]` or `PMID` marker. */
+function pointerKind(bullet: string): EvidencePointer["kind"] {
+  const tag = bullet.match(/\[(query|notebook|figure|paper)\]/i);
+  if (tag) return tag[1].toLowerCase() as EvidencePointer["kind"];
+  if (/\bPMID[:\s]/i.test(bullet)) return "paper";
+  return "query";
+}
+
+/** A path / notebook hash / PMID token in a bullet, if one is present. */
+function pointerLocator(bullet: string): string | null {
+  const pmid = bullet.match(/\bPMID[:\s]\s*(\d+)/i);
+  if (pmid) return `PMID:${pmid[1]}`;
+  const hash = bullet.match(/\b(?:sha256:)?[0-9a-f]{12,64}\b/i);
+  if (hash) return hash[0];
+  const path = bullet.match(/\b[\w./-]+\.(?:ipynb|py|png|svg|pdf|csv|parquet)\b/i);
+  if (path) return path[0];
+  return null;
+}
+
+/** Strip a leading bullet marker and surrounding whitespace from a line. */
+function stripBullet(line: string): string {
+  return line.replace(/^\s*[-*]\s+/, "").trim();
+}
+
+/** Parse the bullet lines under a `Supports:` / `Refutes:` head into pointers. */
+function parsePointers(bullets: string[]): EvidencePointer[] {
+  return bullets.map((b) => {
+    const exact = stripBullet(b);
+    return {
+      kind: pointerKind(exact),
+      locator: pointerLocator(exact) ?? exact,
+      exact,
+      relevance: "",
+    };
+  });
+}
+
+/**
+ * Parse the first matching finding out of REPORT.md into a single `EvidenceView`
+ * — the live, full-detail counterpart to the ledger row. PURE; never throws and
+ * returns `null` for non-string input or when no findings are present.
+ *
+ * Picks the first finding whose text contains `finding` (case-insensitive),
+ * else the first finding. `status`/`confidence` come from its Confidence &
+ * Caveats line; `supports`/`refutes`/`unresolved` come from the bullet lines
+ * under each `Supports:` / `Refutes:` / `Unresolved` head.
+ */
+export function parseEvidence(reportMd: string, finding?: string): EvidenceView | null {
+  if (typeof reportMd !== "string") return null;
+  const findings = parseFindings(reportMd);
+  if (!findings.length) return null;
+
+  const needle = finding?.trim().toLowerCase();
+  const chosen = (needle ? findings.find((f) => f.text.toLowerCase().includes(needle)) : undefined) ?? findings[0];
+
+  const lines = reportMd.split(/\r?\n/);
+  const bulletsAfter = (start: number): string[] => {
+    const bullets: string[] = [];
+    for (let j = start + 1; j < lines.length; j++) {
+      const l = lines[j];
+      if (/^\s*[-*]\s+/.test(l) && !/^\s*[-*]?\s*(?:supports?|refutes?|unresolved)\s*:?/i.test(l)) bullets.push(l);
+      else break;
+    }
+    return bullets;
+  };
+
+  let supports: EvidencePointer[] = [];
+  let refutes: EvidencePointer[] = [];
+  const unresolved: string[] = [];
+  let refutesSearched: string | undefined;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*[-*]?\s*supports?\s*:/i.test(line)) {
+      supports = parsePointers(bulletsAfter(i));
+    } else if (/^\s*[-*]?\s*refutes?\s*:/i.test(line)) {
+      refutes = parsePointers(bulletsAfter(i));
+      const searched = line.match(/\bsearched\s+(.+?)\s*$/i);
+      if (searched) refutesSearched = searched[1].replace(/[.]\s*$/, "").trim();
+    } else if (/^\s*[-*]?\s*unresolved\s*:?/i.test(line)) {
+      for (const b of bulletsAfter(i)) unresolved.push(stripBullet(b));
+    }
+  }
+
+  return {
+    claim: chosen.text,
+    status: chosen.status,
+    confidence: chosen.confidence,
+    supports,
+    refutes,
+    ...(unresolved.length ? { unresolved } : {}),
+    ...(refutesSearched ? { refutesSearched } : {}),
+  };
 }

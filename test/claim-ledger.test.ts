@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseClaimLedger } from "../lib/claim-ledger.ts";
+import { parseClaimLedger, parseEvidence } from "../lib/claim-ledger.ts";
 
 const PLAN = `# Research Plan: AMR Atlas
 
@@ -44,4 +44,30 @@ test("findings with no parseable hypotheses become one row each, slugged", () =>
 test("empty / missing inputs → [] (never throws)", () => {
   assert.deepEqual(parseClaimLedger("", ""), []);
   assert.deepEqual(parseClaimLedger(undefined as unknown as string, undefined as unknown as string), []);
+});
+
+const EVIDENCE_REPORT = `# Report: AMR Atlas
+
+## Confidence & Caveats
+- Finding: clinical isolates carry more AMR genes (**medium**: one re-runnable query; n=37 isolates. Status: needs-evidence).
+
+## Supporting vs Refuting
+- Supports:
+  - [notebook] notebooks/amr_split.ipynb#cell-4 — clinical mean 4.2 vs environmental 1.1.
+- Refutes: none found — searched accessory-gene burden by habitat.
+`;
+
+test("parseEvidence builds a view with typed support pointers + read-off status/confidence", () => {
+  const view = parseEvidence(EVIDENCE_REPORT);
+  assert.ok(view, "a finding yields a view");
+  assert.equal(view?.status, "needs-evidence");
+  assert.equal(view?.confidence, "medium");
+  assert.equal(view?.supports.length, 1);
+  assert.equal(view?.supports[0].kind, "notebook");
+  assert.equal(view?.refutes.length, 0);
+});
+
+test("parseEvidence returns null for empty input", () => {
+  assert.equal(parseEvidence(""), null);
+  assert.equal(parseEvidence(undefined as unknown as string), null);
 });

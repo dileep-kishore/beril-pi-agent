@@ -32,6 +32,18 @@ export interface EvidencePointer {
   relevance: string;
 }
 
+/** A claim with its supporting AND refuting evidence, each a re-openable pointer. */
+export interface EvidenceView {
+  claim: string;
+  status: ClaimStatus;
+  confidence: ConfidenceTier;
+  supports: EvidencePointer[];
+  refutes: EvidencePointer[];
+  unresolved?: string[];
+  /** What was searched when refutes is empty (so "none found" is auditable). */
+  refutesSearched?: string;
+}
+
 /** A re-runnable data/code result (vs literature, which alone stays `low`). */
 function isResult(p: EvidencePointer): boolean {
   return p.kind === "query" || p.kind === "notebook";

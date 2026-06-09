@@ -2,7 +2,7 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, visibleWidth } from "@earendil-works/pi-tui";
 import type { ClaimRow } from "../claim-ledger.ts";
 import type { LitRecord } from "../lit.ts";
-import type { ClaimStatus, ConfidenceTier, EvidencePointer } from "../science.ts";
+import type { ClaimStatus, ConfidenceTier, EvidencePointer, EvidenceView } from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
 import { GLYPH } from "./glyphs.ts";
@@ -361,16 +361,8 @@ export function confidenceFooter(theme: Theme, tier: ConfidenceTier, caveat?: st
   return c + (caveat ? theme.fg("dim", ` — ${caveat}`) : "");
 }
 
-export interface EvidenceView {
-  claim: string;
-  status: ClaimStatus;
-  confidence: ConfidenceTier;
-  supports: EvidencePointer[];
-  refutes: EvidencePointer[];
-  unresolved?: string[];
-  /** What was searched when refutes is empty (so "none found" is auditable). */
-  refutesSearched?: string;
-}
+// EvidenceView is the pure home; re-exported so existing importers keep working.
+export type { EvidenceView };
 
 /** Glyph for an evidence pointer's kind. */
 const KIND_GLYPH: Record<EvidencePointer["kind"], string> = {
