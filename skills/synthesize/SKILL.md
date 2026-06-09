@@ -42,6 +42,12 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 3. **Statistical significance** — report p-values, effect sizes, and confidence intervals where available. Distinguish statistical significance from biological/effect-size significance.
 4. **Unexpected patterns** — surprising results, anomalies, coverage gaps.
 
+**Score and ground each finding (calibrated trust):**
+- **Confidence tier** — `high` (≥2 independent artifact-backed results), `medium` (one re-runnable query/notebook result), or `low` (literature-only / no artifact → mark the claim `needs-evidence`). Confidence comes from the *artifacts*, not from how sure you feel.
+- **Scope-bound** the claim: "in these N samples / under filter X", not a universal.
+- **Provenance** — cite the re-runnable artifact (`*(Notebook: file.ipynb)*`, the query, or `PMID`) AND quote the **exact source sentence or number** behind the claim. Never state a number you cannot trace to a query or notebook output.
+- **Status** — tag each finding `open / supported / refuted / needs-replication / blocked / needs-evidence`.
+
 **Present the draft to the user** and ask whether the interpretation is correct, whether any results were missed or misread, and whether additional context should be included. **Explicitly flag the one or two findings you are least confident in** — and why (thin coverage, an unfamiliar method, a borderline p-value) — rather than presenting everything with equal authority. Offer to show the data or the notebook cell behind any finding so the user can check it cheaply. Revise on feedback before moving to Pass 2.
 
 ### Pass 2 — Literature cross-reference and synthesis
@@ -61,11 +67,19 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 | Is this novel? | Identify what the BERDL data adds that wasn't previously known. |
 | Are there caveats? | Data coverage, confounders, methodological limitations. |
 
+**Weigh supporting vs refuting evidence.** Classify each analysis result and literature source as **strong-support** / **weak-support** / **neutral** / **refuting** for H1, and record the tally in the Interpretation section:
+- (strong > refuting) and signal not swamped → **H1 supported, with caveats**.
+- (refuting ≥ strong) → **H0 not rejected**.
+- balanced → **mixed evidence** (say so plainly; do not pick a side the data doesn't support).
+For every Key Finding, **actively look for disconfirming evidence**: a `berdl_query` phrased to break it and a paper that disagrees. Show the refuting slot even when empty ("none found — searched X").
+
 ## REPORT.md structure
 
 Write or update `REPORT.md` with these sections. Place figures inline near the finding they support (`![desc](figures/filename.png)` — the UI rewrites these paths for web rendering); every figure in the project's `figures/` directory should appear inline at least once. End each finding subsection with `*(Notebook: filename.ipynb)*` for provenance.
 
 - **Key Findings** — one subsection per finding: the figure, the statistical result with specific numbers, the notebook provenance line.
+- **Confidence & Caveats** *(not optional)* — for each Key Finding, one line: "Finding: {statement} (**{tier}**: {why}. Caveats: {limitation}. Status: {open|supported|refuted|needs-replication|blocked|needs-evidence})."
+- **Supporting vs Refuting** — per Key Finding, a short `Supports:` / `Refutes:` split, each item a re-openable pointer (notebook cell / query / PMID) + the verbatim source line. If you found no refuting evidence, write "Refutes: none found — searched {what}." Do not omit the Refutes line.
 - **Discoveries** *(optional)* — include only if the analysis surfaced non-trivial insights worth elevating across projects. Each entry is a self-contained one-liner a reader from another project could learn from (e.g., "Pangenome openness correlates with environmental breadth in soil-associated genera (rho=0.38, p<0.01)."). Omit the heading entirely if there's nothing material — an absent section is the natural representation of "no claims of this kind." **Do not write to per-project memory files here.** These entries flow through `/berdl-review` (the reviewer evaluates them as part of the report), and only the approved-and-reviewed content is extracted into the project's `memories/discoveries.md` at approval time (via `/submit`). Writing memories at synthesize time would propagate unvetted claims; the review-gated path keeps promoted memories tied to content that survived review.
 - **Performance Notes** *(optional)* — include only for non-obvious query timings, optimizations, or anti-patterns future projects on similar data should know (e.g., "Joining `species_pangenome_genes` to `species_function_genes` via `species_id` is 3x faster than via `cluster_id` for queries spanning >100 species."). Same review-gated promotion path as Discoveries (→ `memories/performance.md` at approval). Omit the heading if nothing material.
 - **Results** — detailed results with embedded figures and markdown tables.
@@ -73,6 +87,7 @@ Write or update `REPORT.md` with these sections. Place figures inline near the f
   - **Literature Context** — "{Finding} aligns with Author et al. (Year) who found {result} in {organism}"; "{Finding} contradicts Author et al. (Year) — possible explanation: {methodology difference}".
   - **Novel Contribution** — what the BERDL data adds that wasn't known before.
   - **Limitations** — data coverage gaps, potential confounders, methodological caveats.
+- **Assumptions & Caveats** — list the key assumptions from the research plan and state which **held** vs **broke** (compare against the plan's confidence prior). Example: "Assumption: AlphaEarth embeddings >70% dense. **BROKE** — only 9.6% covered; switched to manual classification."
 - **Data** — `### Sources` (BERDL collections and tables queried, with their exact collection IDs and what each provides) and `### Generated Data` (output files with row counts and descriptions). This documents data lineage.
 - **Supporting Evidence** — a Notebooks table (filename, purpose) and a Figures table (filename, description).
 - **Future Directions** — next steps based on findings, follow-ups addressing limitations, new questions raised.
@@ -89,7 +104,7 @@ Write or update `REPORT.md` with these sections. Place figures inline near the f
 
 **Suggest next steps to the user — make verification the easy default, not an afterthought.** Don't just list the commands and wait; proactively offer the single most useful check next:
 
-1. Walk the user through the Key Findings and Interpretation, leading with the findings you flagged as least confident and offering to open the data or notebook cell behind any of them.
+1. Walk the user through the Key Findings and Interpretation, **leading with the findings tagged lowest-confidence or `needs-evidence`**, and offering to open the data, the notebook cell, or the refuting check behind any of them. Offer `/berdl-refute <project>` to actively stress-test the headline findings.
 2. **Offer to run `/berdl-review <project>` now** — an independent reviewer pass against the current report (each review embeds the report hash so `/submit` knows which is current). Frame it as the natural next step, not an optional extra; iterate freely.
 3. When the findings hold up and the user is ready to stand behind the project, run `/submit <project>` to approve and archive it to the lakehouse (ORCID-gated, irreversible).
 
