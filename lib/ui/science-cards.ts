@@ -1,5 +1,5 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import { type Component, Text } from "@earendil-works/pi-tui";
+import { type Component, Text, visibleWidth } from "@earendil-works/pi-tui";
 import type { ClaimRow } from "../claim-ledger.ts";
 import type { LitRecord } from "../lit.ts";
 import type { ClaimStatus, ConfidenceTier, EvidencePointer } from "../science.ts";
@@ -7,7 +7,7 @@ import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
 import { GLYPH } from "./glyphs.ts";
 import { hyperlink } from "./links.ts";
-import { domainStyle } from "./palette.ts";
+import { domainStyle, roleStyle } from "./palette.ts";
 import { markdownTable } from "./table.ts";
 
 /**
@@ -30,7 +30,7 @@ export function callLine(theme: Theme, summary: string): Component {
 
 /** A transient one-liner while a tool is still streaming. */
 export function partialLine(theme: Theme, message: string): Component {
-  return new Text(theme.fg("warning", message), 0, 0);
+  return new Text(theme.fg("muted", `${GLYPH.inProgress} ${message}`), 0, 0);
 }
 
 /** A tool result's text content joined into one string — the message to surface on failure. */
@@ -296,26 +296,38 @@ export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: 
   });
 }
 
-/** Map a claim status to a glyph + theme colour key. */
+/**
+ * Map a claim status to its glyph + a colour-styled word. The glyph carries the
+ * meaning even without colour; supports/refuted resolve through the colorblind-safe
+ * role table (`palette.ts`), the operational states through theme tokens.
+ */
 function statusGlyph(theme: Theme, status: ClaimStatus): string {
-  const m: Record<ClaimStatus, [string, ThemeColor]> = {
-    supported: [GLYPH.ok, "success"],
-    refuted: [GLYPH.bad, "error"],
-    "needs-replication": [GLYPH.pending, "warning"],
-    blocked: [GLYPH.bad, "muted"],
-    "needs-evidence": [GLYPH.pending, "warning"],
-    open: [GLYPH.bullet, "muted"],
-  };
-  const [g, color] = m[status];
-  return theme.fg(color, `${g} ${status}`);
+  switch (status) {
+    case "supported":
+      return `${GLYPH.supports} ${roleStyle(theme, "supports")("supported")}`;
+    case "refuted":
+      return `${GLYPH.refutes} ${roleStyle(theme, "refutes")("refuted")}`;
+    case "needs-replication":
+      return `${GLYPH.replicate} ${theme.fg("warning", "needs-replication")}`;
+    case "blocked":
+      return `${GLYPH.blocked} ${theme.fg("error", "blocked")}`;
+    case "needs-evidence":
+      return `${GLYPH.unresolved} ${theme.fg("muted", "needs-evidence")}`;
+    default:
+      return `${GLYPH.pending} ${theme.fg("muted", "open")}`;
+  }
 }
 
-const TIER_COLOR: Record<ConfidenceTier, ThemeColor> = { high: "success", medium: "warning", low: "muted" };
-
-/** A quiet, dim confidence/caveat footer line to append under a result card body. */
+/** A quiet confidence/caveat footer line: a filled-to-empty meter glyph + word, plus an optional dim caveat. */
 export function confidenceFooter(theme: Theme, tier: ConfidenceTier, caveat?: string): string {
-  const c = theme.fg(TIER_COLOR[tier], `confidence: ${tier}`);
-  return theme.fg("dim", `${GLYPH.bullet} `) + c + (caveat ? theme.fg("dim", ` — ${caveat}`) : "");
+  const m: Record<ConfidenceTier, [string, ThemeColor]> = {
+    high: [GLYPH.meterFull, "text"],
+    medium: [GLYPH.meterHalf, "muted"],
+    low: [GLYPH.meterLow, "dim"],
+  };
+  const [g, color] = m[tier];
+  const c = `${g} ${theme.fg(color, `confidence: ${tier}`)}`;
+  return c + (caveat ? theme.fg("dim", ` — ${caveat}`) : "");
 }
 
 export interface EvidenceView {
@@ -329,29 +341,38 @@ export interface EvidenceView {
   refutesSearched?: string;
 }
 
+/** Glyph for an evidence pointer's kind. */
+const KIND_GLYPH: Record<EvidencePointer["kind"], string> = {
+  query: GLYPH.kindQuery,
+  notebook: GLYPH.kindNotebook,
+  figure: GLYPH.kindFigure,
+  paper: GLYPH.kindPaper,
+};
+
 function evidenceLines(theme: Theme, items: EvidencePointer[]): string[] {
-  return items.map(
-    (p) =>
-      `  ${theme.fg("dim", `[${p.kind}]`)} ${theme.fg("text", p.locator)} ${theme.fg("muted", `— ${p.relevance}`)}`,
-  );
+  return items.map((p) => {
+    // Re-runnable results (query/notebook) read as text; literature/figures dim.
+    const weight: ThemeColor = p.kind === "query" || p.kind === "notebook" ? "text" : "dim";
+    return `  ${theme.fg("dim", KIND_GLYPH[p.kind])} ${theme.fg(weight, p.locator)} ${theme.fg("muted", `— ${p.relevance}`)}`;
+  });
 }
 
 /** A claim with its supporting AND refuting evidence, each a re-openable pointer. */
 export function evidenceCard(theme: Theme, v: EvidenceView): Component {
   const lines: string[] = [
-    `${statusGlyph(theme, v.status)}  ${theme.fg(TIER_COLOR[v.confidence], `confidence: ${v.confidence}`)}`,
+    `${statusGlyph(theme, v.status)}  ${confidenceFooter(theme, v.confidence)}`,
     theme.fg("text", v.claim),
     "",
-    theme.fg("success", `Supports (${v.supports.length})`),
+    roleStyle(theme, "supports")(`${GLYPH.supports} Supports (${v.supports.length})`),
     ...(v.supports.length ? evidenceLines(theme, v.supports) : [theme.fg("muted", "  (none)")]),
     "",
-    theme.fg("error", `Refutes (${v.refutes.length})`),
+    roleStyle(theme, "refutes")(`${GLYPH.refutes} Refutes (${v.refutes.length})`),
     ...(v.refutes.length
       ? evidenceLines(theme, v.refutes)
       : [theme.fg("muted", `  none found${v.refutesSearched ? ` — searched ${v.refutesSearched}` : ""}`)]),
   ];
   if (v.unresolved?.length) {
-    lines.push("", theme.fg("warning", "Unresolved"));
+    lines.push("", theme.fg("muted", `${GLYPH.unresolved} Unresolved (${v.unresolved.length})`));
     for (const u of v.unresolved) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", u)}`);
   }
   return linesCard(theme, {
@@ -389,8 +410,8 @@ export function feasibilityVerdict(
 export function feasibilityCard(theme: Theme, v: FeasibilityView): Component {
   const vc: Record<FeasibilityView["verdict"], [string, ThemeColor]> = {
     answerable: [GLYPH.ok, "success"],
-    partial: [GLYPH.pending, "warning"],
-    "not-answerable": [GLYPH.bad, "error"],
+    partial: [GLYPH.warn, "warning"],
+    "not-answerable": [GLYPH.blocked, "error"],
   };
   const [g, color] = vc[v.verdict];
   const lines: string[] = [`${theme.fg(color, `${g} ${v.verdict}`)}  ${theme.fg("muted", v.question)}`, ""];
@@ -415,11 +436,37 @@ export function feasibilityCard(theme: Theme, v: FeasibilityView): Component {
   });
 }
 
+/** Status as a glyph + bare word (the colour-styled tag for a ledger cell). */
+function statusTag(theme: Theme, status: ClaimStatus): string {
+  return statusGlyph(theme, status);
+}
+
+/** The confidence tier as a meter glyph + colour-styled tier word for a ledger cell. */
+function confidenceTag(theme: Theme, tier: ConfidenceTier): string {
+  const m: Record<ConfidenceTier, [string, ThemeColor]> = {
+    high: [GLYPH.meterFull, "text"],
+    medium: [GLYPH.meterHalf, "muted"],
+    low: [GLYPH.meterLow, "dim"],
+  };
+  const [g, color] = m[tier];
+  return `${g} ${theme.fg(color, tier)}`;
+}
+
+/** Left-pad a (possibly ANSI-styled) cell to a target visible width. */
+function padCell(cell: string, width: number): string {
+  const pad = Math.max(0, width - visibleWidth(cell));
+  return cell + " ".repeat(pad);
+}
+
 /**
- * The claim ledger as a `Status | Confidence | Supports | Refutes | Stale?`
- * table — one row per hypothesis/finding the read-only `claim_ledger` tool
+ * The claim ledger as a `Hypothesis | Status | Confidence | Supports | Refutes |
+ * Stale` table — one row per hypothesis/finding the read-only `claim_ledger` tool
  * parses out of `RESEARCH_PLAN.md` / `REPORT.md`. `ClaimRow` lives in the pure
  * `claim-ledger.ts` parser; this card only frames it.
+ *
+ * Hand-drawn (not `markdownTable`): the Status/Confidence/Stale cells carry glyphs
+ * + per-role ANSI, which `markdownTable` would either escape or misalign (it sizes
+ * columns by raw `.length`, counting the escape bytes). We align on `visibleWidth`.
  */
 export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
   const accentStyle = domainStyle(theme, "governance");
@@ -430,17 +477,54 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
       lines: [theme.fg("muted", "(no hypotheses/findings parsed yet)")],
     });
   }
-  const table = rows.map((r) => ({
-    Hypothesis: r.hypothesis,
-    Status: r.status,
-    Confidence: r.confidence,
-    Supports: r.supports,
-    Refutes: r.refutes,
-    Stale: r.stale ? "yes" : "",
+  const cells = rows.map((r) => ({
+    hypothesis: r.hypothesis,
+    status: statusTag(theme, r.status),
+    confidence: confidenceTag(theme, r.confidence),
+    supports: `${GLYPH.supports} ${r.supports}`,
+    refutes: `${GLYPH.refutes} ${r.refutes}`,
+    stale: r.stale ? `${GLYPH.warn} stale` : "",
   }));
-  return markdownCard(theme, {
+  const wHyp = Math.max(10, ...cells.map((c) => visibleWidth(c.hypothesis)));
+  const wStatus = Math.max(...cells.map((c) => visibleWidth(c.status)));
+  const wConf = Math.max(...cells.map((c) => visibleWidth(c.confidence)));
+  const wSup = Math.max(...cells.map((c) => visibleWidth(c.supports)));
+  const wRef = Math.max(...cells.map((c) => visibleWidth(c.refutes)));
+  const lines = cells.map((c) =>
+    [
+      padCell(theme.fg("text", c.hypothesis), wHyp),
+      padCell(c.status, wStatus),
+      padCell(c.confidence, wConf),
+      padCell(c.supports, wSup),
+      padCell(c.refutes, wRef),
+      c.stale ? theme.fg("warning", c.stale) : "",
+    ]
+      .join("  ")
+      .trimEnd(),
+  );
+  return linesCard(theme, {
     title: `Claim ledger ${GLYPH.bullet} ${rows.length}`,
     accentStyle,
-    markdown: markdownTable(table as unknown as Record<string, unknown>[], { maxRows: 60 }),
+    lines,
+    maxBodyLines: 60,
+  });
+}
+
+/**
+ * The red-team pass as its own ▽-framed card (deliberately NOT an `errorCard`): a
+ * surviving-disconfirming-checks list over a refutes-coloured frame, plus a dim
+ * pointer to the full pass on disk. Pure builder — the caller decides when to
+ * surface it.
+ */
+export function redTeamCard(theme: Theme, opts: { project: string; surviving: string[]; path: string }): Component {
+  const lines = opts.surviving.length
+    ? opts.surviving.map((s) => `  ${theme.fg("dim", GLYPH.refutes)} ${theme.fg("text", s)}`)
+    : [theme.fg("muted", "  (no surviving disconfirming checks)")];
+  lines.push("", theme.fg("dim", `full pass: ${opts.path}`));
+  return linesCard(theme, {
+    title: `${GLYPH.refutes} Red-team ${GLYPH.bullet} ${opts.project}`,
+    accentStyle: roleStyle(theme, "refutes"),
+    lines,
+    maxBodyLines: 30,
   });
 }
