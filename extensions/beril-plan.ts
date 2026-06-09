@@ -60,7 +60,7 @@ export default function berilPlan(pi: ExtensionAPI) {
       pi.sendUserMessage(
         `Follow the research-plan skill to draft RESEARCH_PLAN.md for project "${project}". ` +
           `Ground it in the research question, the data you actually found (use berdl_discover / berdl_peek), and references.md if present, ` +
-          `and use the skill's template. First confirm the question is answerable with the available data — if it is not, say so plainly instead of writing a plan. ` +
+          `and use the skill's template. After clarifying the question and before drafting, call the berdl_feasibility tool with the candidate tables and their key columns; a not-answerable verdict means reshape the question first. First confirm the question is answerable with the available data — if it is not, say so plainly instead of writing a plan. ` +
           `After writing the plan, call the research_plan tool to show it, move "${project}" to "proposed" with lifecycle_transition, ` +
           `and use request_checkpoint to ask the scientist whether to: approve and start the analysis (/analyze ${project}), get an independent plan review first (/berdl-review ${project} --plan), or iterate on the plan.`,
       );

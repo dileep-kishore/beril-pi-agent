@@ -12,6 +12,8 @@ import {
   destructiveResultCard,
   discoverCard,
   errorCard,
+  feasibilityCard,
+  feasibilityVerdict,
   kvLines,
   partialLine,
   peekCard,
@@ -137,6 +139,99 @@ export default function berilData(pi: ExtensionAPI) {
         sample: Record<string, unknown>[];
       };
       return peekCard(theme, d);
+    },
+  });
+
+  pi.registerTool({
+    name: "berdl_feasibility",
+    label: "Check data feasibility",
+    description:
+      "Before planning, check whether a research question is answerable with the available BERDL data. Pass the question, the candidate tables, and (optionally) the key columns each must have. Runs CHEAP probes only — column existence via DESCRIBE and a bounded non-null coverage count — never a full scan. Returns a per-check breakdown so you can render an honest 'answerable / partial / not-answerable' verdict and name the limiting tables BEFORE writing a plan.",
+    parameters: Type.Object({
+      question: Type.String({ description: "The research question, 1-2 sentences." }),
+      checks: Type.Array(
+        Type.Object({
+          table: Type.String({ description: "Fully-qualified table, e.g. kbase.ke_pangenome.genome." }),
+          column: Type.Optional(
+            Type.String({ description: "A key column whose presence/coverage gates the question." }),
+          ),
+        }),
+        { description: "The tables (and optional key columns) the question depends on." },
+      ),
+    }),
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
+      await requireReady(pi);
+      const checked: { table: string; column?: string; coverage?: number; exists: boolean }[] = [];
+      for (const c of params.checks) {
+        const table = c.table.trim();
+        if (!isPlausibleTable(table)) {
+          checked.push({ table, column: c.column, exists: false });
+          continue;
+        }
+        let cols: QueryPayload;
+        try {
+          cols = await berilExec<QueryPayload>(pi, ["query", "--query", describeSql(table), "--limit", "500"]);
+        } catch {
+          checked.push({ table, column: c.column, exists: false });
+          continue;
+        }
+        const names = new Set(cols.rows.map((r) => String(r.col_name ?? r.column ?? r.name ?? "").toLowerCase()));
+        if (!c.column) {
+          checked.push({ table, exists: cols.rows.length > 0 });
+          continue;
+        }
+        const exists = names.has(c.column.toLowerCase());
+        let coverage: number | undefined;
+        if (exists) {
+          // Bounded coverage: non-null fraction over a capped sample (no full scan).
+          const sql = `SELECT avg(CASE WHEN \`${c.column}\` IS NOT NULL THEN 1.0 ELSE 0.0 END) AS cov FROM (SELECT \`${c.column}\` FROM ${table} LIMIT 5000)`;
+          try {
+            const cov = await berilExec<QueryPayload>(pi, ["query", "--query", sql, "--limit", "1"]);
+            const raw = cov.rows[0]?.cov;
+            const num = typeof raw === "number" ? raw : Number(raw);
+            if (Number.isFinite(num)) coverage = num;
+          } catch {
+            // coverage stays undefined; existence already recorded
+          }
+        }
+        checked.push({ table, column: c.column, exists, coverage });
+      }
+      const text = checked
+        .map(
+          (c) =>
+            `${c.exists ? "ok" : "MISSING"} ${c.table}${c.column ? `.${c.column}` : ""}${c.coverage != null ? ` (${Math.round(c.coverage * 100)}% non-null)` : ""}`,
+        )
+        .join("\n");
+      return {
+        content: [{ type: "text", text: text || "(no checks)" }],
+        details: { question: params.question, checked },
+      };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `feasibility · ${args.checks?.length ?? 0} check(s)`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Probing data feasibility…");
+      const d = result.details as {
+        question: string;
+        checked: { table: string; column?: string; coverage?: number; exists: boolean }[];
+      };
+      const missing = d.checked.filter((c) => !c.exists);
+      const sparse = d.checked.filter((c) => c.exists && c.coverage != null && c.coverage < 0.5);
+      const verdict = feasibilityVerdict(d.checked);
+      return feasibilityCard(theme, {
+        verdict,
+        question: d.question,
+        blockers: [
+          ...missing.map((c) => `${c.table}${c.column ? `.${c.column}` : ""} is absent`),
+          ...sparse.map(
+            (c) => `${c.table}.${c.column} is ${Math.round((c.coverage as number) * 100)}% non-null (sparse)`,
+          ),
+        ],
+        opportunities: [],
+        checked: d.checked,
+      });
     },
   });
 

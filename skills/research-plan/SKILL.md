@@ -18,7 +18,10 @@ actually have**. Use `berdl_discover` to find the relevant databases/tables and
 needed to answer the question is not present, say so plainly and help the
 scientist reshape the question — a beautiful plan for an unanswerable question
 wastes everyone's time. This is BERIL's differentiator: the plan is grounded in
-real, accessible data, not assumed schemas.
+real, accessible data, not assumed schemas. Use the `berdl_feasibility` tool with
+the candidate tables and their key columns; a `not-answerable` verdict means stop
+and reshape the question — name the limiting table and propose the closest
+answerable question before drafting the plan.
 
 ## What a strong plan contains
 
