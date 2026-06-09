@@ -1,6 +1,7 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { type Component, Text } from "@earendil-works/pi-tui";
 import type { LitRecord } from "../lit.ts";
+import type { ClaimStatus, ConfidenceTier, EvidencePointer } from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
 import { GLYPH } from "./glyphs.ts";
@@ -289,6 +290,125 @@ export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: 
   return linesCard(theme, {
     title,
     accentStyle: domainStyle(theme, r.ok ? "analysis" : "destructive"),
+    lines,
+    maxBodyLines: 30,
+  });
+}
+
+/** Map a claim status to a glyph + theme colour key. */
+function statusGlyph(theme: Theme, status: ClaimStatus): string {
+  const m: Record<ClaimStatus, [string, ThemeColor]> = {
+    supported: [GLYPH.ok, "success"],
+    refuted: [GLYPH.bad, "error"],
+    "needs-replication": [GLYPH.pending, "warning"],
+    blocked: [GLYPH.bad, "muted"],
+    "needs-evidence": [GLYPH.pending, "warning"],
+    open: [GLYPH.bullet, "muted"],
+  };
+  const [g, color] = m[status];
+  return theme.fg(color, `${g} ${status}`);
+}
+
+const TIER_COLOR: Record<ConfidenceTier, ThemeColor> = { high: "success", medium: "warning", low: "muted" };
+
+/** A quiet, dim confidence/caveat footer line to append under a result card body. */
+export function confidenceFooter(theme: Theme, tier: ConfidenceTier, caveat?: string): string {
+  const c = theme.fg(TIER_COLOR[tier], `confidence: ${tier}`);
+  return theme.fg("dim", `${GLYPH.bullet} `) + c + (caveat ? theme.fg("dim", ` — ${caveat}`) : "");
+}
+
+export interface EvidenceView {
+  claim: string;
+  status: ClaimStatus;
+  confidence: ConfidenceTier;
+  supports: EvidencePointer[];
+  refutes: EvidencePointer[];
+  unresolved?: string[];
+  /** What was searched when refutes is empty (so "none found" is auditable). */
+  refutesSearched?: string;
+}
+
+function evidenceLines(theme: Theme, items: EvidencePointer[]): string[] {
+  return items.map(
+    (p) =>
+      `  ${theme.fg("dim", `[${p.kind}]`)} ${theme.fg("text", p.locator)} ${theme.fg("muted", `— ${p.relevance}`)}`,
+  );
+}
+
+/** A claim with its supporting AND refuting evidence, each a re-openable pointer. */
+export function evidenceCard(theme: Theme, v: EvidenceView): Component {
+  const lines: string[] = [
+    `${statusGlyph(theme, v.status)}  ${theme.fg(TIER_COLOR[v.confidence], `confidence: ${v.confidence}`)}`,
+    theme.fg("text", v.claim),
+    "",
+    theme.fg("success", `Supports (${v.supports.length})`),
+    ...(v.supports.length ? evidenceLines(theme, v.supports) : [theme.fg("muted", "  (none)")]),
+    "",
+    theme.fg("error", `Refutes (${v.refutes.length})`),
+    ...(v.refutes.length
+      ? evidenceLines(theme, v.refutes)
+      : [theme.fg("muted", `  none found${v.refutesSearched ? ` — searched ${v.refutesSearched}` : ""}`)]),
+  ];
+  if (v.unresolved?.length) {
+    lines.push("", theme.fg("warning", "Unresolved"));
+    for (const u of v.unresolved) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", u)}`);
+  }
+  return linesCard(theme, {
+    title: `Evidence ${GLYPH.bullet} ${v.status}`,
+    accentStyle: domainStyle(theme, "analysis"),
+    lines,
+    maxBodyLines: 40,
+  });
+}
+
+export interface FeasibilityView {
+  verdict: "answerable" | "partial" | "not-answerable";
+  question: string;
+  blockers: string[];
+  opportunities: string[];
+  checked: { table: string; column?: string; coverage?: number; exists: boolean }[];
+}
+
+/**
+ * Decide a feasibility verdict from the probe results (pure, deterministic):
+ * - any check missing entirely → `not-answerable`.
+ * - any existing check whose coverage is below 0.5 → `partial`.
+ * - otherwise → `answerable`.
+ */
+export function feasibilityVerdict(
+  checked: { table: string; column?: string; coverage?: number; exists: boolean }[],
+): FeasibilityView["verdict"] {
+  const missing = checked.some((c) => !c.exists);
+  if (missing) return "not-answerable";
+  const sparse = checked.some((c) => c.exists && c.coverage != null && c.coverage < 0.5);
+  if (sparse) return "partial";
+  return "answerable";
+}
+
+export function feasibilityCard(theme: Theme, v: FeasibilityView): Component {
+  const vc: Record<FeasibilityView["verdict"], [string, ThemeColor]> = {
+    answerable: [GLYPH.ok, "success"],
+    partial: [GLYPH.pending, "warning"],
+    "not-answerable": [GLYPH.bad, "error"],
+  };
+  const [g, color] = vc[v.verdict];
+  const lines: string[] = [`${theme.fg(color, `${g} ${v.verdict}`)}  ${theme.fg("muted", v.question)}`, ""];
+  for (const c of v.checked) {
+    const cov = c.coverage != null ? ` ${theme.fg("dim", `${Math.round(c.coverage * 100)}% non-null`)}` : "";
+    const mark = c.exists ? theme.fg("success", GLYPH.ok) : theme.fg("error", GLYPH.bad);
+    lines.push(`  ${mark} ${theme.fg("text", c.table + (c.column ? `.${c.column}` : ""))}${cov}`);
+  }
+  if (v.blockers.length) {
+    lines.push("", theme.fg("error", "Blockers"));
+    for (const b of v.blockers) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", b)}`);
+  }
+  if (v.opportunities.length) {
+    lines.push("", theme.fg("success", "Opportunities"));
+    for (const o of v.opportunities) lines.push(`  ${theme.fg("dim", GLYPH.arrow)} ${theme.fg("text", o)}`);
+  }
+  return linesCard(theme, {
+    title: `Feasibility ${GLYPH.bullet} ${v.verdict}`,
+    accentStyle: domainStyle(theme, "data"),
     lines,
     maxBodyLines: 30,
   });

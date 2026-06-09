@@ -3,9 +3,11 @@ import { test } from "node:test";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
+  confidenceFooter,
   discoverCard,
   envCard,
   errorCard,
+  evidenceCard,
   formatLitMarkdown,
   kvLines,
   peekMarkdown,
@@ -128,4 +130,20 @@ test("kvLines renders labeled scalar fields and skips nested objects", () => {
   assert.ok(text.includes("count") && text.includes("42"));
   assert.ok(text.includes("missing") && text.includes("—"), "null renders as em-dash");
   assert.ok(!text.includes("nested"), "object-valued keys are skipped");
+});
+
+test("evidenceCard renders with empty refutes (shows 'none found')", () => {
+  const card = evidenceCard(theme, {
+    claim: "core genes under stronger purifying selection",
+    status: "supported",
+    confidence: "high",
+    supports: [{ kind: "notebook", locator: "02.ipynb", exact: "dN/dS=0.08", relevance: "main result" }],
+    refutes: [],
+    refutesSearched: "accessory-gene dN/dS",
+  });
+  assert.ok(card);
+});
+
+test("confidenceFooter is a string with the tier", () => {
+  assert.match(confidenceFooter(theme, "medium", "n=37"), /confidence: medium/);
 });
