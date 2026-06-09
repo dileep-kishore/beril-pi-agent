@@ -118,7 +118,7 @@ def get_spark_session(
         os.environ.setdefault("https_proxy", "http://127.0.0.1:8123")
         os.environ.setdefault("no_proxy", "localhost,127.0.0.1")
         if host_template is None:
-            host_template = "metrics.berdl.kbase.us"
+            host_template = "spark.berdl.kbase.us"
         if auto_spawn:
             ensure_hub()
 

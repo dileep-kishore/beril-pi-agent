@@ -155,3 +155,5 @@ pproxy.log
 
 resources/
 .DS_Store
+
+projects/

@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--berdl-proxy",
         action="store_true",
-        help="Use BERDL proxy defaults: metrics.berdl.kbase.us + grpc/https proxy http://127.0.0.1:8123.",
+        help="Use BERDL proxy defaults: spark.berdl.kbase.us + grpc/https proxy http://127.0.0.1:8123.",
     )
     parser.add_argument(
         "--env-file",
@@ -96,10 +96,41 @@ def resolve_query(args: argparse.Namespace) -> str:
     raise ValueError("Provide --query or --query-file.")
 
 
+def bound_spark_retries() -> None:
+    """Cap Spark Connect's retry budget *before* a session is built.
+
+    PySpark's ``DefaultPolicy`` retries an ``UNAVAILABLE`` endpoint for ~10
+    minutes, which for an interactive query just looks like a hang — and it
+    outlives the caller's own timeout, so the failure surfaces as empty output
+    instead of a real error. The first RPC fires inside ``getOrCreate()`` (while
+    applying session options), so the cap has to be installed up front by
+    patching the policy that ``SparkConnectClient`` instantiates, not on the
+    returned client. A non-serving Spark Connect server then raises a clear
+    ``[RETRIES_EXCEEDED]`` within seconds. Override with ``BERDL_QUERY_MAX_RETRIES``
+    when a flaky cluster needs more patience.
+    """
+    try:
+        from pyspark.sql.connect.client import core
+
+        base = core.DefaultPolicy
+        max_retries = int(os.getenv("BERDL_QUERY_MAX_RETRIES", "5"))
+
+        class _BoundedDefaultPolicy(base):  # type: ignore[misc, valid-type]
+            def __init__(self, **kwargs: Any) -> None:
+                kwargs.setdefault("max_retries", max_retries)
+                kwargs.setdefault("max_backoff", 8000)
+                super().__init__(**kwargs)
+
+        core.DefaultPolicy = _BoundedDefaultPolicy
+    except Exception:
+        # Unrecognised pyspark internals — leave the default retry behavior in place.
+        pass
+
+
 def apply_proxy_settings(args: argparse.Namespace) -> None:
     if args.berdl_proxy:
         if args.host_template is None:
-            args.host_template = "metrics.berdl.kbase.us"
+            args.host_template = "spark.berdl.kbase.us"
         if args.grpc_proxy is None:
             args.grpc_proxy = "http://127.0.0.1:8123"
         if args.https_proxy is None:
@@ -147,6 +178,8 @@ def main() -> int:
         print(f"Cannot import spark_connect_remote: {exc}", file=sys.stderr)
         return 2
 
+    bound_spark_retries()
+
     if args.berdl_proxy:
         try:
             from get_spark_session import ensure_hub
@@ -167,7 +200,19 @@ def main() -> int:
             df = df.limit(args.limit)
         rows = [row.asDict(recursive=True) for row in df.collect()]
     except Exception as exc:
-        print(f"Query failed: {exc}", file=sys.stderr)
+        msg = str(exc)
+        if "RETRIES_EXCEEDED" in msg or "UNAVAILABLE" in msg:
+            # Not a SQL error: the Spark Connect endpoint never answered. Make the
+            # distinction explicit so it isn't mistaken for a bad query.
+            print(
+                "Query failed: the BERDL Spark Connect server is unreachable "
+                "(retries exhausted). Its JupyterHub server may not be running — "
+                "check `berdl-remote status` and that the SSH tunnels + pproxy are "
+                "up, then retry.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"Query failed: {exc}", file=sys.stderr)
         return 1
 
     payload: dict[str, Any] = {

@@ -86,7 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--berdl-proxy",
         action="store_true",
-        help="Use BERDL proxy defaults: metrics.berdl.kbase.us + grpc/https proxy http://127.0.0.1:8123.",
+        help="Use BERDL proxy defaults: spark.berdl.kbase.us + grpc/https proxy http://127.0.0.1:8123.",
     )
     parser.add_argument(
         "--env-file",
@@ -113,7 +113,7 @@ def resolve_query(args: argparse.Namespace) -> str:
 def apply_proxy_settings(args: argparse.Namespace) -> None:
     if args.berdl_proxy:
         if args.host_template is None:
-            args.host_template = "metrics.berdl.kbase.us"
+            args.host_template = "spark.berdl.kbase.us"
         if args.grpc_proxy is None:
             args.grpc_proxy = "http://127.0.0.1:8123"
         if args.https_proxy is None:
