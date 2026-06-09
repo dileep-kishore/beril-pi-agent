@@ -22,7 +22,7 @@ real, accessible data, not assumed schemas.
 
 ## What a strong plan contains
 
-- A sharp, answerable **research question** and explicit **hypotheses** (H0/H1).
+- A sharp, answerable **research question** and explicit **hypotheses** (H0/H1), **2–3 competing hypotheses** with a discrimination strategy, and a **falsification test** for H1 — the agent drafts these *before* asking the scientist's preference, so the design isn't wed to one story.
 - **Literature context** tying the question to what is known (pull from
   `references.md` / the literature-review skill where relevant).
 - A concrete **query strategy**: the specific tables, the filter strategy for
@@ -44,6 +44,18 @@ Write `projects/<id>/RESEARCH_PLAN.md` with this structure:
 ## Hypothesis
 - **H0**: {Null hypothesis}
 - **H1**: {Alternative hypothesis}
+
+### Competing Hypotheses
+Frame 2–3 rivals the available BERDL data could *distinguish* — not strawmen:
+- **H2**: {alternative mechanism}. Favoured if the data shows {outcome}.
+- **H3**: {alternative}. Favoured if {outcome}.
+**Discrimination strategy**: {the specific query/figure result that would tell H1, H2, H3 apart.}
+
+### Falsification test
+- **What would refute H1?** {the single result — effect below a threshold, a pattern's absence, a sign flip — that would make you reject H1.}
+
+### Confidence prior
+- Before any data: **HIGH / MEDIUM / LOW** — {why; cite literature for HIGH}. (Compared against the posterior at synthesis; a large gap is itself a finding.)
 
 ## Literature Context
 {What is known; key references (PMIDs) from references.md.}
