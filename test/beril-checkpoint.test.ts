@@ -15,6 +15,7 @@ const theme = {
   italic: (s: string) => s,
   strikethrough: (s: string) => s,
   underline: (s: string) => s,
+  getColorMode: () => "truecolor",
 } as any;
 
 test("registers the request_checkpoint tool", () => {
