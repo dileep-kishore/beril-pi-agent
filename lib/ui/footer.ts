@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { contextColor, contextGauge, formatTokens } from "./context-meter.ts";
 import { GLYPH } from "./glyphs.ts";
 
@@ -37,6 +37,16 @@ export interface FooterData {
   model?: string;
 }
 
+/**
+ * The connection chip on line 1: a colored connection label + a glyph reflecting
+ * readiness. `ready` → `${GLYPH.ok}`/success; present-but-not-ready (`!ready`) →
+ * `${GLYPH.warn}`/warning (a caution, not an operational failure).
+ */
+export function connectionChip(theme: FooterTheme, connection: string, ready: boolean): string {
+  const mark = ready ? GLYPH.ok : GLYPH.warn;
+  return theme.fg(ready ? "success" : "warning", `${connection} ${mark}`);
+}
+
 /** The context segment: a gauge + percent + (tokens / window), coloured by fullness. */
 function contextSegment(theme: FooterTheme, c: NonNullable<FooterData["context"]>): string {
   const gauge = contextGauge(c.percent);
@@ -52,25 +62,33 @@ export function footerLines(theme: FooterTheme, d: FooterData, width: number): s
 
   // Line 1 — the environment.
   const top: string[] = [];
-  if (d.connection) {
-    const mark = d.ready ? GLYPH.ok : GLYPH.bad;
-    top.push(theme.fg(d.ready ? "success" : "warning", `${d.connection} ${mark}`));
-  }
+  if (d.connection) top.push(connectionChip(theme, d.connection, d.ready ?? false));
   if (d.cwd) top.push(theme.fg("dim", `${GLYPH.folder} ${d.cwd}`));
 
-  // Line 2 — the work. Project + phase group together (space-joined), then context, then model.
+  // Line 2 — the work. Project + phase group on the left with context; model
+  // pushed to the right edge, joined by a gap rule when there's room.
   const bottom: string[] = [];
   const where: string[] = [];
   if (d.project) where.push(theme.fg("accent", `${GLYPH.project} ${d.project}`));
   if (d.phase) where.push(theme.fg("accent", `${GLYPH.here} ${d.phase}`));
   if (where.length) bottom.push(where.join(" "));
   if (d.context) bottom.push(contextSegment(theme, d.context));
-  if (d.model) bottom.push(theme.fg("dim", d.model));
+  const model = d.model ? theme.fg("dim", d.model) : "";
 
   const lines: string[] = [];
-  for (const segments of [top, bottom]) {
-    const line = segments.join(sep);
-    if (line) lines.push(truncateToWidth(line, width));
+  if (top.length) lines.push(truncateToWidth(top.join(sep), width));
+
+  if (bottom.length || model) {
+    const left = bottom.join(sep);
+    const gap = model ? width - visibleWidth(left) - visibleWidth(model) - 2 : 0;
+    if (model && gap >= 1) {
+      // Gap-rule right-justify: left segments, a dim rule, then the model.
+      lines.push(`${left} ${theme.fg("dim", "─".repeat(gap))} ${model}`);
+    } else {
+      // Too narrow for a rule — fall back to the separator-joined, clamped layout.
+      const segments = model ? [...bottom, model] : bottom;
+      lines.push(truncateToWidth(segments.join(sep), width));
+    }
   }
   return lines;
 }

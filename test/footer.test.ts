@@ -31,9 +31,10 @@ test("footer is two lines: environment on top, work below", () => {
   assert.ok(lines[1].includes("opus-4.8"), "model");
 });
 
-test("not-ready connection shows the ✗ glyph", () => {
+test("not-ready connection shows the △ warn glyph (not a failure ✗)", () => {
   const lines = footerLines(theme, { connection: "BERDL off-cluster", ready: false }, 40);
-  assert.ok(lines[0].includes("BERDL off-cluster ✗"));
+  assert.ok(lines[0].includes("BERDL off-cluster △"));
+  assert.ok(!lines[0].includes("✗"));
 });
 
 test("a bare session (no project) still shows two informative lines", () => {

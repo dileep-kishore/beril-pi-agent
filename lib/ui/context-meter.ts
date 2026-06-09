@@ -9,11 +9,15 @@ import { GLYPH } from "./glyphs.ts";
  * "how full is the context" signal at a glance. Pure.
  */
 
-/** Warn at ≥50% or ≥150k tokens; alarm at ≥90% or ≥500k tokens. */
+/**
+ * Three-tier dual gate: warn at ≥50% or ≥150k tokens, escalate at ≥70% or
+ * ≥270k tokens, alarm at ≥90% or ≥500k tokens — whichever fires first.
+ */
 export function contextColor(percent: number | null, tokens: number | null): ThemeColor {
   const p = percent ?? 0;
   const t = tokens ?? 0;
   if (p >= 90 || t >= 500_000) return "error";
+  if (p >= 70 || t >= 270_000) return "thinkingHigh";
   if (p >= 50 || t >= 150_000) return "warning";
   return "success";
 }
