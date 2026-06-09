@@ -25,7 +25,7 @@ export function appendReportHashFooter(body: string, hex: string): string {
 }
 
 /** First `${prefix}_N.md` (N from 1) under `projectDir` that does not yet exist. */
-export function nextReviewPath(projectDir: string, prefix: "REVIEW" | "PLAN_REVIEW"): string {
+export function nextReviewPath(projectDir: string, prefix: "REVIEW" | "PLAN_REVIEW" | "REFUTATION"): string {
   for (let n = 1; ; n++) {
     const path = join(projectDir, `${prefix}_${n}.md`);
     if (!existsSync(path)) return path;
