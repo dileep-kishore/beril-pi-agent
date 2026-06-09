@@ -1,6 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { RESEARCH_STEPS, nextAction, stepIndex } from "../research-steps.ts";
+import { nextAction } from "../research-steps.ts";
 import { GLYPH } from "./glyphs.ts";
+import { stepRail } from "./step-rail.ts";
 
 /**
  * The always-visible "workflow HUD" shown above the editor: where the active
@@ -28,19 +29,7 @@ export interface HudState {
   submitted?: boolean;
 }
 
-type HudTheme = Pick<Theme, "fg" | "bold">;
-
-/** The step rail: done steps dim, the current step accented, future steps muted. */
-function stepRail(theme: HudTheme, state: string | undefined): string {
-  const idx = state ? stepIndex(state) : -1;
-  const sep = theme.fg("dim", ` ${GLYPH.arrow} `);
-  return RESEARCH_STEPS.map((step, i) => {
-    if (idx === RESEARCH_STEPS.length) return theme.fg("dim", `${step}`); // complete: all behind us
-    if (i === idx) return theme.bold(theme.fg("accent", `${GLYPH.here} ${step}`));
-    if (idx >= 0 && i < idx) return theme.fg("dim", step);
-    return theme.fg("muted", step);
-  }).join(sep);
-}
+type HudTheme = Theme;
 
 /** Build the workflow HUD lines. Always shows a next-action hint; adds the rail once a project exists. */
 export function workflowHud(theme: HudTheme, s: HudState): string[] {

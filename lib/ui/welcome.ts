@@ -1,7 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { RESEARCH_STEPS, stepIndex } from "../research-steps.ts";
 import { frameCard } from "./card.ts";
 import { GLYPH } from "./glyphs.ts";
+import { stepRail } from "./step-rail.ts";
 
 /**
  * The first-launch welcome panel (a `setHeader` component, cleared on first
@@ -12,7 +12,7 @@ import { GLYPH } from "./glyphs.ts";
  * exactly `width` columns; the `beril-env` extension owns the state + wiring.
  */
 
-export type WelcomeTheme = Pick<Theme, "fg" | "bold">;
+export type WelcomeTheme = Theme;
 
 export interface WelcomeState {
   /** Compact connection label without a glyph, e.g. "BERDL off-cluster". */
@@ -42,17 +42,6 @@ export function pickTip(index: number): string {
   return TIPS[((index % n) + n) % n];
 }
 
-function arcLine(theme: WelcomeTheme, state: string | undefined): string {
-  const idx = state ? stepIndex(state) : -1;
-  const sep = theme.fg("dim", ` ${GLYPH.arrow} `);
-  return RESEARCH_STEPS.map((step, i) => {
-    if (idx === RESEARCH_STEPS.length) return theme.fg("dim", step);
-    if (i === idx) return theme.bold(theme.fg("accent", `${GLYPH.here} ${step}`));
-    if (idx >= 0 && i < idx) return theme.fg("dim", step);
-    return theme.fg("muted", step);
-  }).join(sep);
-}
-
 function row(theme: WelcomeTheme, label: string, value: string): string {
   return `${theme.fg("muted", label.padEnd(12))}${value}`;
 }
@@ -77,7 +66,7 @@ export function welcomePanel(theme: WelcomeTheme, s: WelcomeState, width: number
     row(theme, "Connection", conn),
     row(theme, "Researcher", who),
     "",
-    row(theme, "The arc", arcLine(theme, s.state)),
+    row(theme, "The arc", stepRail(theme, s.state)),
     "",
     row(theme, "Start", start),
     row(theme, "Tip", tip),

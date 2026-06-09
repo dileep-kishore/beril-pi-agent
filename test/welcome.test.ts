@@ -3,7 +3,11 @@ import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { TIPS, type WelcomeTheme, pickTip, welcomePanel } from "../lib/ui/welcome.ts";
 
-const theme: WelcomeTheme = { fg: (_color, text) => text, bold: (text) => text };
+const theme = {
+  fg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+  getColorMode: () => "truecolor",
+} as unknown as WelcomeTheme;
 
 const state = {
   connection: "BERDL off-cluster",
