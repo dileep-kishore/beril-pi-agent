@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildEfetchParams,
   buildEsearchParams,
   buildEsummaryParams,
+  fetchAbstract,
   litConfig,
   normalizePubmedSummary,
   searchPubmed,
@@ -67,6 +69,32 @@ test("buildEsummaryParams joins pmids with commas", () => {
     id: "1,2,3",
     retmode: "json",
   });
+});
+
+test("buildEfetchParams builds the efetch (abstract) query params", () => {
+  assert.deepEqual(buildEfetchParams("42"), {
+    db: "pubmed",
+    id: "42",
+    rettype: "abstract",
+    retmode: "text",
+  });
+});
+
+test("fetchAbstract returns trimmed abstract text (fetch stubbed)", async () => {
+  const original = globalThis.fetch;
+  let seen = "";
+  globalThis.fetch = (async (input: string | URL) => {
+    seen = String(input);
+    return { ok: true, text: async () => "  An abstract.  \n" } as unknown as Response;
+  }) as typeof globalThis.fetch;
+  try {
+    const abstract = await fetchAbstract("42");
+    assert.equal(abstract, "An abstract.");
+    assert.ok(seen.includes("efetch.fcgi"));
+    assert.ok(seen.includes("rettype=abstract"));
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test("searchPubmed yields normalized records in idlist order, skipping missing ids", async () => {

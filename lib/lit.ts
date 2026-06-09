@@ -141,3 +141,30 @@ export async function fetchArticle(pmid: string, signal?: AbortSignal): Promise<
   if (!(pmid in result)) throw new Error(`no PubMed record for PMID ${pmid}`);
   return normalizePubmedSummary(result[pmid]);
 }
+
+/** Build query params for the E-utilities efetch endpoint (abstract text). */
+export function buildEfetchParams(pmid: string) {
+  return { db: "pubmed", id: pmid, rettype: "abstract", retmode: "text" };
+}
+
+async function getText(url: string, signal?: AbortSignal): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    await acquireSlot();
+    const res = await fetch(url, { signal: signal ?? AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+    if (res.ok) return await res.text();
+    const retryable = res.status === 429 || res.status >= 500;
+    if (retryable && attempt < litConfig.maxRetries) {
+      const retryAfter = Number(res.headers?.get?.("retry-after"));
+      const delay =
+        Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : litConfig.baseBackoffMs * 2 ** attempt;
+      await sleep(delay);
+      continue;
+    }
+    throw new Error(`NCBI request failed: ${res.status} ${res.statusText}`);
+  }
+}
+
+/** Fetch the abstract text for a PMID (empty string if none). */
+export async function fetchAbstract(pmid: string, signal?: AbortSignal): Promise<string> {
+  return (await getText(toUrl("efetch.fcgi", buildEfetchParams(pmid)), signal)).trim();
+}

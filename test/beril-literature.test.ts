@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import berilLit, { expandQueries } from "../extensions/beril-literature.ts";
+import berilLit, { assessStances, expandQueries, resolveCitation } from "../extensions/beril-literature.ts";
 
 function harness() {
   const tools: any = {};
@@ -168,14 +168,17 @@ test("/literature-review falls back to the bare topic when expansion has no mode
   try {
     const { commands } = harness();
     const esearchTerms: string[] = [];
-    await withStubbedFetch(
-      [
-        (url) => {
-          esearchTerms.push(new URL(url).searchParams.get("term") ?? "");
+    // Route by URL: the verify-on-write step re-fetches each PMID via esummary
+    // after the search, so a call-order stub is unsafe here.
+    await withRoutedFetch(
+      (url) => {
+        const u = new URL(url);
+        if (u.pathname.endsWith("esearch.fcgi")) {
+          esearchTerms.push(u.searchParams.get("term") ?? "");
           return { esearchresult: { idlist: ["9"] } };
-        },
-        () => summaryMap([{ pmid: "9", title: "T" }]),
-      ],
+        }
+        return summaryMap([{ pmid: "9", title: "T" }]);
+      },
       async () => {
         // No model and no completer override → expandQueries returns [topic].
         const cctx: any = { hasUI: false, mode: "json", cwd: dir, model: undefined };
@@ -190,4 +193,77 @@ test("/literature-review falls back to the bare topic when expansion has no mode
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("resolveCitation returns ok:false when the fetcher throws", async () => {
+  const check = await resolveCitation("99", undefined, async () => {
+    throw new Error("no PubMed record");
+  });
+  assert.equal(check.ok, false);
+  assert.equal(check.pmid, "99");
+  assert.match(check.reason ?? "", /did not resolve/);
+});
+
+test("resolveCitation returns ok:false when the record has no title", async () => {
+  const check = await resolveCitation("88", undefined, async () => ({ pmid: "88", title: "" }));
+  assert.equal(check.ok, false);
+  assert.match(check.reason ?? "", /no title/);
+});
+
+test("resolveCitation returns ok:true when the record resolves with a title", async () => {
+  const check = await resolveCitation("7", undefined, async () => ({ pmid: "7", title: "Title7" }));
+  assert.equal(check.ok, true);
+  assert.equal(check.title, "Title7");
+});
+
+test("assessStances returns all-NEI when no model and no fallback auth", async () => {
+  const assessed = [
+    { record: { pmid: "1", title: "A" }, abstract: "a" },
+    { record: { pmid: "2", title: "B" }, abstract: "b" },
+  ];
+  // No model on ctx, and the injected getModel returns undefined → all-NEI.
+  const out = await assessStances({ model: undefined } as any, "hypothesis", assessed, {
+    getModel: () => undefined,
+    complete: async () => {
+      throw new Error("complete must not be called without a model");
+    },
+  });
+  assert.equal(out.length, 2);
+  for (const s of out) {
+    assert.equal(s.stance, "NEI");
+    assert.equal(s.confidence, "low");
+    assert.equal(s.exact_quote, "");
+    assert.deepEqual(s.qualifiers, []);
+  }
+  assert.equal(out[0].record.pmid, "1");
+  assert.equal(out[1].record.pmid, "2");
+});
+
+test("assessStances maps a JSON array back onto records, defaulting unmatched to NEI", async () => {
+  const assessed = [
+    { record: { pmid: "1", title: "A" }, abstract: "a" },
+    { record: { pmid: "2", title: "B" }, abstract: "b" },
+  ];
+  const out = await assessStances(
+    { model: { id: "m" }, modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k" }) } } as any,
+    "hypothesis",
+    assessed,
+    {
+      complete: async () =>
+        ({
+          content: [
+            {
+              type: "text",
+              text: '[{"pmid":"1","stance":"supports","confidence":"high","exact_quote":"q","qualifiers":["x"]}]',
+            },
+          ],
+        }) as any,
+    },
+  );
+  assert.equal(out[0].stance, "supports");
+  assert.equal(out[0].confidence, "high");
+  assert.equal(out[0].exact_quote, "q");
+  assert.deepEqual(out[0].qualifiers, ["x"]);
+  // pmid "2" had no match in the array → defaults to NEI.
+  assert.equal(out[1].stance, "NEI");
 });
