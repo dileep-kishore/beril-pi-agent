@@ -44,7 +44,7 @@ function uiCtx(hasUI: boolean) {
   const widgets: Array<[string, string[] | undefined]> = [];
   const notes: string[] = [];
   const headerCalls: Array<unknown> = [];
-  const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+  const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s, getColorMode: () => "truecolor" };
   const tui = { requestRender: () => {} };
   const footerData = {
     onBranchChange: () => () => {},
