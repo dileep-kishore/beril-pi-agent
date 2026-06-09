@@ -36,3 +36,48 @@ export function stepBreadcrumb(state: string): string {
   const trail = RESEARCH_STEPS.map((step, i) => (i === current ? `▸${step}` : step)).join(" · ");
   return current === RESEARCH_STEPS.length ? `${trail} ✓` : trail;
 }
+
+/**
+ * The index of the step a project is currently *at*: 0..N-1 for an active step,
+ * `RESEARCH_STEPS.length` for a `complete` project, or `-1` for an unknown state.
+ * (`-1` keeps "nothing is the current step" distinct from "the first step".)
+ */
+export function stepIndex(state: string): number {
+  return state in STATE_STEP ? STATE_STEP[state] : -1;
+}
+
+/**
+ * The current step's label for a lifecycle state — `"explore"`…`"submit"`, or
+ * `"complete"` for a finished project, or `undefined` for an unknown state.
+ * Used by the statusline's compact phase segment.
+ */
+export function currentStep(state: string): string | undefined {
+  const idx = stepIndex(state);
+  if (idx < 0) return undefined;
+  if (idx >= RESEARCH_STEPS.length) return "complete";
+  return RESEARCH_STEPS[idx];
+}
+
+/**
+ * The single most useful next action for a lifecycle state, phrased for a
+ * scientist. Kept independent of exact slash-command names where a step has no
+ * single command, so the hint stays accurate as the surface grows.
+ */
+export function nextAction(state: string): string {
+  switch (state) {
+    case "exploration":
+      return "explore the data, then draft a research plan once the question is clear";
+    case "proposed":
+      return "scaffold and run the analysis notebooks";
+    case "active":
+      return "finish the notebooks, then /synthesize the report";
+    case "analysis":
+      return "review the report (/berdl-review), then /submit";
+    case "reviewed":
+      return "submit the approved project (/submit)";
+    case "complete":
+      return "project complete — archived to the lakehouse";
+    default:
+      return "check the connection (/berdl-status) and discover the data to begin";
+  }
+}

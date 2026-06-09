@@ -8,6 +8,42 @@
 const EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const HTTP_TIMEOUT_MS = 30_000;
 
+/**
+ * Runtime knobs for the NCBI client. NCBI allows ~3 req/s anonymously and ~10
+ * req/s with an API key; the co-scientist fans out many searches at once (and
+ * each search is two requests: esearch → esummary), so every call is serialized
+ * through a shared minimum-interval gate and 429/5xx are retried with backoff.
+ * Set `NCBI_API_KEY` (and optionally `NCBI_EMAIL`) to lift the rate ceiling.
+ * Mutable so tests can disable spacing/retries; the network functions read it live.
+ */
+const NCBI_API_KEY = process.env.NCBI_API_KEY?.trim() || undefined;
+export const litConfig = {
+  apiKey: NCBI_API_KEY,
+  tool: process.env.NCBI_TOOL?.trim() || "beril",
+  email: process.env.NCBI_EMAIL?.trim() || undefined,
+  /** Minimum spacing between requests: ~9/s with a key, ~3/s without. */
+  minIntervalMs: NCBI_API_KEY ? 110 : 350,
+  /** Retries for 429/5xx before giving up. */
+  maxRetries: 4,
+  /** Base for exponential backoff (doubled each attempt) when no Retry-After header. */
+  baseBackoffMs: 800,
+};
+
+function sleep(ms: number): Promise<void> {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+}
+
+// The next time a request may fire, shared across all concurrent callers. The
+// read-modify-write below is atomic (no await between), so each caller reserves a
+// distinct, increasing slot — turning a parallel burst into a paced stream.
+let nextSlot = 0;
+async function acquireSlot(): Promise<void> {
+  const now = Date.now();
+  const wait = Math.max(0, nextSlot - now);
+  nextSlot = Math.max(now, nextSlot) + litConfig.minIntervalMs;
+  await sleep(wait);
+}
+
 /** A normalized, minimal citation record (matches the Python esummary normalizer). */
 export interface LitRecord {
   pmid?: string;
@@ -61,15 +97,31 @@ export function buildEsummaryParams(pmids: string[]) {
 function toUrl(endpoint: string, params: Record<string, string | number>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) search.set(key, String(value));
+  // NCBI etiquette + the rate-limit lift: identify the tool and attach the key.
+  if (litConfig.tool) search.set("tool", litConfig.tool);
+  if (litConfig.email) search.set("email", litConfig.email);
+  if (litConfig.apiKey) search.set("api_key", litConfig.apiKey);
   return `${EUTILS_BASE}/${endpoint}?${search.toString()}`;
 }
 
 async function getJson(url: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
-  const res = await fetch(url, { signal: signal ?? AbortSignal.timeout(HTTP_TIMEOUT_MS) });
-  // Parity with the Python original's raise_for_status(): surface NCBI 429/5xx
-  // as a clear error rather than silently degrading to zero/garbled results.
-  if (!res.ok) throw new Error(`NCBI request failed: ${res.status} ${res.statusText}`);
-  return (await res.json()) as Record<string, unknown>;
+  for (let attempt = 0; ; attempt++) {
+    await acquireSlot();
+    const res = await fetch(url, { signal: signal ?? AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+    if (res.ok) return (await res.json()) as Record<string, unknown>;
+    // 429 (rate limited) and 5xx (transient) are retried with backoff; everything
+    // else — and a final exhausted retry — surfaces as a clear error, matching the
+    // Python original's raise_for_status() rather than silently degrading.
+    const retryable = res.status === 429 || res.status >= 500;
+    if (retryable && attempt < litConfig.maxRetries) {
+      const retryAfter = Number(res.headers?.get?.("retry-after"));
+      const delay =
+        Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : litConfig.baseBackoffMs * 2 ** attempt;
+      await sleep(delay);
+      continue;
+    }
+    throw new Error(`NCBI request failed: ${res.status} ${res.statusText}`);
+  }
 }
 
 /** Search PubMed and return normalized summary records (esearch → esummary). */

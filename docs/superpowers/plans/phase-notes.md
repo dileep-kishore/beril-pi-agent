@@ -139,3 +139,46 @@ vendored `get_minio_creds`/`configure_mc`/`berdl_env` scripts via bash, routes o
 `/berdl-connect`, and sends `mc rm` through the safety gate. **Not migrated (separate subsystems, all OpenViking-free,
 deferred per the user):** `berdl-ingest`, `berdl-ingest-remote`, `remote-compute` (CTS), `phenix` (Phenix/NERSC),
 `linkml-schema`.
+
+## Pi-native co-scientist UX (branch `feat/pi-native-coscientist`, 2026-06-06)
+
+Plan: `docs/superpowers/plans/2026-06-06-pi-native-coscientist-plan.md`; skill→home
+decisions: `docs/superpowers/specs/2026-06-06-skill-home-mapping.md`. Verified against
+Pi **0.78.1** (latest; pin current). Gate per commit: `bunx tsc --noEmit` +
+`bunx biome check .` + full `node --test` + `pi install -l .` (and `pytest` for the
+Python). **Invariant guard upheld:** no edits to `notebook_hash.py`, `lakehouse_upload.py`,
+`lifecycle.py`, `hash_cmd.py`, `user_cmd.py`, `submit_cmd.py`, `beril-safety.ts`,
+`review-finalize.ts`; original BERIL repo untouched.
+
+- **WS0 — connectivity fix** (`fix(berdl)`): `detect_berdl_environment` now decides
+  on/off-cluster by `berdl_notebook_utils` importability (not TCP reachability of a
+  public host), so off-cluster reads the `.env` token + runs pproxy recovery;
+  `discover` sends a curl UA past Cloudflare. Proven end-to-end (`SELECT 1` + discover).
+- **WS1 — visual foundation** (`lib/ui/`): `frameCard` (hand-drawn titled border,
+  ANSI-safe width), `linesCard`/`markdownCard` Components, `markdownTheme` (Theme→
+  pi-tui MarkdownTheme), `markdownTable` (GFM). Pure helpers unit-tested.
+- **WS2 — science cards**: `renderCall`/`renderResult` on every tool (query/peek/
+  discover/lit/governance) via `lib/ui/science-cards.ts`; payloads byte-identical
+  (Invariant 2 — `execute` unchanged, rendering is display-only).
+- **WS3 — quiet plumbing**: `beril-display` → `setToolsExpanded(false)`; conduct
+  contract gains a "lead with the science, not the plumbing" directive. Tool
+  registration + safety gate untouched.
+- **WS4 — workflow HUD**: `beril-env` renders an above-editor widget (project ·
+  connection / step rail with current marked / Next action) from the lifecycle bus;
+  `research-steps.stepIndex()`/`nextAction()` + `lib/ui/workflow-hud.ts` (pure).
+- **WS5 — notebooks**: `beril notebook scaffold|run|list` (Python, nbformat +
+  `.venv-berdl` jupyter; `notebook_hash.py` untouched) + `beril-analysis` tools +
+  `/analyze` + the `analysis-notebooks` skill. `notebook_run` reads stdout directly
+  so a partial cell failure (exit 1) reports per-notebook.
+- **WS6 — research plan**: `/research-plan` + `research_plan` plan-card tool +
+  `research-plan` skill (feasibility-first + template). exploration→proposed.
+- **WS7 — checkpoints**: `request_checkpoint` tool (ctx.ui.select, headless-safe) +
+  `checkpointCard`; conduct + `/research-plan` + `/analyze` point at it. Approval is
+  for science direction; destructive ops stay on the separate gate.
+- **WS8 — docs**: this log + the skill→home spec + README/PROJECT updates.
+
+**Final state:** TS — tsc + biome clean, **138 tests**; Python — **184 tests**.
+`pi install -l .` loads all extensions. **Deferred to live verification** (need a
+TUI + model + live BERDL): visual fidelity of the cards/HUD/checkpoints, a real
+notebook run against Spark, and HUD reflow at narrow widths. Unmigrated cloud
+skills remain deferred (decisions recorded in the skill→home spec).

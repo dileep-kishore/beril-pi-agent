@@ -150,35 +150,26 @@ def run_setup() -> int:
     else:
         print("  Detection script not found, skipping.")
 
-    # ── Step 4: Virtual environment ─────────────────
-    # .venv-berdl is only needed off-cluster (for spark_connect_remote, pproxy, etc.)
-    # On-cluster (JupyterHub), Spark is directly available.
+    # ── Step 4: BERDL client environment ────────────
+    # Off-cluster, the Spark scripts + analysis notebooks run under `uv run` with
+    # inline (PEP 723) dependencies, so uv builds and caches their environments on
+    # first use — there is no venv to create or activate. The bootstrap step is an
+    # optional one-time pre-warm of those caches. On-cluster, Spark is direct.
+    _step(4, "BERDL client environment")
     if on_cluster:
-        _step(4, "BERDL client environment")
-        print("  On-cluster — .venv-berdl not needed (Spark is directly available).")
+        print("  On-cluster — Spark is directly available; nothing to set up.")
     else:
-        _step(4, "BERDL client environment")
-
-        venv_path = repo_root / ".venv-berdl"
         bootstrap_script = repo_root / "scripts" / "bootstrap_client.sh"
-
-        if venv_path.exists():
-            print("  .venv-berdl already exists.")
-        elif bootstrap_script.exists():
-            if _confirm("  .venv-berdl not found. Bootstrap it now?"):
-                print("  Running bootstrap_client.sh...")
-                result = subprocess.run(
-                    ["bash", str(bootstrap_script)],
-                    cwd=str(repo_root), check=False,
-                )
-                if result.returncode != 0:
-                    print(f"  ERROR: bootstrap_client.sh failed (exit {result.returncode}).")
-                    print("  Fix the issue above and retry: bash scripts/bootstrap_client.sh")
-                    return 1
-            else:
-                print("  Skipped — run later: bash scripts/bootstrap_client.sh")
+        print("  Off-cluster — uv manages the script/notebook envs automatically (no venv to create).")
+        if bootstrap_script.exists() and _confirm(
+            "  Pre-warm the uv caches now (one-time; speeds the first query/notebook)?"
+        ):
+            print("  Pre-warming uv environments...")
+            result = subprocess.run(["bash", str(bootstrap_script)], cwd=str(repo_root), check=False)
+            if result.returncode != 0:
+                print(f"  WARNING: pre-warm failed (exit {result.returncode}); uv will build on first use instead.")
         else:
-            print("  Bootstrap script not found, skipping.")
+            print("  Skipped — uv builds the envs on first use.")
 
     # ── Step 5: GitHub CLI ──────────────────────────
     _step(5, "GitHub CLI")

@@ -28,7 +28,7 @@ Use `lifecycle_transition` state awareness to read project standing (exploration
 
 A recommendation is only as good as the data backing it. Establish data readiness before committing to a candidate.
 
-- Use **`berdl_discover`** for the live, access-aware inventory of BERDL databases, tables, and schemas. For each candidate collection, note: collection name/identifier, the organism / scale / data type it covers, and whether it has been heavily used (cross-reference completed reports) or is **underexplored**.
+- Use **`berdl_discover`** for the live, access-aware inventory of BERDL databases (and, with `database=<id>`, that database's tables); use **`berdl_peek`** to inspect a specific table's columns. For each candidate collection, note: collection name/identifier, the organism / scale / data type it covers, and whether it has been heavily used (cross-reference completed reports) or is **underexplored**.
 - Use **`berdl_query`** (bounded SELECT, limit 100) to spot-check that a candidate collection actually contains the rows, organisms, genes, or annotations the proposed question needs — confirm coverage and plausible volume before recommending it. Treat these as feasibility probes, not analysis.
 - Run **`/berdl-status`** to confirm the connection/environment is live; if not connected, **`/berdl-connect`** first. (Use `berdl_env_check` if you need to verify the environment programmatically.)
 

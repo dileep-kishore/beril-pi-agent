@@ -27,6 +27,8 @@ def run_discover(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory() as td:
         out = Path(td) / "snapshot.json"
         argv = ["uv", "run", str(script), "--output", str(out)]
+        if getattr(args, "database", None):
+            argv += ["--database", args.database]
         if getattr(args, "max_databases", None) is not None:
             argv += ["--max-databases", str(args.max_databases)]
         proc = subprocess.run(argv, cwd=str(root), capture_output=True, text=True, check=False)

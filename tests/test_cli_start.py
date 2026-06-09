@@ -122,10 +122,13 @@ def _make_git_dispatcher(
     head_sha: str = "HEADSHA",
     checkout_rc: int = 0,
     fetch_rc: int = 0,
+    merge_base_rc: int = 0,
 ) -> Callable[[list[str]], subprocess.CompletedProcess]:
     """Build a handler that simulates a git repo with known tags.
 
     `tags` maps tag name → commit SHA. Anything not in `tags` fails `rev-parse --verify`.
+    `merge_base_rc` is the exit code of `git merge-base --is-ancestor HEAD <tag>`
+    (0 = HEAD behind the tag → auto-pin moves forward; non-zero = at/ahead → stay).
     """
     tags = tags or {}
 
@@ -133,6 +136,9 @@ def _make_git_dispatcher(
         # git fetch --tags --quiet
         if argv[:2] == ["git", "fetch"]:
             return _completed(returncode=fetch_rc, stderr="" if fetch_rc == 0 else "fetch failed")
+        # git merge-base --is-ancestor HEAD <tag>
+        if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return _completed(returncode=merge_base_rc)
         # git rev-parse --verify refs/tags/<tag>
         if argv[:3] == ["git", "rev-parse", "--verify"]:
             ref = argv[3]  # "refs/tags/v0.0.1"
@@ -198,6 +204,31 @@ def test_checkout_release_uses_latest_when_no_version(monkeypatch, tmp_path):
     # we don't have to wire up the GitHub URL parsing in this test.
     monkeypatch.setattr(start, "_latest_release_tag", lambda _root: "v0.0.1")
     rc = start._checkout_release(tmp_path, None)
+    assert rc == 0
+    assert ["git", "checkout", "--quiet", "v0.0.1"] in calls
+
+
+def test_checkout_release_stays_when_ahead_of_release(monkeypatch, tmp_path, capsys):
+    # On a branch/commit ahead of (or diverged from) the latest release and no
+    # --version: do NOT downgrade — stay on the current checkout.
+    calls = _patch_run(
+        monkeypatch,
+        _make_git_dispatcher(tags={"v0.0.1": "ABC"}, head_sha="NEWER", merge_base_rc=1),
+    )
+    monkeypatch.setattr(start, "_latest_release_tag", lambda _root: "v0.0.1")
+    rc = start._checkout_release(tmp_path, None)
+    assert rc == 0
+    assert "Staying on the current checkout" in capsys.readouterr().out
+    assert not any(argv[:2] == ["git", "checkout"] for argv in calls)
+
+
+def test_checkout_release_explicit_version_pins_even_when_ahead(monkeypatch, tmp_path):
+    # An explicit --version is a hard pin and may move backward even when ahead.
+    calls = _patch_run(
+        monkeypatch,
+        _make_git_dispatcher(tags={"v0.0.1": "ABC"}, head_sha="NEWER", merge_base_rc=1),
+    )
+    rc = start._checkout_release(tmp_path, "v0.0.1")
     assert rc == 0
     assert ["git", "checkout", "--quiet", "v0.0.1"] in calls
 

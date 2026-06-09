@@ -2,13 +2,14 @@
 """Detect BERDL environment and check prerequisites.
 
 Determines if running on-cluster (BERDL JupyterHub) or off-cluster (local machine).
-Checks proxy status, KBASE_AUTH_TOKEN, venv setup, and provides actionable next steps.
+Checks proxy status, KBASE_AUTH_TOKEN, uv availability, and provides actionable next steps.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -23,6 +24,21 @@ def test_connectivity(host: str, port: int, timeout: float = 2.0) -> bool:
             return True
     except (socket.timeout, socket.error, OSError):
         return False
+
+
+def is_on_cluster() -> bool:
+    """Return True only when running inside the BERDL JupyterHub.
+
+    ``spark.berdl.kbase.us`` is publicly routable, so plain TCP reachability is
+    not a reliable on-cluster signal. The Hub injects ``berdl_notebook_utils``
+    into the kernel; its importability is the dependable discriminator (matching
+    discover_berdl_collections._load_berdl_helpers).
+    """
+    try:
+        import berdl_notebook_utils  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 def check_port_listening(port: int) -> bool:
@@ -71,7 +87,6 @@ def detect_environment() -> dict[str, Any]:
     """Detect environment and return status report."""
     repo_root = Path(__file__).resolve().parent.parent
     env_file = repo_root / ".env"
-    venv_path = repo_root / ".venv-berdl"
 
     result: dict[str, Any] = {
         "location": "unknown",
@@ -80,13 +95,14 @@ def detect_environment() -> dict[str, Any]:
         "next_steps": [],
     }
 
-    # Test connectivity to BERDL Spark endpoint
+    # Test connectivity to BERDL Spark endpoint (informational only; the host is
+    # publicly routable, so this alone does not imply on-cluster).
     spark_reachable = test_connectivity("spark.berdl.kbase.us", 443, timeout=2.0)
 
-    if spark_reachable:
+    if is_on_cluster():
         # On-cluster (BERDL JupyterHub)
         result["location"] = "on-cluster"
-        result["checks"]["spark_direct"] = True
+        result["checks"]["spark_direct"] = spark_reachable
 
         # Check for KBASE_AUTH_TOKEN in environment
         token = os.getenv("KBASE_AUTH_TOKEN")
@@ -129,13 +145,14 @@ def detect_environment() -> dict[str, Any]:
                 "and add: KBASE_AUTH_TOKEN=\"your-token-here\""
             )
 
-        # Check .venv-berdl
-        venv_exists = venv_path.exists()
-        result["checks"]["venv_berdl"] = venv_exists
+        # Check uv (used to run scripts via PEP 723 and to launch pproxy via
+        # `uv run --with pproxy ...` — no hand-bootstrapped venv required).
+        uv_available = shutil.which("uv") is not None
+        result["checks"]["uv_available"] = uv_available
 
-        if not venv_exists:
+        if not uv_available:
             result["next_steps"].append(
-                "❌ .venv-berdl not found. Run: bash scripts/bootstrap_client.sh"
+                "❌ uv not found on PATH. Install it from https://docs.astral.sh/uv/"
             )
 
         # Check SSH tunnels
@@ -168,7 +185,7 @@ def detect_environment() -> dict[str, Any]:
         # Overall readiness
         result["ready"] = all([
             token_in_env,
-            venv_exists,
+            uv_available,
             tunnel_1337,
             tunnel_1338,
             pproxy_running,

@@ -5,6 +5,19 @@ import { berilExec } from "../lib/beril-exec.ts";
 import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql } from "../lib/peek.ts";
 import { requireReady } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
+import { type DiscoverSnapshot, discoverSummary } from "../lib/ui/discover.ts";
+import {
+  type QueryView,
+  callLine,
+  destructiveResultCard,
+  discoverCard,
+  errorCard,
+  kvLines,
+  partialLine,
+  peekCard,
+  queryCard,
+  toolErrorText,
+} from "../lib/ui/science-cards.ts";
 
 const EXPORT_FORMATS = ["parquet", "delta", "json", "csv"] as const;
 const EXPORT_MODES = ["overwrite", "append"] as const;
@@ -13,6 +26,12 @@ interface QueryPayload {
   returned_rows: number;
   rows: Record<string, unknown>[];
   limit_applied: number | null;
+}
+
+/** One-line, ANSI-trimmed SQL preview for a dimmed tool-call summary. */
+function sqlPreview(query: string): string {
+  const sql = query.replace(/\s+/g, " ").trim();
+  return sql.length > 60 ? `${sql.slice(0, 59)}…` : sql;
 }
 
 export default function berilData(pi: ExtensionAPI) {
@@ -33,21 +52,47 @@ export default function berilData(pi: ExtensionAPI) {
       const text = `${payload.returned_rows} row(s)${note}\n${renderTable(payload.rows)}`;
       return { content: [{ type: "text", text }], details: payload };
     },
+    renderCall(args, theme) {
+      return callLine(theme, `query · ${sqlPreview(args.query)} (limit ${args.limit ?? 100})`);
+    },
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Querying…");
+      return queryCard(theme, result.details as QueryView, expanded);
+    },
   });
 
   pi.registerTool({
     name: "berdl_discover",
     label: "Discover BERDL collections",
-    description: "List accessible BERDL databases/collections (access-aware). Use before querying to find tables.",
+    description:
+      "Explore BERDL access-awarely in two cheap steps. Default (no args): the accessible-collections INVENTORY — databases grouped by tenant, fast. Pass `database` to list THAT database's tables (names + descriptions, no column schemas). To read a table's columns + sample rows, use `berdl_peek`. Never scans every table.",
     parameters: Type.Object({
-      max_databases: Type.Optional(Type.Integer({ description: "Cap databases scanned." })),
+      database: Type.Optional(
+        Type.String({ description: "Scope to one database to list its tables. Omit for the inventory." }),
+      ),
+      max_databases: Type.Optional(Type.Integer({ description: "Cap databases in the inventory." })),
     }),
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       await requireReady(pi);
       const args = ["discover"];
+      if (params.database) args.push("--database", params.database);
       if (params.max_databases != null) args.push("--max-databases", String(params.max_databases));
-      const snap = await berilExec<Record<string, unknown>>(pi, args);
-      return { content: [{ type: "text", text: JSON.stringify(snap, null, 2) }], details: snap };
+      const snap = await berilExec<DiscoverSnapshot>(pi, args);
+      // Hand the model a compact summary (full snapshot stays in details for the
+      // card) so it leads with the structure instead of echoing raw JSON.
+      return { content: [{ type: "text", text: discoverSummary(snap) }], details: snap };
+    },
+    renderCall(args, theme) {
+      return callLine(
+        theme,
+        args.database ? `discover · tables in ${args.database}` : "discover · accessible collections",
+      );
+    },
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Discovering collections…");
+      return discoverCard(theme, result.details as DiscoverSnapshot, expanded);
     },
   });
 
@@ -79,6 +124,19 @@ export default function berilData(pi: ExtensionAPI) {
       ]);
       const text = formatPeek(table, describe.rows, sample.rows);
       return { content: [{ type: "text", text }], details: { table, columns: describe.rows, sample: sample.rows } };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `peek · ${args.table.trim()}`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Previewing table…");
+      const d = result.details as {
+        table: string;
+        columns: Record<string, unknown>[];
+        sample: Record<string, unknown>[];
+      };
+      return peekCard(theme, d);
     },
   });
 
@@ -113,10 +171,17 @@ export default function berilData(pi: ExtensionAPI) {
       if (params.format) args.push("--format", params.format);
       if (params.mode) args.push("--mode", params.mode);
       const manifest = await berilExec<Record<string, unknown>>(pi, args);
-      return {
-        content: [{ type: "text", text: `Exported to ${params.path}: ${JSON.stringify(manifest)}` }],
-        details: manifest,
-      };
+      const summary = `Exported the query result to ${params.path} (${params.format ?? "parquet"}, ${params.mode ?? "overwrite"}).`;
+      return { content: [{ type: "text", text: summary }], details: { ...manifest, path: params.path } };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `export → ${args.path} (${args.mode ?? "overwrite"}, destructive)`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Exporting…");
+      const manifest = result.details as Record<string, unknown>;
+      return destructiveResultCard(theme, "Export complete", kvLines(theme, manifest));
     },
   });
 }

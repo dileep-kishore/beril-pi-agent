@@ -131,6 +131,20 @@ def _checkout_release(repo_root: Path, requested_version: str | None) -> int:
         print(f"Already on release {tag}")
         return 0
 
+    if not requested_version:
+        # The auto-pin only ever moves FORWARD. Check out the latest release only
+        # when HEAD is strictly behind it (HEAD is an ancestor of the tag). On a
+        # feature branch or a commit at/ahead of the release, stay on the current
+        # checkout rather than silently downgrading newer work to the last release.
+        # An explicit --version still hard-pins (and may move backward) by design.
+        behind = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", "HEAD", tag],
+            cwd=repo_root, capture_output=True, text=True, check=False,
+        )
+        if behind.returncode != 0:
+            print(f"Staying on the current checkout (at or ahead of release {tag}).")
+            return 0
+
     checkout = subprocess.run(
         ["git", "checkout", "--quiet", tag],
         cwd=repo_root, capture_output=True, text=True, check=False,

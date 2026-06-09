@@ -53,11 +53,42 @@ def main(argv: list[str] | None = None) -> int:
 
     # discover
     discover_parser = sub.add_parser("discover", help="Introspect accessible BERDL collections")
+    discover_parser.add_argument(
+        "--database",
+        default=None,
+        help="Scope to one database: list its tables (no schema crawl). Omit for the inventory.",
+    )
     discover_parser.add_argument("--max-databases", type=int, default=None)
 
     # hash
     hash_parser = sub.add_parser("hash", help="Compute notebook content hashes for a project")
     hash_parser.add_argument("project", help="Project directory name under projects/")
+
+    # notebook
+    notebook_parser = sub.add_parser(
+        "notebook", help="Scaffold, run, or list a project's analysis notebooks"
+    )
+    notebook_parser.add_argument("action", choices=["scaffold", "run", "list"])
+    notebook_parser.add_argument("project", help="Project directory name under projects/")
+    notebook_parser.add_argument(
+        "notebook",
+        nargs="?",
+        default=None,
+        help="Notebook path/name under notebooks/ (for 'run'; default: all)",
+    )
+    notebook_parser.add_argument(
+        "--from-plan",
+        dest="from_plan",
+        action="store_true",
+        default=False,
+        help="Scaffold from RESEARCH_PLAN.md's Analysis Plan (for 'scaffold')",
+    )
+    notebook_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=-1,
+        help="Per-cell execution timeout in seconds (for 'run'; default: -1 = none)",
+    )
 
     # export
     export_parser = sub.add_parser("export", help="Export query results to MinIO (destructive)")
@@ -138,6 +169,11 @@ def main(argv: list[str] | None = None) -> int:
         from beril_cli.hash_cmd import run_hash
 
         return run_hash(args)
+
+    if args.command == "notebook":
+        from beril_cli.notebook_cmd import run_notebook
+
+        return run_notebook(args)
 
     if args.command == "export":
         from beril_cli.export_cmd import run_export
