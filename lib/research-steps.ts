@@ -8,6 +8,8 @@
  * overall process at a glance.
  */
 
+import { GLYPH } from "./ui/glyphs.ts";
+
 /** The research checklist, in order, as a scientist thinks of it. */
 export const RESEARCH_STEPS = ["explore", "plan", "analyze", "review", "submit"] as const;
 
@@ -33,8 +35,10 @@ const STATE_STEP: Record<string, number> = {
  */
 export function stepBreadcrumb(state: string): string {
   const current = STATE_STEP[state];
-  const trail = RESEARCH_STEPS.map((step, i) => (i === current ? `▸${step}` : step)).join(" · ");
-  return current === RESEARCH_STEPS.length ? `${trail} ✓` : trail;
+  const trail = RESEARCH_STEPS.map((step, i) => (i === current ? `${GLYPH.here}${step}` : step)).join(
+    ` ${GLYPH.bullet} `,
+  );
+  return current === RESEARCH_STEPS.length ? `${trail} ${GLYPH.ok}` : trail;
 }
 
 /**

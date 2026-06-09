@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type ClaimRow, parseClaimLedger } from "../lib/claim-ledger.ts";
 import { requireReady } from "../lib/readiness.ts";
+import { GLYPH } from "../lib/ui/glyphs.ts";
 import {
   callLine,
   claimLedgerCard,
@@ -33,7 +34,7 @@ let activeProject: string | undefined;
 /** Record the active project and reflect it in the footer (UI only). */
 function setActiveProject(ctx: ExtensionContext | ExtensionCommandContext, project: string): void {
   activeProject = project;
-  if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, `▣ ${project}`);
+  if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, `${GLYPH.project} ${project}`);
 }
 
 interface Identity {

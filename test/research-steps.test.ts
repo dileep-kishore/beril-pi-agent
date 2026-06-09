@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { RESEARCH_STEPS, currentStep, stepBreadcrumb } from "../lib/research-steps.ts";
+import { GLYPH } from "../lib/ui/glyphs.ts";
 
 test("breadcrumb marks the current step per lifecycle state", () => {
-  assert.match(stepBreadcrumb("exploration"), /▸explore/);
-  assert.match(stepBreadcrumb("proposed"), /▸plan/);
-  assert.match(stepBreadcrumb("active"), /▸analyze/);
+  assert.ok(stepBreadcrumb("exploration").includes(`${GLYPH.here}explore`));
+  assert.ok(stepBreadcrumb("proposed").includes(`${GLYPH.here}plan`));
+  assert.ok(stepBreadcrumb("active").includes(`${GLYPH.here}analyze`));
   // A drafted report (analysis) points the scientist at the next action: review.
-  assert.match(stepBreadcrumb("analysis"), /▸review/);
-  assert.match(stepBreadcrumb("reviewed"), /▸submit/);
+  assert.ok(stepBreadcrumb("analysis").includes(`${GLYPH.here}review`));
+  assert.ok(stepBreadcrumb("reviewed").includes(`${GLYPH.here}submit`));
 });
 
 test("breadcrumb always lists every step in order", () => {
@@ -18,11 +19,11 @@ test("breadcrumb always lists every step in order", () => {
 });
 
 test("complete shows a finished checklist; unknown state marks nothing", () => {
-  assert.match(stepBreadcrumb("complete"), /✓$/);
-  assert.doesNotMatch(stepBreadcrumb("complete"), /▸/);
+  assert.ok(stepBreadcrumb("complete").endsWith(GLYPH.ok));
+  assert.ok(!stepBreadcrumb("complete").includes(GLYPH.here));
   const unknown = stepBreadcrumb("nonsense");
-  assert.doesNotMatch(unknown, /▸/);
-  assert.doesNotMatch(unknown, /✓/);
+  assert.ok(!unknown.includes(GLYPH.here));
+  assert.ok(!unknown.includes(GLYPH.ok));
 });
 
 test("currentStep gives the statusline phase label per state", () => {
