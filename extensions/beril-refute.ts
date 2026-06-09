@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { runReviewSubagent } from "../lib/review-agent.ts";
 import { nextReviewPath } from "../lib/review-finalize.ts";
 import { REFUTATION_RUBRIC } from "../lib/review-rubric.ts";
+import { GLYPH } from "../lib/ui/glyphs.ts";
 
 type ReviewSubagent = typeof runReviewSubagent;
 
@@ -57,7 +58,7 @@ export default function berilRefute(pi: ExtensionAPI) {
       }
       const path = nextReviewPath(projectDir, "REFUTATION");
       await writeFile(path, text, "utf8");
-      if (ctx.hasUI) ctx.ui.notify(`Refutation pass written: ${path}`, "info");
+      if (ctx.hasUI) ctx.ui.notify(`${GLYPH.refutes} Red-team pass written: ${path}`, "info");
       pi.sendUserMessage(
         `A refutation pass for "${parsed.project}" is at ${path}. Lift each surviving disconfirming check / contradiction into REPORT.md's Refutes slots and re-tag finding status (follow the synthesize skill).`,
       );
