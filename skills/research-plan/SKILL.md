@@ -10,6 +10,17 @@ written once the question is clear and the data has been explored, and it moves
 a project from `exploration` to `proposed`. Do not write or run notebooks yet —
 the plan comes first, then a check-in, then analysis.
 
+## Clarify first (information-gain gated)
+
+Before feasibility, ask **2–3 grounded multiple-choice questions** — but **only
+when** resolving the ambiguity would change the query you run or the result you
+get. Good ones: the research question restated in 1–2 sentences (is this what
+you mean?); which tables/databases to use; what a successful answer looks like.
+Put the choices to the scientist with the `request_checkpoint` tool. If an
+ambiguity wouldn't change the analysis, **don't ask** — auto-resolve it and
+**state the assumption** in the plan's context block so it can be corrected
+cheaply later.
+
 ## Feasibility first (the most important step)
 
 Before writing anything, confirm the question is **answerable with the data we
