@@ -1,5 +1,6 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { type Component, Text } from "@earendil-works/pi-tui";
+import type { ClaimRow } from "../claim-ledger.ts";
 import type { LitRecord } from "../lit.ts";
 import type { ClaimStatus, ConfidenceTier, EvidencePointer } from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
@@ -411,5 +412,35 @@ export function feasibilityCard(theme: Theme, v: FeasibilityView): Component {
     accentStyle: domainStyle(theme, "data"),
     lines,
     maxBodyLines: 30,
+  });
+}
+
+/**
+ * The claim ledger as a `Status | Confidence | Supports | Refutes | Stale?`
+ * table — one row per hypothesis/finding the read-only `claim_ledger` tool
+ * parses out of `RESEARCH_PLAN.md` / `REPORT.md`. `ClaimRow` lives in the pure
+ * `claim-ledger.ts` parser; this card only frames it.
+ */
+export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
+  const accentStyle = domainStyle(theme, "governance");
+  if (!rows.length) {
+    return linesCard(theme, {
+      title: "Claim ledger",
+      accentStyle,
+      lines: [theme.fg("muted", "(no hypotheses/findings parsed yet)")],
+    });
+  }
+  const table = rows.map((r) => ({
+    Hypothesis: r.hypothesis,
+    Status: r.status,
+    Confidence: r.confidence,
+    Supports: r.supports,
+    Refutes: r.refutes,
+    Stale: r.stale ? "yes" : "",
+  }));
+  return markdownCard(theme, {
+    title: `Claim ledger ${GLYPH.bullet} ${rows.length}`,
+    accentStyle,
+    markdown: markdownTable(table as unknown as Record<string, unknown>[], { maxRows: 60 }),
   });
 }
