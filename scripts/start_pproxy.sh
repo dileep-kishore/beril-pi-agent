@@ -17,15 +17,22 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
+# Portable "is something listening on this local port?" — no `lsof` dependency
+# (lsof is absent on minimal remote/JupyterHub images). Uses python3 (a hard
+# prereq of this repo) to attempt a localhost TCP connect; exit 0 == accepting.
+port_listening() {
+  python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.5); sys.exit(0 if s.connect_ex(('127.0.0.1',$1))==0 else 1)" 2>/dev/null
+}
+
 # Check if SSH tunnel on 1338 is up
-if ! lsof -i :1338 2>/dev/null | grep -q LISTEN; then
+if ! port_listening 1338; then
   echo "Warning: SSH tunnel on port 1338 not detected." >&2
   echo "Start it with: ssh -f -N -o ServerAliveInterval=60 -D 1338 ac.<username>@login1.berkeley.kbase.us" >&2
   echo "Continuing anyway..." >&2
 fi
 
 # Check if pproxy is already running
-if lsof -i :8123 2>/dev/null | grep -q LISTEN; then
+if port_listening 8123; then
   echo "pproxy is already running on port 8123." >&2
   exit 0
 fi
@@ -44,7 +51,7 @@ nohup uv run --with pproxy python -m pproxy \
 
 # Give it a moment to bind the port, then report.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if lsof -i :8123 2>/dev/null | grep -q LISTEN; then
+  if port_listening 8123; then
     echo "pproxy is listening on port 8123."
     exit 0
   fi

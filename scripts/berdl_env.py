@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import subprocess
 import sys
 import time
@@ -51,6 +52,19 @@ class BerdlEnvironmentError(RuntimeError):
         self.next_steps = next_steps or []
 
 
+def _port_listening(port: int, timeout: float = 0.5) -> bool:
+    """True if something accepts a TCP connection on 127.0.0.1:<port>.
+
+    Dependency-free (no `lsof`, which is absent on minimal images); the SSH SOCKS
+    tunnels and pproxy all accept TCP, so a successful connect means "up".
+    """
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def start_pproxy() -> bool:
     """Start pproxy via scripts/start_pproxy.sh. Returns True if it ends up listening."""
     script = _REPO_ROOT / "scripts" / "start_pproxy.sh"
@@ -62,10 +76,7 @@ def start_pproxy() -> bool:
         return False
     deadline = time.time() + PPROXY_WAIT_SECONDS
     while time.time() < deadline:
-        result = subprocess.run(
-            ["lsof", "-i", ":8123"], capture_output=True, text=True, check=False
-        )
-        if "LISTEN" in result.stdout:
+        if _port_listening(8123):
             return True
         time.sleep(PPROXY_POLL_INTERVAL)
     return False

@@ -11,7 +11,6 @@ import json
 import os
 import shutil
 import socket
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -42,14 +41,15 @@ def is_on_cluster() -> bool:
 
 
 def check_port_listening(port: int) -> bool:
-    """Check if a local port has something listening."""
-    result = subprocess.run(
-        ["lsof", "-i", f":{port}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return "LISTEN" in result.stdout
+    """Check if a local port has something listening.
+
+    Dependency-free TCP probe — NOT `lsof`, which isn't installed on minimal
+    remote / JupyterHub images (a missing `lsof` used to crash the whole check
+    with FileNotFoundError). A successful connect to 127.0.0.1:<port> means
+    something is accepting connections there; the SSH SOCKS tunnels and pproxy
+    all accept TCP, so this is a reliable "is it up?" signal.
+    """
+    return test_connectivity("127.0.0.1", port, timeout=0.5)
 
 
 def load_env_file(env_path: Path) -> dict[str, str]:
