@@ -11,7 +11,11 @@
 
 Off-cluster: invoke as `uv run scripts/export_sql.py --berdl-proxy ...`.
 uv resolves the PEP 723 dependencies above on first run, no `.venv-berdl`
-activation required."""
+activation required.
+
+On-cluster: invoke under the kernel's system Python (no `uv run`); the script
+detects ``berdl_notebook_utils`` and uses its local-cluster ``get_spark_session``
+instead of the Spark Connect public ingress."""
 
 from __future__ import annotations
 
@@ -21,6 +25,15 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+
+
+def _is_on_cluster() -> bool:
+    """True when ``berdl_notebook_utils`` is importable (the JupyterHub signal)."""
+    try:
+        import berdl_notebook_utils  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def load_env_file(env_path: Path) -> None:
@@ -132,10 +145,15 @@ def apply_proxy_settings(args: argparse.Namespace) -> None:
 def main() -> int:
     args = parse_args()
     load_env_file(Path(args.env_file))
-    apply_proxy_settings(args)
+
+    on_cluster = _is_on_cluster()
+    if not on_cluster:
+        apply_proxy_settings(args)
 
     token = args.kbase_token or os.getenv("KBASE_AUTH_TOKEN")
-    if not token:
+    if not token and not on_cluster:
+        # On-cluster, berdl_notebook_utils builds the session against the user's
+        # local Spark master and does not require a KBase token at this layer.
         print("KBASE_AUTH_TOKEN is required.", file=sys.stderr)
         return 2
 
@@ -155,27 +173,36 @@ def main() -> int:
         print("Query cannot be empty.", file=sys.stderr)
         return 2
 
-    try:
-        from spark_connect_remote import create_spark_session
-    except Exception as exc:
-        print(f"Cannot import spark_connect_remote: {exc}", file=sys.stderr)
-        return 2
-
-    if args.berdl_proxy:
+    if on_cluster:
         try:
-            from get_spark_session import ensure_hub
-            ensure_hub()
+            from berdl_notebook_utils import get_spark_session as _on_cluster_session
         except Exception as exc:
-            print(f"[hub] auto-spawn skipped: {exc}", file=sys.stderr)
+            print(f"Cannot import berdl_notebook_utils: {exc}", file=sys.stderr)
+            return 2
+    else:
+        try:
+            from spark_connect_remote import create_spark_session
+        except Exception as exc:
+            print(f"Cannot import spark_connect_remote: {exc}", file=sys.stderr)
+            return 2
+        if args.berdl_proxy:
+            try:
+                from get_spark_session import ensure_hub
+                ensure_hub()
+            except Exception as exc:
+                print(f"[hub] auto-spawn skipped: {exc}", file=sys.stderr)
 
     try:
-        spark = create_spark_session(
-            host_template=host_template,
-            port=port,
-            use_ssl=use_ssl,
-            kbase_token=token,
-            app_name=args.app_name,
-        )
+        if on_cluster:
+            spark = _on_cluster_session(app_name=args.app_name)
+        else:
+            spark = create_spark_session(
+                host_template=host_template,
+                port=port,
+                use_ssl=use_ssl,
+                kbase_token=token,
+                app_name=args.app_name,
+            )
         df = spark.sql(query)
         if args.coalesce is not None:
             df = df.coalesce(args.coalesce)
@@ -198,9 +225,10 @@ def main() -> int:
 
     manifest: dict[str, Any] = {
         "query": query,
-        "host_template": host_template,
-        "port": port,
-        "use_ssl": use_ssl,
+        "on_cluster": on_cluster,
+        "host_template": None if on_cluster else host_template,
+        "port": None if on_cluster else port,
+        "use_ssl": None if on_cluster else use_ssl,
         "grpc_proxy": os.getenv("grpc_proxy"),
         "https_proxy": os.getenv("https_proxy"),
         "no_proxy": os.getenv("no_proxy"),

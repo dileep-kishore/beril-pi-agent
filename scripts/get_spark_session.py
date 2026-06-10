@@ -1,16 +1,20 @@
 """Drop-in local replacement for the BERDL JupyterHub get_spark_session.
 
 On JupyterHub, get_spark_session() is injected into the kernel and creates
-a local Spark session on the compute node.  This version creates a remote
-Spark Connect session through the BERDL proxy chain, so the same notebooks
-work on a local machine without code changes.
+a local Spark session on the compute node.  This module:
 
-Prerequisites (see skills/berdl-query/SKILL.md):
+  - On-cluster (``berdl_notebook_utils`` importable): delegates to the kernel's
+    local-cluster helper so notebooks run against the in-pod Spark master, not
+    the Spark Connect public ingress (which terminates elsewhere).
+  - Off-cluster: builds a remote Spark Connect session through the BERDL proxy
+    chain so the same notebooks work unchanged from a local machine.
+
+Prerequisites (off-cluster only; see skills/berdl-query/SKILL.md):
   - KBASE_AUTH_TOKEN in environment or .env
   - SSH SOCKS tunnels on ports 1337/1338
   - pproxy on port 8123
 
-The JupyterHub server is spawned automatically when needed.
+The JupyterHub server is spawned automatically when needed (off-cluster only).
 """
 
 from __future__ import annotations
@@ -19,6 +23,15 @@ import os
 import subprocess
 import time
 from pathlib import Path
+
+
+def _is_on_cluster() -> bool:
+    """True when ``berdl_notebook_utils`` is importable (the JupyterHub signal)."""
+    try:
+        import berdl_notebook_utils  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def _load_env() -> None:
@@ -95,17 +108,27 @@ def get_spark_session(
     use_ssl: bool = True,
     auto_spawn: bool = True,
 ) -> "pyspark.sql.SparkSession":
-    """Return a remote Spark session connected to the BERDL cluster.
+    """Return a Spark session connected to the BERDL cluster.
 
     Called with no arguments, this matches the JupyterHub interface::
 
         spark = get_spark_session()
 
-    When berdl_proxy=True (the default for local use), the JupyterHub server
-    is spawned automatically if it is not already running.  Set auto_spawn=False
-    to skip this check (e.g. when you know the server is already up).
+    On-cluster (``berdl_notebook_utils`` importable) it delegates to that helper,
+    which targets the user's in-pod Spark master — the off-cluster proxy/connect
+    arguments are ignored. Off-cluster it builds a remote Spark Connect session;
+    when berdl_proxy=True (the default for local use), the JupyterHub server is
+    spawned automatically if it is not already running. Set auto_spawn=False to
+    skip this check (e.g. when you know the server is already up).
     """
     _load_env()
+
+    # On-cluster, the kernel helper is the right tool: it targets the user's
+    # in-pod Spark master, not the Spark Connect public ingress. The off-cluster
+    # proxy/host/port arguments are not meaningful in that environment.
+    if _is_on_cluster():
+        import berdl_notebook_utils
+        return berdl_notebook_utils.get_spark_session(app_name=app_name)
 
     token = os.getenv("KBASE_AUTH_TOKEN")
     if not token:

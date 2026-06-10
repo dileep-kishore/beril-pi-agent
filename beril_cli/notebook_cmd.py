@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 from beril_cli.paths import find_repo_root
+from scripts.detect_berdl_environment import is_on_cluster
 
 # Heavy notebook-content deps, layered onto the light PEP 723 runner env via
 # `uv run --with`. Mirrors the dependency list in scripts/bootstrap_client.sh.
@@ -252,20 +253,28 @@ def _run(
         sys.stderr.write("\n")
         return 2
 
-    with_flags = NOTEBOOK_WITH if extra_with is None else extra_with
     runner = root / "scripts" / "run_notebook.py"
+    # On-cluster the kernel image already ships pyspark, nbclient/nbformat/ipykernel,
+    # and berdl_notebook_utils — running under sys.executable picks all of that up
+    # and avoids a needless uv resolution. Off-cluster we still go through `uv run`
+    # so the PEP 723 runner deps plus the heavy `--with` content deps get cached.
+    on_cluster = is_on_cluster()
+    with_flags = NOTEBOOK_WITH if extra_with is None else extra_with
 
     executed: list[dict] = []
     for path in targets:
-        argv = [
-            "uv",
-            "run",
-            *with_flags,
-            str(runner),
-            str(path),
-            "--timeout",
-            str(timeout),
-        ]
+        if on_cluster:
+            argv = [sys.executable, str(runner), str(path), "--timeout", str(timeout)]
+        else:
+            argv = [
+                "uv",
+                "run",
+                *with_flags,
+                str(runner),
+                str(path),
+                "--timeout",
+                str(timeout),
+            ]
         proc = subprocess.run(argv, capture_output=True, text=True, check=False, cwd=root)
         ok = proc.returncode == 0
         error = None

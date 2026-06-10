@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from beril_cli.paths import find_repo_root
+from scripts.detect_berdl_environment import is_on_cluster
 
 
 def run_export(args: argparse.Namespace) -> int:
@@ -18,23 +19,31 @@ def run_export(args: argparse.Namespace) -> int:
     This is a destructive operation (writes to MinIO). The underlying script pollutes
     stdout with ``[hub]`` chatter, so its manifest is routed to a temp ``--manifest``
     file (per the subcommand I/O contract) and re-emitted to stdout here.
+
+    On-cluster (BERDL JupyterHub) the script runs under ``sys.executable`` so it can
+    see the kernel's pre-installed ``berdl_notebook_utils`` and ``pyspark``, and the
+    proxy chain is skipped. Off-cluster falls back to ``uv run`` with ``--berdl-proxy``.
     """
     root = find_repo_root()
     if root is None:
         print("BERIL repo not found (no PROJECT.md on path).", file=sys.stderr)
         return 2
     script = root / "scripts" / "export_sql.py"
+    on_cluster = is_on_cluster()
     with tempfile.TemporaryDirectory() as td:
         manifest = Path(td) / "manifest.json"
-        argv = [
-            "uv", "run", str(script),
+        if on_cluster:
+            argv = [sys.executable, str(script)]
+        else:
+            argv = ["uv", "run", str(script)]
+        argv += [
             "--query", args.query,
             "--path", args.path,
             "--format", args.format,
             "--mode", args.mode,
             "--manifest", str(manifest),
         ]
-        if getattr(args, "proxy", True):
+        if getattr(args, "proxy", True) and not on_cluster:
             argv.append("--berdl-proxy")
         proc = subprocess.run(argv, cwd=str(root), capture_output=True, text=True, check=False)
         if proc.returncode != 0:

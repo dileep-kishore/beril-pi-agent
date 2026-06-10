@@ -5,11 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
 
 from beril_cli import notebook_cmd
+
+
+@pytest.fixture(autouse=True)
+def _force_off_cluster(monkeypatch):
+    """Default tests to off-cluster so `uv run` is the runner path regardless of
+    where the suite runs (CI vs. inside a BERDL pod with berdl_notebook_utils)."""
+    monkeypatch.setattr(notebook_cmd, "is_on_cluster", lambda: False)
 
 PLAN = """# Research Plan
 
@@ -219,6 +227,43 @@ def test_run_uses_uv_runner(tmp_path, monkeypatch, capsys):
     assert str(tmp_path / "scripts" / "run_notebook.py") in argv
     assert argv[-2:] == ["--timeout", "42"]
     assert seen["cwd"] == tmp_path
+
+
+def test_run_on_cluster_uses_sys_python(tmp_path, monkeypatch, capsys):
+    """On-cluster, the runner is invoked under sys.executable with no `uv run`/`--with`.
+
+    The kernel image already ships pyspark, nbclient/nbformat/ipykernel, and
+    berdl_notebook_utils — uv would just rebuild a duplicate env unnecessarily.
+    """
+    project_dir = _project(tmp_path, monkeypatch)
+    notebooks_dir = project_dir / "notebooks"
+    notebooks_dir.mkdir()
+    (notebooks_dir / "01_a.ipynb").write_text("{}")
+    monkeypatch.setattr(notebook_cmd, "is_on_cluster", lambda: True)
+
+    seen: dict = {}
+
+    def fake_run(argv, **kw):
+        seen["argv"] = argv
+
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setattr(notebook_cmd.subprocess, "run", fake_run)
+    ns = _ns(action="run", timeout=42)
+    ns._with_override = ["--with", "nbclient"]  # ignored on-cluster
+    notebook_cmd.run_notebook(ns)
+    capsys.readouterr()
+
+    argv = seen["argv"]
+    assert argv[0] == sys.executable
+    assert "uv" not in argv and "--with" not in argv
+    assert str(tmp_path / "scripts" / "run_notebook.py") in argv
+    assert argv[-2:] == ["--timeout", "42"]
 
 
 def test_run_continues_on_failing_cell(tmp_path, monkeypatch, capsys):
