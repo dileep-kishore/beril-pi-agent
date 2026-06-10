@@ -22,7 +22,7 @@ def test_pi_launch_execs_pi(monkeypatch, tmp_path):
 
     monkeypatch.setattr(start.os, "execvp", fake_execvp)
     try:
-        start.run_start(agent="pi", extra_args=[])
+        start.run_start(extra_args=[])
     except SystemExit:
         pass
     assert captured["argv"][0] == "pi"

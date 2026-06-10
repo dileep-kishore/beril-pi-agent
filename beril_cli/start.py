@@ -12,7 +12,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from beril_cli.config import get_default_agent
 from beril_cli.detect import print_jupyterhub_path_hint
 from beril_cli.paths import find_repo_root
 
@@ -164,18 +163,23 @@ def _checkout_release(repo_root: Path, requested_version: str | None) -> int:
 
 
 def run_start(
-    agent: str | None = None,
     extra_args: list[str] | None = None,
     version: str | None = None,
 ) -> int:
-    """Launch the selected coding agent from the repo root."""
-    agent = agent or get_default_agent()
+    """Launch the Pi coding agent from the repo root.
+
+    beril is a Pi workbench, so `beril start` always launches `pi` — no other
+    agent is supported here, and a stale config can't redirect it. (Other agents
+    like claude/codex are still used *inside* skills and subagents — e.g. the
+    `/berdl-review` Opus reviewer — but the workbench launcher itself is pi-only.)
+    """
+    agent = "pi"
     extra_args = extra_args or []
 
     binary = shutil.which(agent)
     if not binary:
-        print(f"Error: '{agent}' is not installed or not on PATH.", file=sys.stderr)
-        print("Install it and try again, or choose a different agent with --agent.", file=sys.stderr)
+        print("Error: 'pi' is not installed or not on PATH.", file=sys.stderr)
+        print("beril is a Pi workbench — install Pi from https://pi.dev and try again.", file=sys.stderr)
         return 1
 
     # Ensure we launch from the repo root so agent workflows have correct paths

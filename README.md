@@ -104,15 +104,15 @@ This repo **is** your workspace (`PROJECT.md` marks the root; research projects 
 From the repo root:
 
 ```bash
-uv run beril start            # launches your default agent; add `--agent pi` to force it
+uv run beril start            # always launches Pi (beril is a Pi workbench)
 ```
 
-`beril start` refreshes your KBase token in `.env`, then execs your coding agent with this
-package and the bundled `beril` already on PATH (so the extensions resolve it — **no manual
+`beril start` refreshes your KBase token in `.env`, then execs **Pi** with this package and the
+bundled `beril` already on PATH (so the extensions resolve it — **no manual
 `source .venv/bin/activate`**), and hands off onboarding to the `beril-env` extension (run
-`/berdl-start` any time to re-orient). The agent is chosen as: `--agent` flag → `[defaults] agent`
-in `~/.config/beril/config.toml` → fallback `pi`. So if `beril start` opens the wrong agent,
-check that config (or pass `--agent pi`).
+`/berdl-start` any time to re-orient). beril is a **Pi workbench**: `beril start` always launches
+`pi` (a stale config can't redirect it). Other agents like Claude/Codex are still used *inside*
+skills and subagents — e.g. the `/berdl-review` Opus reviewer — but never as the launcher.
 
 It **stays on your current branch/commit** — the release pin only ever moves *forward* (it checks
 out a newer **published release** only when you're *strictly behind* one, never downgrades newer

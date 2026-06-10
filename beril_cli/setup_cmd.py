@@ -213,51 +213,35 @@ def run_setup() -> int:
     if orcid:
         user_cfg["orcid"] = orcid
 
-    # ── Step 7: Agent selection ─────────────────────
-    _step(7, "Coding agent")
+    # ── Step 7: Coding agent (Pi) ───────────────────
+    _step(7, "Coding agent (Pi)")
 
-    agents_found: list[str] = []
-    for agent in ("pi", "claude", "codex", "gemini"):
-        if shutil.which(agent):
-            agents_found.append(agent)
-
-    if agents_found:
-        print(f"  Detected: {', '.join(agents_found)}")
+    pi_found = shutil.which("pi") is not None
+    if pi_found:
+        print("  ✓ pi detected — beril always launches Pi.")
     else:
-        print("  No agents detected (pi, claude, codex, gemini).")
-        print("  Install one and re-run setup, or use beril start --agent <name>.")
-
-    default_agent = existing_cfg.get("defaults", {}).get("agent", "")
-    if not default_agent and agents_found:
-        default_agent = agents_found[0]
-
-    if agents_found:
-        chosen = _prompt("  Default agent", default_agent)
-        if chosen not in agents_found:
-            print(f"  Warning: '{chosen}' was not detected on PATH.")
-    else:
-        chosen = default_agent or "pi"
+        print("  pi not found on PATH. beril is a Pi workbench; install Pi from")
+        print("  https://pi.dev, then re-run setup (or `beril start`).")
 
     # ── Save config ─────────────────────────────────
     cfg: dict = {}
     if user_cfg:
         cfg["user"] = user_cfg
-    cfg["defaults"] = {"agent": chosen}
     config.save(cfg)
     print(f"\n  Config saved to {config.CONFIG_PATH}")
 
     # ── Step 8: Launch ──────────────────────────────
     _step(8, "Launch")
 
-    if agents_found and _confirm(f"  Launch {chosen} now?"):
-        print(f"\n  Starting {chosen}...\n")
+    if pi_found and _confirm("  Launch pi now?"):
+        print("\n  Starting pi...\n")
         print_jupyterhub_path_hint(repo_root)
-        binary = shutil.which(chosen)
+        binary = shutil.which("pi")
         if binary:
             os.chdir(repo_root)
-            os.execvp(binary, [chosen])
+            os.execvp(binary, ["pi"])
         else:
-            print(f"  Error: '{chosen}' not found on PATH.", file=sys.stderr)
+            print("  Error: 'pi' not found on PATH.", file=sys.stderr)
             return 1
 
     print("\n  Setup complete! Run 'beril start' when you're ready.\n")

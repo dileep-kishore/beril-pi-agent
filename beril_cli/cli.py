@@ -25,9 +25,9 @@ def main(argv: list[str] | None = None) -> int:
     start_parser = sub.add_parser("start", help="Launch a coding agent")
     start_parser.add_argument(
         "--agent",
-        choices=["pi", "claude", "codex", "gemini"],
-        default=None,
-        help="Agent to launch (default: from config, or pi)",
+        choices=["pi"],
+        default="pi",
+        help="Coding agent to launch. Only 'pi' is supported — beril is a Pi workbench.",
     )
     start_parser.add_argument(
         "--version",
@@ -145,7 +145,6 @@ def main(argv: list[str] | None = None) -> int:
         from beril_cli.start import run_start
 
         return run_start(
-            agent=args.agent,
             extra_args=remaining,
             version=args.version,
         )
