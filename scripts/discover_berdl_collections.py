@@ -205,7 +205,8 @@ def discover_collections(
         snapshot["tenants"] = [_discover_one_database(database, _get_tables)]
         return snapshot
 
-    databases = sorted(_get_databases(), key=lambda item: item["id"])
+    databases = _dedupe_namespace_aliases(_get_databases())
+    databases = sorted(databases, key=lambda item: item["id"])
     if max_databases is not None:
         databases = databases[:max_databases]
 
@@ -312,18 +313,53 @@ def filter_user_facing_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 
 def infer_tenant_id(database_id: str) -> str:
-    """Infer tenant from BERDL database naming conventions."""
+    """Infer tenant from BERDL database naming conventions.
+
+    BERDL exposes databases under two namespaces:
+    - ``tenant.dbname`` — Unity-style 3-part catalog (newer), tenant before ``.``.
+    - ``tenant_dbname`` — legacy flat (older), tenant before the first ``_``.
+
+    Personal namespaces ``u_<userhash>__<rest>`` use ``__`` as the tenant suffix
+    sentinel and are kept whole as the tenant id.
+    """
     if database_id.startswith("u_") and "__" in database_id:
         return database_id.split("__", 1)[0]
-    if database_id.startswith("kbase_"):
-        return "kbase"
-    if database_id.startswith("kescience_"):
-        return "kescience"
+    if "." in database_id:
+        return database_id.split(".", 1)[0]
     return database_id.split("_", 1)[0]
 
 
 def title_from_id(database_id: str) -> str:
-    return database_id.replace("_", " ").title()
+    # Normalize both namespace forms (``tenant.dbname`` and ``tenant_dbname``) so
+    # the human-facing title looks the same regardless of which surface form is
+    # listed.
+    return database_id.replace(".", " ").replace("_", " ").title()
+
+
+def _dedupe_namespace_aliases(databases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop legacy underscored ids when a dotted equivalent exists.
+
+    Most BERDL databases are exposed under both ``tenant.dbname`` (Unity-style)
+    and ``tenant_dbname`` (legacy flat) — same Delta tables, same RBAC, just two
+    surface forms. Listing both inflates the inventory and confuses cross-DB
+    reasoning. When an underscored id has a dotted equivalent (replace the first
+    ``_`` with ``.``), prefer the dotted form and drop the underscored alias.
+
+    Underscored ids without a dotted equivalent are kept as-is. Dotted ids are
+    always kept.
+    """
+    dotted_ids = {d["id"] for d in databases if "." in d.get("id", "")}
+    kept: list[dict[str, Any]] = []
+    for db in databases:
+        db_id = db.get("id", "")
+        if "." in db_id or "_" not in db_id:
+            kept.append(db)
+            continue
+        if db_id.replace("_", ".", 1) in dotted_ids:
+            # underscored alias — the dotted equivalent will land in `kept`.
+            continue
+        kept.append(db)
+    return kept
 
 
 def _format_error(exc: Exception, max_length: int = 500) -> str:

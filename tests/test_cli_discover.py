@@ -147,6 +147,43 @@ def test_curated_visibility_hides_scratch_and_test_namespaces():
         assert not _is_curated_visible(db), f"{db} should be hidden"
 
 
+def test_infer_tenant_id_handles_both_namespace_forms():
+    """Dotted ids split on '.', underscored split on '_', personal namespaces stay whole."""
+    from scripts.discover_berdl_collections import infer_tenant_id
+
+    assert infer_tenant_id("kbase.ke_pangenome") == "kbase"
+    assert infer_tenant_id("plantmicrobeinterfaces.pmi_data") == "plantmicrobeinterfaces"
+    assert infer_tenant_id("kbase_ke_pangenome") == "kbase"
+    assert infer_tenant_id("plantmicrobeinterfaces_pmi_data") == "plantmicrobeinterfaces"
+    assert infer_tenant_id("kescience_fitnessbrowser") == "kescience"
+    assert infer_tenant_id("phagefoundry_strain_modelling") == "phagefoundry"
+    assert infer_tenant_id("u_abc123__scratch") == "u_abc123"
+
+
+def test_dedupe_namespace_aliases_drops_underscored_duplicate():
+    """When dotted + underscored ids point at the same Delta tables, keep dotted only."""
+    from scripts.discover_berdl_collections import _dedupe_namespace_aliases
+
+    databases = [
+        {"id": "kbase.ke_pangenome"},
+        {"id": "kbase_ke_pangenome"},
+        {"id": "plantmicrobeinterfaces.pmi_data"},
+        {"id": "plantmicrobeinterfaces_pmi_data"},
+        {"id": "refdata.uniprot"},
+        {"id": "refdata_uniprot"},  # empty legacy alias
+        {"id": "enigma_coral"},  # underscored-only, no dotted equivalent
+        {"id": "kbase.uniref100"},  # dotted-only
+    ]
+    kept_ids = {d["id"] for d in _dedupe_namespace_aliases(databases)}
+    assert kept_ids == {
+        "kbase.ke_pangenome",
+        "plantmicrobeinterfaces.pmi_data",
+        "refdata.uniprot",
+        "enigma_coral",
+        "kbase.uniref100",
+    }
+
+
 def test_filter_user_facing_snapshot_uses_denylist():
     """filter_user_facing_snapshot drops only denied collections, keeps the rest."""
     from scripts.discover_berdl_collections import filter_user_facing_snapshot
