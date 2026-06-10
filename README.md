@@ -72,40 +72,52 @@ them.
 - A KBase account + `KBASE_AUTH_TOKEN` (from <https://narrative.kbase.us/#auth2/account>) in a `.env` at the repo root.
 - Optional: `NCBI_API_KEY` (and `NCBI_EMAIL`) in `.env` to lift the PubMed rate limit from ~3 to ~10 req/s — useful when the co-scientist fans out many `lit_search` calls. Get a key at <https://www.ncbi.nlm.nih.gov/account/settings/>.
 
-## Install
+## Setup
+
+Three one-time steps, then launch — all from the repo root.
 
 ```bash
+# Prerequisites: uv, bun, a coding agent on PATH (pi — install per https://pi.dev), and a KBase token.
 git clone git@github.com:dileep-kishore/beril-pi-agent && cd beril-pi-agent
 
-# 1) the bundled beril CLI (Python execution substrate)
-uv sync                  # or: uv pip install -e .   (provides the `beril` command)
+# 1) the bundled `beril` CLI (Python execution substrate)
+uv sync                       # provides the `beril` command
 
-# 2) the Pi package (extensions/skills/prompts/themes)
+# 2) register the Pi package with Pi — extensions, skills, prompts, theme  (ONE-TIME)
 bun install
-pi install -l .          # project-local; or `pi install git:…` for a remote checkout
+pi install -l .               # re-run ONLY after you pull changes under extensions/
+
+# 3) credentials + identity (writes .env + ~/.config/beril/config.toml)
+uv run beril setup            # or just put KBASE_AUTH_TOKEN=… in a .env at the repo root
 ```
 
-`pi list` shows the package; its five extensions load at session start. This repo **is** your
-workspace (`PROJECT.md` marks the root; research projects live under `projects/<id>/`).
+> **`pi install -l .` is the step people miss.** It registers the extensions/skills with Pi and
+> is required **once** before you launch. `beril start` does **not** install them — it refreshes
+> your token and execs your agent, which then loads the *already-installed* package. Confirm with
+> `pi list` (you should see `beril`). Re-run `pi install -l .` only when the package's
+> extensions/skills change (e.g. after a `git pull`).
+
+This repo **is** your workspace (`PROJECT.md` marks the root; research projects live under `projects/<id>/`).
 
 ## Launch
 
 From the repo root:
 
 ```bash
-uv run beril start --agent pi      # or just `beril start --agent pi` if the CLI is on PATH
+uv run beril start            # launches your default agent; add `--agent pi` to force it
 ```
 
-This is the seamless one-command launch: `beril start` refreshes your KBase
-token in `.env`, execs `pi` with this package and the bundled `beril` already on
-PATH (so the extensions resolve it — **no manual `source .venv/bin/activate`**),
-and hands off onboarding/status to the `beril-env` extension (run `/berdl-start`
-any time to re-orient).
+`beril start` refreshes your KBase token in `.env`, then execs your coding agent with this
+package and the bundled `beril` already on PATH (so the extensions resolve it — **no manual
+`source .venv/bin/activate`**), and hands off onboarding to the `beril-env` extension (run
+`/berdl-start` any time to re-orient). The agent is chosen as: `--agent` flag → `[defaults] agent`
+in `~/.config/beril/config.toml` → fallback `pi`. So if `beril start` opens the wrong agent,
+check that config (or pass `--agent pi`).
 
-It **stays on your current branch/commit** — the release pin only ever moves
-*forward* (it checks out a newer published release only when you're behind one,
-never downgrades newer work). Pass `--version vX.Y.Z` to pin to a specific
-release explicitly.
+It **stays on your current branch/commit** — the release pin only ever moves *forward* (it checks
+out a newer **published release** only when you're *strictly behind* one, never downgrades newer
+work). Pass `--version vX.Y.Z` to pin explicitly. Note: the pin tracks the latest **release tag**,
+not `main` — so to ship new work to other machines, cut a new release.
 
 ### Connecting to BERDL (off-cluster)
 

@@ -1,6 +1,6 @@
 [project]
 name = "beril-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "BERIL Pi workbench — bundled `beril` CLI (execution substrate for the Pi extensions)"
 requires-python = ">=3.11"
 license = "MIT"
