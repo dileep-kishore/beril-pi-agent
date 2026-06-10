@@ -34,6 +34,25 @@ flow; the tools are `notebook_scaffold`, `notebook_run`, and `notebook_list`.
   berdl-query skill; check large tables (`gene`, `genome_ani`, …) have filter
   strategies before scanning them.
 
+## Test the discriminating / falsifying result first
+
+The first analysis notebook should run the query or figure that *distinguishes
+the competing hypotheses* (the plan's discrimination strategy) or *would refute
+H1* — before any confirmatory cells. Leading with the falsification test means
+the cheapest, most informative result lands first: if H1 doesn't survive it,
+you have saved four notebooks of confirmation built on a dead hypothesis.
+
+- After that first cell, record one line: **"did this seek data that would
+  refute the hypothesis, or only affirm it?"** Affirm-only ordering is a smell —
+  reorder so the disconfirming check runs before the supporting ones.
+- Tag each result with its **confidence tier** (`high` / `medium` / `low`) and a
+  **scope bound** — "in these N samples / under filter X", not a universal — so
+  the result carries its own calibration into `/synthesize`. A single
+  re-runnable result is `medium`; literature-only is `low`.
+- Tag the hypothesis the result bears on with a **status**: `open` /
+  `supported` / `refuted` / `needs-replication` / `blocked` / `needs-evidence`.
+  A `refuted` H1 reported honestly is a finding, not a failure.
+
 ## Reproducibility (hard requirement)
 
 Notebooks must be **committed with their outputs saved** — a notebook with only

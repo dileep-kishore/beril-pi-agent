@@ -1,6 +1,8 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { markdownCard } from "./card.ts";
+import { GLYPH } from "./glyphs.ts";
+import { domainStyle } from "./palette.ts";
 
 /**
  * Science checkpoints — the visible decision seams where the scientist steers.
@@ -21,5 +23,9 @@ export interface CheckpointResult {
 /** A card recording a checkpoint question and the scientist's decision. */
 export function checkpointCard(theme: Theme, d: CheckpointResult): Component {
   const body = `${d.summary ? `${d.summary}\n\n` : ""}**Decision:** ${d.choice}`;
-  return markdownCard(theme, { title: `Checkpoint · ${d.title}`, markdown: body, accent: "borderAccent" });
+  return markdownCard(theme, {
+    title: `${GLYPH.checkpoint} Checkpoint · ${d.title}`,
+    markdown: body,
+    accentStyle: domainStyle(theme, "checkpoint"),
+  });
 }

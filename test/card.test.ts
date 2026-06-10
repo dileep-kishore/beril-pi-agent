@@ -72,3 +72,39 @@ test("accentStyle overrides the theme accent for the border + title", () => {
   // The marker is zero-width, so the frame stays exactly `width` columns.
   for (const line of lines) assert.equal(visibleWidth(line), 40);
 });
+
+test("labeled sections render width-exact with a divider row", () => {
+  for (const width of [20, 40, 80]) {
+    const lines = frameCard(
+      fakeTheme,
+      {
+        title: "Evidence",
+        body: ["intro"],
+        sections: [
+          { label: "A", lines: ["x"] },
+          { label: "B", lines: ["y"] },
+        ],
+      },
+      width,
+    );
+    for (const line of lines) assert.equal(visibleWidth(line), width, `line "${line}" should be ${width} wide`);
+    assert.ok(
+      lines.some((l) => l.includes("┤")),
+      "a section divider row is present",
+    );
+  }
+});
+
+test("state sets the border colour and stays width-exact (no accent)", () => {
+  const lines = frameCard(fakeTheme, { title: "Failed", body: ["boom"], state: "error" }, 40);
+  for (const line of lines) assert.equal(visibleWidth(line), 40);
+});
+
+test("headerMeta renders after the title and stays width-exact", () => {
+  for (const width of [20, 40, 80]) {
+    const lines = frameCard(fakeTheme, { title: "Query", body: ["row"], headerMeta: "3 rows" }, width);
+    for (const line of lines) assert.equal(visibleWidth(line), width, `line "${line}" should be ${width} wide`);
+  }
+  const lines = frameCard(fakeTheme, { title: "Query", body: ["row"], headerMeta: "3 rows" }, 40);
+  assert.ok(lines[0].includes("3 rows"), "top line includes the header meta");
+});

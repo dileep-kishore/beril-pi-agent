@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type ColorModeTheme, domainHex, domainStyle, hexFg } from "../lib/ui/palette.ts";
+import { type ColorModeTheme, domainHex, domainStyle, hexFg, roleStyle } from "../lib/ui/palette.ts";
 
 const truecolor: ColorModeTheme = { getColorMode: () => "truecolor" };
 const palette256: ColorModeTheme = { getColorMode: () => "256color" };
@@ -38,4 +38,16 @@ test("256-downgrade never emits an out-of-range color index (>255)", () => {
     const idx = Number(out.match(/38;5;(\d+)m/)?.[1]);
     assert.ok(idx >= 16 && idx <= 255, `${hex} → ${idx} must be in [16,255]`);
   }
+});
+
+test("roleStyle emits the truecolor rgb for refutes", () => {
+  assert.ok(roleStyle(truecolor, "refutes")("x").includes("38;2;240;101;58"));
+});
+
+test("roleStyle pins refutes to xterm-256 index 203", () => {
+  assert.ok(roleStyle(palette256, "refutes")("x").includes("38;5;203"));
+});
+
+test("roleStyle pins supports to xterm-256 index 43", () => {
+  assert.ok(roleStyle(palette256, "supports")("x").includes("38;5;43"));
 });

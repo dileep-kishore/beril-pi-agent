@@ -44,6 +44,7 @@ From the synthesized landscape, identify **2–3 candidate topics**. Score each 
 | Data readiness | High | Is the required BERDL data available and well-characterized (verified via `berdl_discover` / `berdl_query`)? |
 | Impact | High | Does it extend or challenge a significant existing finding? |
 | Feasibility | Medium | Are dependencies met? Does similar methodology already exist in the repo to reuse? |
+| Competing hypotheses / resolvability | Medium | Does the suggested project identify competing explanations and have the data to *discriminate* between them — i.e. is it resolvable, not just additive? |
 | Backlog alignment | Medium | Does it address a proposed idea or a Future Direction from a completed report? |
 | Effort fit | Low | Is the scope appropriate for a focused project? |
 

@@ -2,14 +2,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { GLYPH } from "../lib/ui/glyphs.ts";
 import {
+  confidenceFooter,
   discoverCard,
   envCard,
   errorCard,
+  evidenceCard,
   formatLitMarkdown,
   kvLines,
   peekMarkdown,
   queryCard,
+  redTeamCard,
   toolErrorText,
 } from "../lib/ui/science-cards.ts";
 
@@ -128,4 +132,92 @@ test("kvLines renders labeled scalar fields and skips nested objects", () => {
   assert.ok(text.includes("count") && text.includes("42"));
   assert.ok(text.includes("missing") && text.includes("—"), "null renders as em-dash");
   assert.ok(!text.includes("nested"), "object-valued keys are skipped");
+});
+
+test("evidenceCard renders the new glyphs/words with empty refutes (shows 'none found')", () => {
+  const card = evidenceCard(theme, {
+    claim: "core genes under stronger purifying selection",
+    status: "supported",
+    confidence: "high",
+    supports: [{ kind: "notebook", locator: "02.ipynb", exact: "dN/dS=0.08", relevance: "main result" }],
+    refutes: [],
+    refutesSearched: "accessory-gene dN/dS",
+  });
+  const lines = card.render(60);
+  for (const line of lines) assert.equal(visibleWidth(line), 60);
+  const text = lines.join("\n");
+  // Supports/Refutes are now labeled sections, each preceded by a `┤`-terminated divider.
+  assert.ok(
+    lines.some((l) => l.includes("┤")),
+    "section dividers rendered (┤)",
+  );
+  assert.ok(text.includes(`${GLYPH.supports} Supports (1)`), "supports section label glyph + count");
+  assert.ok(text.includes(`${GLYPH.refutes} Refutes (0)`), "refutes section label glyph + count");
+  // Header: a bold "Evidence" title with the status summary + supports/refutes meta.
+  assert.ok(text.includes("Evidence"), "cardHeader title");
+  assert.ok(text.includes("supported"), "header summary carries the status");
+  // Status row reads as the supported glyph + word (the word is role-coloured via
+  // palette's hexFg, so an ANSI escape sits between glyph and word — assert each).
+  assert.ok(text.includes(GLYPH.supports) && text.includes("supported"), "status glyph + word");
+  assert.ok(text.includes(`${GLYPH.meterFull} confidence: high`), "high confidence meter glyph");
+  // Each pointer is prefixed by its kind glyph (notebook here).
+  assert.ok(text.includes(`${GLYPH.kindNotebook} 02.ipynb`), "notebook kind glyph on the pointer");
+  assert.ok(text.includes("none found"), "auditable 'none found' on empty refutes");
+});
+
+test("evidenceCard renders width-exact for populated and empty inputs", () => {
+  // Fully populated, refuted (error state) with an unresolved section.
+  const populated = evidenceCard(theme, {
+    claim: "horizontal transfer drives the resistance signal",
+    status: "refuted",
+    confidence: "medium",
+    supports: [{ kind: "query", locator: "q1", exact: "n=37", relevance: "co-occurrence" }],
+    refutes: [{ kind: "paper", locator: "PMID 999", exact: "no linkage", relevance: "GWAS" }],
+    unresolved: ["strain coverage below 0.5"],
+  });
+  // Empty everything — must still render every section label, never throw.
+  const empty = evidenceCard(theme, {
+    claim: "open question",
+    status: "needs-evidence",
+    confidence: "low",
+    supports: [],
+    refutes: [],
+  });
+  for (const card of [populated, empty]) {
+    const lines = card.render(60);
+    for (const line of lines) assert.equal(visibleWidth(line), 60);
+    const text = lines.join("\n");
+    assert.ok(
+      lines.some((l) => l.includes("┤")),
+      "section dividers present",
+    );
+    assert.ok(text.includes("Supports") && text.includes("Refutes"), "both section labels appear");
+  }
+  // The populated card surfaces its Unresolved section.
+  assert.ok(populated.render(60).join("\n").includes("Unresolved (1)"), "unresolved section label");
+});
+
+test("confidenceFooter pairs a meter glyph with the tier word", () => {
+  const med = confidenceFooter(theme, "medium", "n=37");
+  assert.match(med, /confidence: medium/);
+  assert.ok(med.includes(GLYPH.meterHalf), "medium uses the half meter glyph");
+  assert.ok(med.includes("— n=37"), "caveat is appended");
+  assert.ok(confidenceFooter(theme, "high").includes(GLYPH.meterFull), "high uses the full meter glyph");
+  assert.ok(confidenceFooter(theme, "low").includes(GLYPH.meterLow), "low uses the low meter glyph");
+});
+
+test("redTeamCard frames surviving checks + a full-pass pointer (not an error card)", () => {
+  const card = redTeamCard(theme, {
+    project: "selection-2026",
+    surviving: ["alternate codon-usage bias not ruled out"],
+    path: "REFUTATION_1.md",
+  });
+  const lines = card.render(60);
+  for (const line of lines) assert.equal(visibleWidth(line), 60);
+  const text = lines.join("\n");
+  assert.ok(text.includes(`${GLYPH.refutes} Red-team`), "refutes-glyph title");
+  assert.ok(text.includes("selection-2026"), "carries the project");
+  assert.ok(text.includes("alternate codon-usage bias not ruled out"), "lists the surviving check");
+  assert.ok(text.includes("full pass: REFUTATION_1.md"), "points at the full pass on disk");
+  assert.ok(!/error/i.test(text), "framed as a red-team pass, not an error");
 });

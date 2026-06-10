@@ -4,6 +4,7 @@ import berilData from "../extensions/beril-data.ts";
 import { isDestructive } from "../lib/destructive.ts";
 import { resetReadinessCache } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
+import { feasibilityVerdict } from "../lib/ui/science-cards.ts";
 
 beforeEach(() => resetReadinessCache());
 
@@ -144,4 +145,25 @@ test("renderTable formats rows and truncates", () => {
   assert.equal(renderTable([]), "(0 rows)");
   const many = Array.from({ length: 25 }, (_, i) => ({ n: i }));
   assert.match(renderTable(many, 20), /5 more rows/);
+});
+
+test("feasibilityVerdict maps missing → not-answerable, sparse → partial, all-good → answerable", () => {
+  assert.equal(
+    feasibilityVerdict([{ table: "db.t", column: "c", exists: false }]),
+    "not-answerable",
+    "a missing column blocks the question",
+  );
+  assert.equal(
+    feasibilityVerdict([{ table: "db.t", column: "c", exists: true, coverage: 0.3 }]),
+    "partial",
+    "an existing-but-sparse (coverage<0.5) column is partial",
+  );
+  assert.equal(
+    feasibilityVerdict([
+      { table: "db.t", column: "c", exists: true, coverage: 0.9 },
+      { table: "db.u", exists: true },
+    ]),
+    "answerable",
+    "all checks present with adequate coverage",
+  );
 });
