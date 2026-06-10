@@ -26,18 +26,41 @@ def test_connectivity(host: str, port: int, timeout: float = 2.0) -> bool:
 
 
 def is_on_cluster() -> bool:
-    """Return True only when running inside the BERDL JupyterHub.
+    """Return True when running inside a BERDL JupyterHub user pod.
 
-    ``spark.berdl.kbase.us`` is publicly routable, so plain TCP reachability is
-    not a reliable on-cluster signal. The Hub injects ``berdl_notebook_utils``
-    into the kernel; its importability is the dependable discriminator (matching
-    discover_berdl_collections._load_berdl_helpers).
+    The Hub injects ``berdl_notebook_utils`` into the kernel, so importability is
+    a sufficient signal *in the kernel*. But when beril is launched via
+    ``uv run beril ...`` the calling process lives in a project-local venv that
+    does NOT see ``/opt/conda``'s site-packages, and the import check would
+    spuriously report off-cluster. JupyterHub's own env vars
+    (``JUPYTERHUB_API_TOKEN`` plus the BERDL-specific ``SPARK_MASTER_URL``)
+    propagate into every child process — including isolated venvs — so check
+    those first. The import remains as a fallback for kernels whose env
+    somehow lost the vars.
     """
+    if os.environ.get("JUPYTERHUB_API_TOKEN") and os.environ.get("SPARK_MASTER_URL"):
+        return True
     try:
         import berdl_notebook_utils  # noqa: F401
     except ImportError:
         return False
     return True
+
+
+def find_on_cluster_python() -> str:
+    """Return a Python interpreter that can import the BERDL kernel helpers.
+
+    On the BERDL JupyterHub image, ``berdl_notebook_utils`` and ``pyspark`` live
+    under ``/opt/conda`` — not in any uv-managed project venv. When beril is
+    launched via ``uv run beril start``, ``sys.executable`` points at
+    ``.venv/bin/python3`` which can't see those packages. So we route on-cluster
+    subprocesses through the system Python when it exists; off-cluster (or on a
+    different image) we fall back to ``sys.executable``.
+    """
+    for candidate in ("/opt/conda/bin/python3", "/opt/conda/bin/python"):
+        if Path(candidate).is_file():
+            return candidate
+    return sys.executable
 
 
 def check_port_listening(port: int) -> bool:

@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from beril_cli.paths import find_repo_root
-from scripts.detect_berdl_environment import is_on_cluster
+from scripts.detect_berdl_environment import find_on_cluster_python, is_on_cluster
 
 
 def run_export(args: argparse.Namespace) -> int:
@@ -20,9 +20,12 @@ def run_export(args: argparse.Namespace) -> int:
     stdout with ``[hub]`` chatter, so its manifest is routed to a temp ``--manifest``
     file (per the subcommand I/O contract) and re-emitted to stdout here.
 
-    On-cluster (BERDL JupyterHub) the script runs under ``sys.executable`` so it can
-    see the kernel's pre-installed ``berdl_notebook_utils`` and ``pyspark``, and the
-    proxy chain is skipped. Off-cluster falls back to ``uv run`` with ``--berdl-proxy``.
+    On-cluster (BERDL JupyterHub) the script runs under the system Python at
+    ``/opt/conda/bin/python3`` (via ``find_on_cluster_python``) so it can see the
+    kernel-installed ``berdl_notebook_utils`` and ``pyspark`` — ``sys.executable``
+    would point at the project's uv-managed ``.venv`` when beril was launched via
+    ``uv run``, which has neither. The proxy chain is skipped. Off-cluster falls
+    back to ``uv run`` with ``--berdl-proxy``.
     """
     root = find_repo_root()
     if root is None:
@@ -33,7 +36,7 @@ def run_export(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory() as td:
         manifest = Path(td) / "manifest.json"
         if on_cluster:
-            argv = [sys.executable, str(script)]
+            argv = [find_on_cluster_python(), str(script)]
         else:
             argv = ["uv", "run", str(script)]
         argv += [

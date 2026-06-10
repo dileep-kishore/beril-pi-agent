@@ -28,7 +28,14 @@ from typing import Any
 
 
 def _is_on_cluster() -> bool:
-    """True when ``berdl_notebook_utils`` is importable (the JupyterHub signal)."""
+    """True when running inside a BERDL JupyterHub user pod.
+
+    Checks JupyterHub env vars first so the signal survives a project-local uv
+    venv where ``berdl_notebook_utils`` is not importable; the import remains as
+    a kernel-side fallback.
+    """
+    if os.environ.get("JUPYTERHUB_API_TOKEN") and os.environ.get("SPARK_MASTER_URL"):
+        return True
     try:
         import berdl_notebook_utils  # noqa: F401
         return True

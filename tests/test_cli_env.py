@@ -76,3 +76,45 @@ def test_off_cluster_not_ready_without_uv(monkeypatch):
     assert result["checks"]["uv_available"] is False
     assert result["ready"] is False
     assert any("uv not found" in step for step in result["next_steps"])
+
+
+def test_is_on_cluster_via_env_vars(monkeypatch):
+    """Env-var detection works even when berdl_notebook_utils is not importable.
+
+    Reproduces ``uv run beril`` inside a BERDL pod: the project venv has no
+    berdl_notebook_utils, but JupyterHub's env vars do propagate to it.
+    """
+    monkeypatch.setenv("JUPYTERHUB_API_TOKEN", "fake")
+    monkeypatch.setenv(
+        "SPARK_MASTER_URL", "spark://spark-master-dkishore.jupyterhub-prod:7077"
+    )
+    # Force the import-based fallback to fail to prove env detection is sufficient.
+    import sys as _sys
+    monkeypatch.setitem(_sys.modules, "berdl_notebook_utils", None)
+    assert detect_env.is_on_cluster() is True
+
+
+def test_is_on_cluster_false_without_env_or_import(monkeypatch):
+    """Off-cluster: no JupyterHub vars, no helper → False."""
+    monkeypatch.delenv("JUPYTERHUB_API_TOKEN", raising=False)
+    monkeypatch.delenv("SPARK_MASTER_URL", raising=False)
+    import sys as _sys
+    monkeypatch.setitem(_sys.modules, "berdl_notebook_utils", None)
+    assert detect_env.is_on_cluster() is False
+
+
+def test_find_on_cluster_python_prefers_opt_conda(monkeypatch):
+    """Prefers /opt/conda/bin/python3 over sys.executable on the BERDL image."""
+    monkeypatch.setattr(
+        detect_env.Path,
+        "is_file",
+        lambda self: str(self) == "/opt/conda/bin/python3",
+    )
+    assert detect_env.find_on_cluster_python() == "/opt/conda/bin/python3"
+
+
+def test_find_on_cluster_python_falls_back(monkeypatch):
+    """When no /opt/conda Python exists, fall back to sys.executable."""
+    monkeypatch.setattr(detect_env.Path, "is_file", lambda self: False)
+    import sys as _sys
+    assert detect_env.find_on_cluster_python() == _sys.executable

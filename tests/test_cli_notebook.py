@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
@@ -229,17 +228,21 @@ def test_run_uses_uv_runner(tmp_path, monkeypatch, capsys):
     assert seen["cwd"] == tmp_path
 
 
-def test_run_on_cluster_uses_sys_python(tmp_path, monkeypatch, capsys):
-    """On-cluster, the runner is invoked under sys.executable with no `uv run`/`--with`.
+def test_run_on_cluster_uses_cluster_python(tmp_path, monkeypatch, capsys):
+    """On-cluster, the runner is invoked under the system Python with no `uv run`/`--with`.
 
     The kernel image already ships pyspark, nbclient/nbformat/ipykernel, and
-    berdl_notebook_utils — uv would just rebuild a duplicate env unnecessarily.
+    berdl_notebook_utils under /opt/conda — running there avoids a needless uv
+    resolution. The launcher is ``find_on_cluster_python()``, not
+    ``sys.executable`` — when beril is run via ``uv run`` the latter points at
+    the project venv.
     """
     project_dir = _project(tmp_path, monkeypatch)
     notebooks_dir = project_dir / "notebooks"
     notebooks_dir.mkdir()
     (notebooks_dir / "01_a.ipynb").write_text("{}")
     monkeypatch.setattr(notebook_cmd, "is_on_cluster", lambda: True)
+    monkeypatch.setattr(notebook_cmd, "find_on_cluster_python", lambda: "/opt/conda/bin/python3")
 
     seen: dict = {}
 
@@ -260,7 +263,7 @@ def test_run_on_cluster_uses_sys_python(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
 
     argv = seen["argv"]
-    assert argv[0] == sys.executable
+    assert argv[0] == "/opt/conda/bin/python3"
     assert "uv" not in argv and "--with" not in argv
     assert str(tmp_path / "scripts" / "run_notebook.py") in argv
     assert argv[-2:] == ["--timeout", "42"]

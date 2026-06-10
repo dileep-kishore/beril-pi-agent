@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 from beril_cli.paths import find_repo_root
-from scripts.detect_berdl_environment import is_on_cluster
+from scripts.detect_berdl_environment import find_on_cluster_python, is_on_cluster
 
 # Heavy notebook-content deps, layered onto the light PEP 723 runner env via
 # `uv run --with`. Mirrors the dependency list in scripts/bootstrap_client.sh.
@@ -255,16 +255,20 @@ def _run(
 
     runner = root / "scripts" / "run_notebook.py"
     # On-cluster the kernel image already ships pyspark, nbclient/nbformat/ipykernel,
-    # and berdl_notebook_utils — running under sys.executable picks all of that up
-    # and avoids a needless uv resolution. Off-cluster we still go through `uv run`
-    # so the PEP 723 runner deps plus the heavy `--with` content deps get cached.
+    # and berdl_notebook_utils under /opt/conda — running under that interpreter
+    # picks all of it up and avoids a needless uv resolution. ``sys.executable``
+    # would point at the project's uv-managed ``.venv`` when beril was launched
+    # via ``uv run``, which has none of those installed. Off-cluster we still go
+    # through ``uv run`` so the PEP 723 runner deps plus the heavy ``--with``
+    # content deps get cached.
     on_cluster = is_on_cluster()
+    cluster_python = find_on_cluster_python() if on_cluster else None
     with_flags = NOTEBOOK_WITH if extra_with is None else extra_with
 
     executed: list[dict] = []
     for path in targets:
         if on_cluster:
-            argv = [sys.executable, str(runner), str(path), "--timeout", str(timeout)]
+            argv = [cluster_python, str(runner), str(path), "--timeout", str(timeout)]
         else:
             argv = [
                 "uv",

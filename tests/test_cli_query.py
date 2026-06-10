@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -113,15 +112,19 @@ def test_query_no_repo_returns_2(monkeypatch, capsys):
     assert "BERIL repo not found" in capsys.readouterr().err
 
 
-def test_query_on_cluster_skips_proxy_and_uses_sys_python(monkeypatch, capsys, tmp_path):
-    """On-cluster, the runner is invoked under sys.executable with no `--berdl-proxy`.
+def test_query_on_cluster_skips_proxy_and_uses_cluster_python(monkeypatch, capsys, tmp_path):
+    """On-cluster, the runner is invoked under the system Python with no `--berdl-proxy`.
 
     `beril query`'s default keeps `proxy=True`, but on-cluster pproxy isn't running
     and there's no JupyterHub-spawn dance to do — Spark is reachable directly.
+    The launcher is ``find_on_cluster_python()`` (e.g. ``/opt/conda/bin/python3``),
+    not ``sys.executable`` — when beril is run via ``uv run`` the latter points at
+    the project venv, which has no berdl_notebook_utils / pyspark.
     """
     (tmp_path / "PROJECT.md").write_text("x")
     monkeypatch.setattr(query_cmd, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(query_cmd, "is_on_cluster", lambda: True)
+    monkeypatch.setattr(query_cmd, "find_on_cluster_python", lambda: "/opt/conda/bin/python3")
     seen = {}
 
     def fake_run(argv, **kw):
@@ -139,5 +142,5 @@ def test_query_on_cluster_skips_proxy_and_uses_sys_python(monkeypatch, capsys, t
     monkeypatch.setattr(query_cmd.subprocess, "run", fake_run)
     query_cmd.run_query(argparse.Namespace(query="SELECT 1", limit=5, proxy=True))
     argv = seen["argv"]
-    assert argv[0] == sys.executable
+    assert argv[0] == "/opt/conda/bin/python3"
     assert "uv" not in argv and "--berdl-proxy" not in argv

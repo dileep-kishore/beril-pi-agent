@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -120,11 +119,16 @@ def test_export_no_repo_returns_2(monkeypatch, capsys):
     assert "BERIL repo not found" in capsys.readouterr().err
 
 
-def test_export_on_cluster_skips_proxy_and_uses_sys_python(monkeypatch, capsys, tmp_path):
-    """On-cluster, the runner is invoked under sys.executable with no `--berdl-proxy`."""
+def test_export_on_cluster_skips_proxy_and_uses_cluster_python(monkeypatch, capsys, tmp_path):
+    """On-cluster, the runner is invoked under the system Python with no `--berdl-proxy`.
+
+    The launcher is ``find_on_cluster_python()``, not ``sys.executable`` — when
+    beril is run via ``uv run`` the latter points at the project venv.
+    """
     (tmp_path / "PROJECT.md").write_text("x")
     monkeypatch.setattr(export_cmd, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(export_cmd, "is_on_cluster", lambda: True)
+    monkeypatch.setattr(export_cmd, "find_on_cluster_python", lambda: "/opt/conda/bin/python3")
     seen = {}
 
     def fake_run(argv, **kw):
@@ -142,5 +146,5 @@ def test_export_on_cluster_skips_proxy_and_uses_sys_python(monkeypatch, capsys, 
     monkeypatch.setattr(export_cmd.subprocess, "run", fake_run)
     export_cmd.run_export(_ns())
     argv = seen["argv"]
-    assert argv[0] == sys.executable
+    assert argv[0] == "/opt/conda/bin/python3"
     assert "uv" not in argv and "--berdl-proxy" not in argv

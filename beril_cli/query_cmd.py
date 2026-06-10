@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from beril_cli.paths import find_repo_root
-from scripts.detect_berdl_environment import is_on_cluster
+from scripts.detect_berdl_environment import find_on_cluster_python, is_on_cluster
 
 
 def run_query(args: argparse.Namespace) -> int:
@@ -19,10 +19,13 @@ def run_query(args: argparse.Namespace) -> int:
     The underlying script pollutes stdout/stderr with ``[hub]`` chatter, so its JSON
     is routed to a temp file (per the subcommand I/O contract) and re-emitted here.
 
-    On-cluster (BERDL JupyterHub) the script runs under ``sys.executable`` so it can
-    see the kernel's pre-installed ``berdl_notebook_utils`` and ``pyspark``, and the
-    proxy chain is skipped — Spark is reachable on the internal master. Off-cluster
-    falls back to ``uv run`` (PEP 723 deps) with ``--berdl-proxy``.
+    On-cluster (BERDL JupyterHub) the script runs under the system Python at
+    ``/opt/conda/bin/python3`` (via ``find_on_cluster_python``) so it can see the
+    kernel-installed ``berdl_notebook_utils`` and ``pyspark`` — ``sys.executable``
+    would point at the project's uv-managed ``.venv`` when beril was launched via
+    ``uv run``, which has neither. The proxy chain is also skipped — Spark is
+    reachable on the internal master. Off-cluster falls back to ``uv run`` (PEP
+    723 deps) with ``--berdl-proxy``.
     """
     root = find_repo_root()
     if root is None:
@@ -33,7 +36,7 @@ def run_query(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory() as td:
         out = Path(td) / "result.json"
         if on_cluster:
-            argv = [sys.executable, str(script)]
+            argv = [find_on_cluster_python(), str(script)]
         else:
             argv = ["uv", "run", str(script)]
         argv += [
