@@ -162,6 +162,78 @@ def _checkout_release(repo_root: Path, requested_version: str | None) -> int:
     return 0
 
 
+def _read_env_setting(repo_root: Path, key: str, default: str = "") -> str:
+    """Read a setting from the live environment, falling back to the repo `.env`.
+
+    Lets a flag like ``BERIL_UPDATE_CHANNEL`` live in `.env` (the natural home for
+    per-checkout config) while still honouring an exported shell value if present.
+    """
+    live = os.environ.get(key)
+    if live and live.strip():
+        return live.strip()
+    env_path = repo_root / ".env"
+    if env_path.exists():
+        for raw in env_path.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            if k.strip() == key:
+                return v.strip().strip("'").strip('"')
+    return default
+
+
+def _pull_latest(repo_root: Path, branch: str) -> int:
+    """Fast-forward `branch` to origin's latest and check it out.
+
+    The opt-in counterpart to `_checkout_release` (via ``BERIL_UPDATE_CHANNEL``).
+    Best-effort like the release pin: on a dirty tree, divergence, or a network
+    failure it warns and launches from the current checkout rather than blocking.
+    Only ever FAST-FORWARDS (never merges/rebases), so local commits are never
+    clobbered — if it can't fast-forward, it leaves the checkout untouched.
+    """
+    fetch = subprocess.run(
+        ["git", "fetch", "--quiet", "origin", branch],
+        cwd=repo_root, capture_output=True, text=True, check=False,
+    )
+    if fetch.returncode != 0:
+        print(
+            f"Warning: could not fetch origin/{branch}: {fetch.stderr.strip()}; "
+            "launching from the current checkout.",
+            file=sys.stderr,
+        )
+        return 0
+    current = subprocess.run(
+        ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+        cwd=repo_root, capture_output=True, text=True, check=False,
+    ).stdout.strip()
+    if current != branch:
+        checkout = subprocess.run(
+            ["git", "checkout", "--quiet", branch],
+            cwd=repo_root, capture_output=True, text=True, check=False,
+        )
+        if checkout.returncode != 0:
+            print(
+                f"Warning: could not check out {branch}: {checkout.stderr.strip()}; "
+                "launching from the current checkout.",
+                file=sys.stderr,
+            )
+            return 0
+    ff = subprocess.run(
+        ["git", "merge", "--ff-only", f"origin/{branch}"],
+        cwd=repo_root, capture_output=True, text=True, check=False,
+    )
+    if ff.returncode != 0:
+        print(
+            f"Warning: could not fast-forward {branch} to origin/{branch} "
+            "(local changes or divergence?); launching from the current checkout.",
+            file=sys.stderr,
+        )
+        return 0
+    print(f"Updated to the latest origin/{branch}.")
+    return 0
+
+
 def run_start(
     extra_args: list[str] | None = None,
     version: str | None = None,
@@ -190,8 +262,15 @@ def run_start(
         print("Error: BERIL repository not found. Run 'beril setup' first.", file=sys.stderr)
         return 1
 
-    # Check out the requested release (or the latest published tag by default).
-    rc = _checkout_release(repo_root, version)
+    # Update step. Default: pin to the latest published release (forward-only).
+    # Opt-in: set BERIL_UPDATE_CHANNEL=<branch> (e.g. "main") in .env to instead
+    # fast-forward to that branch's latest changes — handy while iterating before
+    # a release is cut. An explicit --version always wins (a hard release pin).
+    channel = _read_env_setting(repo_root, "BERIL_UPDATE_CHANNEL", "release")
+    if version is None and channel.lower() not in ("", "release"):
+        rc = _pull_latest(repo_root, channel)
+    else:
+        rc = _checkout_release(repo_root, version)
     if rc != 0:
         return rc
 

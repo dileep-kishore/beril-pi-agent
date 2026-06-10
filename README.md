@@ -119,6 +119,11 @@ out a newer **published release** only when you're *strictly behind* one, never 
 work). Pass `--version vX.Y.Z` to pin explicitly. Note: the pin tracks the latest **release tag**,
 not `main` — so to ship new work to other machines, cut a new release.
 
+**Track `main` instead of releases.** Set `BERIL_UPDATE_CHANNEL=main` in `.env` and `beril start`
+fast-forwards to the latest `origin/main` on launch instead of pinning a release — handy while
+iterating before a release is cut. Unset (or `release`) keeps the release pin; an explicit
+`--version` still wins. It only ever *fast-forwards*, so local commits are never clobbered.
+
 ### Connecting to BERDL (off-cluster)
 
 On a laptop, BERDL is reached through an SSH-tunnel + proxy stack that **you** start (the agent cannot open SSH tunnels):
