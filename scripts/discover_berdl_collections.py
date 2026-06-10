@@ -38,56 +38,47 @@ TENANT_NAMES = {
     "globalusers": "Development/Test",
 }
 
-USER_FACING_DATABASE_IDS = {
-    "arkinlab_dbcan",
-    "arkinlab_microbeatlas",
-    "arkinlab_mobilome",
-    "bervodata_chess",
-    "bervodata_fao_soils",
-    "bervodata_hwsd2",
-    "enigma_coral",
-    "enigma_genome_depot_enigma",
-    "kbase_all_the_bacteria",
-    "kbase_genomes",
-    "kbase_ke_pangenome",
-    "kbase_msd_biochemistry",
-    "kbase_ontology_source",
-    "kbase_phenotype",
-    "kbase_uniprot",
-    "kbase_uniref100",
-    "kbase_uniref50",
-    "kbase_uniref90",
-    "kescience_alphafold",
-    "kescience_bacdive",
-    "kescience_fitnessbrowser",
-    "kescience_interpro",
-    "kescience_mgnify",
-    "kescience_paperblast",
-    "kescience_pdb",
-    "kescience_pubmed",
-    "kescience_webofmicrobes",
-    "msyscolo_grow",
-    "netl_pw_dna",
-    "nmdc_arkin",
-    "nmdc_metadata",
-    "nmdc_ncbi_biosamples",
-    "nmdc_results",
-    "pangenome_bakta",
-    "phagefoundry_acinetobacter_genome_browser",
-    "phagefoundry_ecoliphages_genomedepot",
-    "phagefoundry_ecoliphagesgenomedepot",
-    "phagefoundry_klebsiella_genome_browser_genomedepot",
-    "phagefoundry_paeruginosa_genome_browser",
-    "phagefoundry_pviridiflava_genome_browser",
-    "phagefoundry_strain_modelling",
-    "planetmicrobe_planetmicrobe",
-    "planetmicrobe_planetmicrobe_raw",
-    "plantmicrobeinterfaces_gtdb_mapping",
-    "protect_genomedepot",
-    "protect_integration",
-    "protect_mind",
-    "usgs_produced_waters",
-}
+# Administrative / scratch namespaces to hide from the user-facing inventory.
+# get_databases() / the discovery REST are already access-aware (RBAC-filtered),
+# so this is a surface-curation, not a security check: we drop demo/test/
+# personal/scratch namespaces and surface everything else. Previously this was a
+# hand-maintained allowlist of ~50 ids — it silently hid every database added
+# since it was last curated (e.g. plantmicrobeinterfaces_pmi_data, refdata_*,
+# planetmicrobe.pangenome). Denylist patterns match the categories the prior
+# `visibility_filter_note` already named.
+_DENY_TENANT_PREFIXES = ("globalusers",)  # shared scratch / demo / cross-tenant playground
+_DENY_LITERALS = frozenset({"default"})
+
+
+def _is_curated_visible(database_id: str) -> bool:
+    """Return True when ``database_id`` should appear in the curated inventory.
+
+    Hides: ``globalusers`` tenant, personal ``u_<userhash>__*`` namespaces, bare
+    ``default``, and any namespace whose name marks it as a test / demo /
+    startup workspace. Everything else (real tenant databases) passes through.
+    """
+    if not database_id:
+        return False
+    low = database_id.lower()
+    tenant = low.split("_", 1)[0].split(".", 1)[0]
+    if tenant in _DENY_TENANT_PREFIXES:
+        return False
+    if low.startswith("u_") and "__" in low:
+        return False
+    if low in _DENY_LITERALS:
+        return False
+    # Test / demo / startup markers. Match on word-ish boundaries so we don't
+    # accidentally hide e.g. `protect_integration` for containing "test".
+    for marker in ("test", "demo", "startup"):
+        if (
+            f"_{marker}_" in low
+            or f".{marker}_" in low
+            or low.endswith(f"_{marker}")
+            or low.endswith(f".{marker}")
+            or low.endswith(f"_{marker}s")  # e.g. "_tests"
+        ):
+            return False
+    return True
 
 
 def read_auth_token(env_path: Path | None = None) -> str | None:
@@ -291,14 +282,19 @@ def write_snapshot_atomic(snapshot: dict[str, Any], output: Path) -> None:
 
 
 def filter_user_facing_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Keep the current curated set of user-facing BERDL databases."""
+    """Hide administrative / scratch namespaces from the user-facing inventory.
+
+    Backend is RBAC-filtered already; this drops only globalusers / personal /
+    test / demo / startup workspaces. Everything else passes through — so newly
+    onboarded tenant databases appear without a manual allowlist bump.
+    """
     filtered = dict(snapshot)
     filtered_tenants = []
     for tenant in snapshot.get("tenants", []):
         collections = [
             collection
             for collection in tenant.get("collections", [])
-            if collection.get("id") in USER_FACING_DATABASE_IDS
+            if _is_curated_visible(collection.get("id", ""))
         ]
         if not collections:
             continue
@@ -306,10 +302,11 @@ def filter_user_facing_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         tenant_record["collections"] = collections
         filtered_tenants.append(tenant_record)
     filtered["tenants"] = filtered_tenants
-    filtered["visibility_filter"] = "user_facing_v1"
+    filtered["visibility_filter"] = "user_facing_v2"
     filtered["visibility_filter_note"] = (
-        "Excludes test, demo, startup, default, globalusers, personal u_*__*, "
-        "and uncategorized namespaces until curated."
+        "Hides globalusers tenant, personal u_*__* namespaces, bare 'default', "
+        "and any *_test_* / *_demo_* / *_startup workspace. Real tenant databases "
+        "pass through automatically."
     )
     return filtered
 

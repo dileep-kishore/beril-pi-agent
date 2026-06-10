@@ -101,3 +101,80 @@ def test_discover_no_repo_returns_2(monkeypatch, capsys):
     rc = discover_cmd.run_discover(argparse.Namespace(max_databases=None))
     assert rc == 2
     assert "BERIL repo not found" in capsys.readouterr().err
+
+
+# --- discovery curation: pmi_data regression + denylist behavior --------------
+
+
+def test_curated_visibility_surfaces_newly_onboarded_tenant_dbs():
+    """Real tenant databases (incl. ones not in the old allowlist) pass through.
+
+    The old allowlist hid plantmicrobeinterfaces_pmi_data, refdata_*, and dot-
+    namespaced variants because they hadn't been hand-added. The denylist must
+    surface them all.
+    """
+    from scripts.discover_berdl_collections import _is_curated_visible
+
+    for db in (
+        "plantmicrobeinterfaces_pmi_data",
+        "plantmicrobeinterfaces.pmi_data",
+        "plantmicrobeinterfaces_kepangenome_mapping",
+        "refdata_uniprot",
+        "refdata.bvbrc",
+        "kbase.ke_pangenome",
+        "kbase_ke_pangenome",
+        "protect_integration",
+    ):
+        assert _is_curated_visible(db), f"{db} should be visible"
+
+
+def test_curated_visibility_hides_scratch_and_test_namespaces():
+    """globalusers, personal, default, and *_test_* / *_demo_* are still hidden."""
+    from scripts.discover_berdl_collections import _is_curated_visible
+
+    for db in (
+        "globalusers_demo_test",
+        "globalusers.kepangenome_parquet_1",
+        "globalusers_carbon_source_phenotypes",
+        "u_abc123__scratch",
+        "default",
+        "kescience.test_db",
+        "kescience.test_mika",
+        "globalusers.aisynbio_test_1",
+        "anything_demo_1",
+        "anything_startup",
+    ):
+        assert not _is_curated_visible(db), f"{db} should be hidden"
+
+
+def test_filter_user_facing_snapshot_uses_denylist():
+    """filter_user_facing_snapshot drops only denied collections, keeps the rest."""
+    from scripts.discover_berdl_collections import filter_user_facing_snapshot
+
+    snap = {
+        "tenants": [
+            {
+                "id": "plantmicrobeinterfaces",
+                "name": "Plant–Microbe Interfaces",
+                "collections": [
+                    {"id": "plantmicrobeinterfaces_pmi_data", "name": "PMI Data"},
+                    {"id": "plantmicrobeinterfaces_gtdb_mapping", "name": "GTDB Mapping"},
+                ],
+            },
+            {
+                "id": "globalusers",
+                "name": "Development/Test",
+                "collections": [{"id": "globalusers_demo_test", "name": "Demo Test"}],
+            },
+        ]
+    }
+    filtered = filter_user_facing_snapshot(snap)
+    tenant_ids = {t["id"]: [c["id"] for c in t["collections"]] for t in filtered["tenants"]}
+    assert "plantmicrobeinterfaces" in tenant_ids
+    assert tenant_ids["plantmicrobeinterfaces"] == [
+        "plantmicrobeinterfaces_pmi_data",
+        "plantmicrobeinterfaces_gtdb_mapping",
+    ]
+    # Whole globalusers tenant drops out because none of its collections survive.
+    assert "globalusers" not in tenant_ids
+    assert filtered["visibility_filter"] == "user_facing_v2"
