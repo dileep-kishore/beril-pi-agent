@@ -10,25 +10,40 @@ const full: FooterData = {
   connection: "BERDL off-cluster",
   ready: true,
   cwd: "beril-pi-agent",
+  branch: "main",
   project: "microbial-discovery",
   phase: "analyze",
+  claims: { total: 3, supported: 2, refuted: 1 },
   context: { tokens: 12_300, percent: 38, contextWindow: 200_000 },
   model: "opus-4.8",
+  orcid: true,
 };
 
-test("footer is a single chevron-grouped line: connection › cwd › work › ctx — model", () => {
-  const lines = footerLines(theme, full, 120);
+test("footer is a single chevron-grouped line carrying every segment", () => {
+  const lines = footerLines(theme, full, 160);
   assert.equal(lines.length, 1, "one statusline");
   const line = lines[0];
   assert.ok(line.includes("BERDL off-cluster ✓"), "connection + ok glyph");
-  assert.ok(line.includes("beril-pi-agent"), "working dir");
+  assert.ok(line.includes("beril-pi-agent (main)"), "working dir + git branch");
   assert.ok(line.includes("◆ microbial-discovery"), "project");
   assert.ok(line.includes("▸ analyze"), "phase");
+  assert.ok(line.includes("3 claims") && line.includes("2✓") && line.includes("1⊖"), "claim tally");
   assert.ok(line.includes("ctx") && line.includes("38%"), "context percent");
-  assert.ok(line.includes("12.3k"), "absolute tokens");
-  assert.ok(line.includes("200.0k"), "context window");
+  assert.ok(line.includes("12.3k") && line.includes("200.0k"), "tokens + window");
+  assert.ok(line.includes("ORCID ✓"), "researcher chip");
   assert.ok(line.includes("opus-4.8"), "model");
   assert.ok(line.includes("›"), "groups joined by a chevron");
+});
+
+test("claims/branch/orcid are omitted when absent (no empty chrome)", () => {
+  const line = footerLines(
+    theme,
+    { connection: "BERDL off-cluster", ready: true, cwd: "beril-pi-agent", model: "x" },
+    120,
+  )[0];
+  assert.ok(!line.includes("("), "no empty (branch)");
+  assert.ok(!line.includes("claim"), "no claim tally");
+  assert.ok(!line.includes("ORCID"), "no researcher chip");
 });
 
 test("not-ready connection shows the △ warn glyph (not a failure ✗)", () => {

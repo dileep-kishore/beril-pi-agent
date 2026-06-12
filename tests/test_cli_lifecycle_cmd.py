@@ -138,3 +138,40 @@ def test_set_without_state_returns_2(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
     rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state=None))
     assert rc == 2
+
+
+# ── current ──────────────────────────────────────────────
+
+
+def _make(tmp_path, name, status, mtime):
+    import os
+
+    d = tmp_path / "projects" / name
+    d.mkdir(parents=True)
+    y = d / "beril.yaml"
+    y.write_text(f"project_id: {name}\nstatus: {status}\n")
+    os.utime(y, (mtime, mtime))
+    return y
+
+
+def test_current_picks_most_recent_non_complete(monkeypatch, capsys, tmp_path):
+    _make(tmp_path, "old", "active", 1000)
+    _make(tmp_path, "newest", "analysis", 3000)
+    _make(tmp_path, "done", "complete", 5000)  # most recent but finished → skipped
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="current", project=None))
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == {"project": "newest", "status": "analysis"}
+
+
+def test_current_empty_when_all_complete(monkeypatch, capsys, tmp_path):
+    _make(tmp_path, "a", "complete", 1000)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="current", project=None))
+    assert rc == 0 and json.loads(capsys.readouterr().out) == {}
+
+
+def test_current_empty_when_no_projects(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="current", project=None))
+    assert rc == 0 and json.loads(capsys.readouterr().out) == {}

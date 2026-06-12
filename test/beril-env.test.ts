@@ -133,6 +133,19 @@ test("the statusline self-heals when a later env check confirms BERDL is up", as
   assert.equal(chip(), "BERDL off-cluster ✓ ready", "the chip self-heals when BERDL comes up");
 });
 
+test("beril:claims surfaces the claim tally on the statusline", async () => {
+  resetReadinessCache();
+  const h = harness();
+  berilEnv(h.pi);
+  const { ctx, renderFooter } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+  h.events.emit("beril:claims", { project: "demo", total: 3, supported: 2, refuted: 1 });
+  const footer = renderFooter();
+  assert.match(footer, /3 claims/, "claim count");
+  assert.match(footer, /2✓/, "supported tally");
+  assert.match(footer, /1⊖/, "refuted tally");
+});
+
 test("session_start greets with the welcome header on a fresh start", async () => {
   const h = harness();
   berilEnv(h.pi);

@@ -5,6 +5,7 @@ Actions:
   set <project> <state>       Apply a machine-checked transition; emit new status JSON.
   approve <project> ...       Write the `approval` block (--orcid --report-hash --review --review-hash).
   marker <project> --kind ..  Write SUBMITTED.md or SUBMISSION_FAILED.md.
+  current                     Emit {project, status} of the active project, or {} if none.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 from beril_cli.lifecycle import LifecycleError, load_project, save_project, set_status
 from beril_cli.paths import find_repo_root
@@ -24,10 +26,49 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _find_current_project(projects_dir: Path) -> dict[str, str] | None:
+    """The active project: the most-recently-touched one not yet `complete`.
+
+    Scans `projects/*/beril.yaml`, skips finished projects, and picks the latest by
+    file mtime (robust even when `last_session_at` isn't maintained). Returns
+    `{project, status}` or None when there is no active project.
+    """
+    if not projects_dir.is_dir():
+        return None
+    best: tuple[float, str, str] | None = None
+    for child in sorted(projects_dir.iterdir()):
+        yaml_path = child / "beril.yaml"
+        if not yaml_path.is_file():
+            continue
+        try:
+            proj = load_project(child)
+        except LifecycleError:
+            continue
+        status = str(proj.get("status", ""))
+        if status == "complete":
+            continue  # finished — not the active working project
+        project_id = str(proj.get("project_id", child.name))
+        mtime = yaml_path.stat().st_mtime
+        if best is None or mtime > best[0]:
+            best = (mtime, project_id, status)
+    return None if best is None else {"project": best[1], "status": best[2]}
+
+
 def run_lifecycle(args: argparse.Namespace) -> int:
     root = find_repo_root()
     if root is None:
         print("BERIL repo not found (no PROJECT.md on path).", file=sys.stderr)
+        return 2
+
+    # `current` takes no project argument — resolve it before the per-project actions.
+    if args.action == "current":
+        result = _find_current_project(root / "projects")
+        json.dump(result or {}, sys.stdout)
+        sys.stdout.write("\n")
+        return 0
+
+    if not args.project:
+        print(f"lifecycle {args.action} requires a <project>.", file=sys.stderr)
         return 2
     project_dir = root / "projects" / args.project
 
