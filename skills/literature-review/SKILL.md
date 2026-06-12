@@ -1,6 +1,6 @@
 ---
 name: literature-review
-description: Use when the user wants to find papers, review existing research on a topic, check what is known about an organism/gene/pathway, support or refute a hypothesis with citations, or build a references list. Covers biological/biomedical literature (microbiology, genomics, AMR, metabolic pathways) with MeSH/GTDB/COG-aware query construction, BERDL-relevance ranking, depth tiers (quick/standard/deep), citation snowballing, full-text reading, gene-paper cross-referencing, and structured synthesis. Provides the scientific judgment; run /literature-review and use the lit_search and lit_fetch tools for execution.
+description: Use when the user wants to find papers, review existing research on a topic, check what is known about an organism/gene/pathway, support or refute a hypothesis with citations, or build a references list. Covers biological/biomedical literature (microbiology, genomics, AMR, metabolic pathways) with MeSH/GTDB/COG-aware query construction, BERDL-relevance ranking, depth tiers (quick/standard/deep), citation snowballing, full-text reading, gene-paper cross-referencing, and structured synthesis. Provides the scientific judgment; run /literature-review and use the lit_search, lit_fetch, and lit_abstract tools for execution.
 ---
 
 # Literature Review
@@ -10,10 +10,13 @@ Search, read, and synthesize biological literature relevant to BERDL research �
 - **`/literature-review <topic>`** — runs the end-to-end review: expands the topic into focused PubMed queries, searches, deduplicates, and writes `references.md` to the project (or cwd). Use this for the standard fan-out flow.
 - **`lit_search`** — PubMed discovery for one query (`query`, optional `max`); returns normalized citation records (PMID, title, journal, year, authors).
 - **`lit_fetch`** — retrieves a single article's metadata by `pmid`.
+- **`lit_abstract`** — retrieves a single article's **abstract text** (plus citation metadata) by `pmid`.
 - **`berdl_query`** — bounded SELECT against BERDL, used here for gene-paper cross-referencing (`kescience_paperblast`) and for bridging findings back to BERDL tables.
 - **`berdl_discover`** — find BERDL tables/columns relevant to organisms/genes/pathways the review surfaces.
 
 Your role is to decide **what** to search, **how** to rank it, **how deep** to go, and **how to synthesize** — then let the tools fetch.
+
+> **Always use the `lit_*` tools — never hand-write NCBI access in bash.** `lit_search`/`lit_fetch` already return full citation details (PMID, title, journal, year, authors), and `lit_abstract` returns abstract text. Do **not** drop into `bash` to write `esearch`/`efetch`/`esummary` or `curl` scripts against `eutils.ncbi.nlm.nih.gov` — it dumps a wall of code in front of the scientist and bypasses verify-on-write. If you need a broader set than one call returns, make multiple `lit_search`/`lit_abstract` calls or run `/literature-review`.
 
 > **Tool reality (don't over-promise):** the Pi literature tools cover **PubMed metadata** via NCBI E-utilities. They do not themselves pull bioRxiv/arXiv/Scholar or extract full-text PDFs. The judgment below still spans multiple sources and full text — when a source or full text is outside the tools' reach, get it through the built-in **WebSearch**/**WebFetch** tools (see Fallback) and say so in the output. Never fabricate citations, DOIs, or PMIDs.
 
@@ -113,7 +116,7 @@ If the cross-reference finds nothing (gene not in the database), that is normal 
 
 ## Step 5: Deep Reading of Key Papers *(Standard + Deep tiers)*
 
-Read the top papers in full — **Standard: top ~10; Deep: top ~20** — focusing on Methods, Results, and Discussion. Use **`lit_fetch`** to pull a paper's record by PMID; for full text, use **WebFetch** on the PMC/DOI URL (open-access PMC articles and DOI landing pages) since the literature tools return metadata rather than full-text PDFs.
+Read the top papers in full — **Standard: top ~10; Deep: top ~20** — focusing on Methods, Results, and Discussion. Use **`lit_abstract`** to pull a paper's abstract text by PMID (or **`lit_fetch`** for metadata only); for full text, use **WebFetch** on the PMC/DOI URL (open-access PMC articles and DOI landing pages) since the literature tools return metadata/abstracts rather than full-text PDFs.
 
 For each paper, extract:
 

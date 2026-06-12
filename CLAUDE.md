@@ -120,7 +120,7 @@ tool / `beril lifecycle`. The commands woven through it:
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list` and
   `/analyze` (links the plan to executed notebooks).
 - `beril-plan` — `research_plan` plan-card tool and `/research-plan`.
-- `beril-literature` — `lit_search` / `lit_fetch` / `lit_stance` and
+- `beril-literature` — `lit_search` / `lit_fetch` / `lit_abstract` / `lit_stance` and
   `/literature-review` (in-process model calls for query expansion + stance,
   verify-on-write of PMIDs to drop fabrications).
 - `beril-governance` — lifecycle + reproducibility + identity: `notebook_hash`,

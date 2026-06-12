@@ -5,7 +5,15 @@ import type { AssistantMessage, Context, Model, ProviderStreamOptions } from "@e
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type LitRecord, fetchAbstract, fetchArticle, searchPubmed } from "../lib/lit.ts";
-import { articleCard, callLine, errorCard, litCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
+import {
+  abstractCard,
+  articleCard,
+  callLine,
+  errorCard,
+  litCard,
+  partialLine,
+  toolErrorText,
+} from "../lib/ui/science-cards.ts";
 
 /** Default model for query expansion when the session has none selected. */
 const DEFAULT_EXPANSION_MODEL = "claude-sonnet-4-5";
@@ -251,6 +259,33 @@ export default function berilLiterature(pi: ExtensionAPI) {
       if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Fetching article…");
       return articleCard(theme, result.details as LitRecord);
+    },
+  });
+
+  pi.registerTool({
+    name: "lit_abstract",
+    label: "Read an article's abstract",
+    description:
+      "Fetch a single article's abstract text (plus citation metadata) by PubMed ID. Use this instead of hand-writing NCBI E-utilities (efetch/esummary) or curl scripts in bash.",
+    parameters: Type.Object({
+      pmid: Type.String({ description: "PubMed ID." }),
+    }),
+    async execute(_id, params, signal, _onUpdate, _ctx) {
+      const [record, abstract] = await Promise.all([
+        fetchArticle(params.pmid, signal),
+        fetchAbstract(params.pmid, signal).catch(() => ""),
+      ]);
+      const text = abstract || record.title || `PMID ${params.pmid}`;
+      return { content: [{ type: "text", text }], details: { record, abstract } };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `lit abstract · PMID ${args.pmid}`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Reading abstract…");
+      const { record, abstract } = result.details as { record: LitRecord; abstract: string };
+      return abstractCard(theme, record, abstract);
     },
   });
 

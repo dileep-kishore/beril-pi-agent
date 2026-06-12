@@ -193,6 +193,16 @@ export function articleCard(theme: Theme, record: LitRecord): Component {
   });
 }
 
+/** A single article's abstract → a literature card with its citation + abstract text. */
+export function abstractCard(theme: Theme, record: LitRecord, abstract: string): Component {
+  const body = abstract.trim() ? abstract.trim() : "_(no abstract available)_";
+  return markdownCard(theme, {
+    title: "Abstract",
+    accentStyle: domainStyle(theme, "literature"),
+    markdown: `${formatLitMarkdown([record], 1)}\n\n${body}`,
+  });
+}
+
 /** Short-form notebook hash digest (full hashes stay in `details`). */
 export function hashCard(theme: Theme, hashes: Record<string, string>): Component {
   const entries = Object.entries(hashes);
