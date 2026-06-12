@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import berilEnv from "../extensions/beril-env.ts";
+import { resetReadinessCache, setCachedEnv } from "../lib/readiness.ts";
 
 const READY = { ready: true, location: "off-cluster", checks: {}, next_steps: [] };
 
@@ -111,6 +112,25 @@ test("session_start sets the connection chip, the HUD, and the rich footer when 
   assert.match(footer, /opus-4\.8/, "footer shows the model");
   assert.match(footer, /ctx 12%/, "footer shows context usage");
   assert.match(footer, /1\.0k\/200\.0k/, "footer shows tokens/context window");
+});
+
+test("the statusline self-heals when a later env check confirms BERDL is up", async () => {
+  // The reported bug: a failed session-start probe leaves the chip stuck on
+  // "BERDL ?" even after the remote connection comes up. The chip now tracks the
+  // SHARED env cache, so any tool's requireReady → setCachedEnv updates it.
+  resetReadinessCache(); // drop listeners leaked by earlier tests so only ours fires
+  const h = harness();
+  berilEnv(h.pi);
+  const { ctx, set } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+
+  const chip = () => [...set].reverse().find(([k]) => k === "beril-connection")?.[1];
+
+  setCachedEnv({ location: "off-cluster", ready: false, checks: {}, next_steps: [] });
+  assert.equal(chip(), "BERDL off-cluster ⚠ not ready", "a not-ready check shows on the chip");
+
+  setCachedEnv({ location: "off-cluster", ready: true, checks: {}, next_steps: [] });
+  assert.equal(chip(), "BERDL off-cluster ✔ ready", "the chip self-heals when BERDL comes up");
 });
 
 test("session_start greets with the welcome header on a fresh start", async () => {

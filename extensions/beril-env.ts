@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Box, Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
-import { type BerdlEnv, setCachedEnv } from "../lib/readiness.ts";
+import { type BerdlEnv, onEnvChange, setCachedEnv } from "../lib/readiness.ts";
 import { currentStep, nextAction } from "../lib/research-steps.ts";
 import { type FooterData, footerLines } from "../lib/ui/footer.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
@@ -57,6 +57,8 @@ export default function berilEnv(pi: ExtensionAPI) {
   let tipIndex = 0;
   // The last phase a banner was shown for, so a banner fires only on a change.
   let lastPhase: string | undefined;
+  // One-shot: re-probe readiness on first input if the session-start probe failed.
+  let connectionHealTried = false;
 
   function pushFooterRender(): void {
     tuiHandle?.requestRender();
@@ -123,17 +125,29 @@ export default function berilEnv(pi: ExtensionAPI) {
     renderHud();
   });
 
+  /** Reflect a freshly-resolved env in the connection chip + HUD + footer. */
+  function applyEnvToHud(env: BerdlEnv): void {
+    hud.connection = connectionLabel(env);
+    hud.location = compactLocation(env);
+    hud.ready = env.ready;
+    if (!uiCtx?.hasUI) return;
+    uiCtx.ui.setStatus(STATUS_KEY, uiCtx.ui.theme.fg(env.ready ? "success" : "warning", connectionLabel(env)));
+    renderHud();
+  }
+
+  // The statusline tracks the SHARED env cache, not just its own probe: every data
+  // tool refreshes readiness via `requireReady` → `setCachedEnv`, so a connection
+  // that comes up after a failed session-start probe (cold SSH tunnels / pproxy)
+  // still surfaces — the chip self-heals the moment any tool confirms BERDL is up,
+  // instead of staying stuck on "BERDL ?".
+  const unsubscribeEnv = onEnvChange(applyEnvToHud);
+
   /** Re-run the readiness check, update the connection chip + HUD + footer. Returns the env (UI only). */
   async function refreshStatus(ctx: ExtensionContext): Promise<BerdlEnv | undefined> {
     if (!ctx.hasUI) return undefined;
     try {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
-      setCachedEnv(env);
-      hud.connection = connectionLabel(env);
-      hud.location = compactLocation(env);
-      hud.ready = env.ready;
-      ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg(env.ready ? "success" : "warning", connectionLabel(env)));
-      renderHud();
+      setCachedEnv(env); // fires onEnvChange → applyEnvToHud (chip + HUD + footer)
       return env;
     } catch {
       hud.connection = "BERDL status unknown";
@@ -211,6 +225,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute(_id, _params, _signal, _onUpdate, _ctx) {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
+      setCachedEnv(env); // keep the shared cache + statusline in sync with what the agent sees
       const steps = env.next_steps?.length ? `\nNext steps:\n- ${env.next_steps.join("\n- ")}` : "";
       const text = `BERDL ${env.location}: ${env.ready ? "ready" : "NOT ready"}${steps}`;
       return { content: [{ type: "text", text }], details: env };
@@ -298,10 +313,18 @@ export default function berilEnv(pi: ExtensionAPI) {
       headerActive = false;
       ctx.ui.setHeader(undefined);
     }
+    // If the session-start probe failed (chip stuck on "BERDL ?"), re-check once
+    // now that the user is interacting — by now the remote tunnels/pproxy are up.
+    // One-shot so a genuinely-disconnected session doesn't re-exec on every input.
+    if (!connectionHealTried && hud.location === "BERDL ?" && ctx.hasUI) {
+      connectionHealTried = true;
+      void refreshStatus(ctx);
+    }
     return { action: "continue" } as const;
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    unsubscribeEnv();
     if (ctx.hasUI) {
       ctx.ui.setStatus(STATUS_KEY, undefined);
       ctx.ui.setWidget(WIDGET_KEY, undefined);

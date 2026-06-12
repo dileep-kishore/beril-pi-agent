@@ -13,20 +13,36 @@ const TTL_MS = 30_000;
 
 let cached: { env: BerdlEnv; at: number } | undefined;
 
+/** Observers notified whenever the cached env changes (e.g. the statusline). */
+type EnvListener = (env: BerdlEnv) => void;
+const listeners = new Set<EnvListener>();
+
+/**
+ * Subscribe to env-cache updates; returns an unsubscribe fn. Lets the statusline
+ * track the readiness that *every* tool already refreshes via `requireReady`, so
+ * a connection that comes up after a failed session-start probe still surfaces.
+ */
+export function onEnvChange(listener: EnvListener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 /** Fresh-or-undefined: the cached env if within TTL, else undefined. */
 export function readCachedEnv(): BerdlEnv | undefined {
   if (cached && Date.now() - cached.at < TTL_MS) return cached.env;
   return undefined;
 }
 
-/** Seed the cache (e.g. from `beril-env.ts:refreshStatus` after its own exec). */
+/** Seed the cache (e.g. from `beril-env.ts:refreshStatus` after its own exec) and notify observers. */
 export function setCachedEnv(env: BerdlEnv): void {
   cached = { env, at: Date.now() };
+  for (const listener of listeners) listener(env);
 }
 
-/** Drop the cache. Tests call this in `beforeEach` so each test starts cold. */
+/** Drop the cache + observers. Tests call this in `beforeEach` so each test starts cold. */
 export function resetReadinessCache(): void {
   cached = undefined;
+  listeners.clear();
 }
 
 /**
