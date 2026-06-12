@@ -100,17 +100,17 @@ test("session_start sets the connection chip, the HUD, and the rich footer when 
   const { ctx, set, widgets, renderFooter } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   const chip = set.find(([k]) => k === "beril-connection");
-  assert.equal(chip?.[1], "BERDL off-cluster ✓ ready", "connection chip (RPC fallback)");
+  assert.equal(chip?.[1], "BERDL off-cluster ✔ ready", "connection chip (RPC fallback)");
   assert.ok(
     widgets.find(([k]) => k === "beril-workflow"),
     "workflow widget set",
   );
   // The statusline owns connection + model now.
   const footer = renderFooter();
-  assert.match(footer, /BERDL off-cluster ✓/, "footer shows the compact connection");
+  assert.match(footer, /BERDL off-cluster ✔/, "footer shows the compact connection");
   assert.match(footer, /opus-4\.8/, "footer shows the model");
-  assert.match(footer, /ctx .*12%/, "footer shows context usage with a gauge");
-  assert.match(footer, /1\.0k \/ 200\.0k/, "footer shows tokens / context window");
+  assert.match(footer, /ctx 12%/, "footer shows context usage");
+  assert.match(footer, /1\.0k\/200\.0k/, "footer shows tokens/context window");
 });
 
 test("session_start greets with the welcome header on a fresh start", async () => {
@@ -169,7 +169,7 @@ test("session_shutdown clears the chip, the widget, the footer, and the header",
   h.handlers.session_shutdown({ type: "session_shutdown", reason: "quit" }, ctx);
   assert.deepEqual(
     set.find(([k]) => k === "beril-connection" && k),
-    ["beril-connection", "BERDL off-cluster ✓ ready"],
+    ["beril-connection", "BERDL off-cluster ✔ ready"],
   );
   assert.deepEqual([...set].reverse()[0], ["beril-connection", undefined], "chip cleared last");
   assert.deepEqual([...widgets].reverse()[0], ["beril-workflow", undefined], "widget cleared");
@@ -186,8 +186,8 @@ test("beril:lifecycle puts the step rail in the HUD and the project in the foote
   // analysis points the scientist at the review step, with a 'Next' hint.
   assert.match(hud, /▸ review/, "marks the current step in the HUD");
   assert.match(hud, /Next:.*review the report/, "shows the next action");
-  assert.doesNotMatch(hud, /▣ demo/, "project no longer duplicated in the HUD");
-  assert.match(renderFooter(), /▣ demo/, "project shows in the footer");
+  assert.doesNotMatch(hud, /◆ demo/, "project no longer duplicated in the HUD");
+  assert.match(renderFooter(), /◆ demo/, "project shows in the footer");
 });
 
 test("beril:lifecycle event is a no-op without UI", async () => {

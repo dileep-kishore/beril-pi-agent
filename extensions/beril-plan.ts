@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { markdownCard } from "../lib/ui/card.ts";
+import { domainStyle } from "../lib/ui/palette.ts";
 import { callLine, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
 
 /**
@@ -43,8 +44,9 @@ export default function berilPlan(pi: ExtensionAPI) {
       const d = result.details as { project: string; markdown: string };
       return markdownCard(theme, {
         title: `Research plan · ${d.project}`,
-        markdown: d.markdown,
+        accentStyle: domainStyle(theme, "plan"),
         maxBodyLines: expanded ? 400 : 40,
+        markdown: d.markdown,
       });
     },
   });

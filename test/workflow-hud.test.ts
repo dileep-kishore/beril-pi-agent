@@ -14,10 +14,10 @@ test("shows the step rail with the current step and the next action", () => {
   const text = lines.join("\n");
   // active → the analyze step is current.
   assert.match(text, /▸ analyze/);
-  assert.match(text, /✓ explore.*✓ plan/, "rail lists earlier steps as done");
+  assert.match(text, /✔ explore.*✔ plan/, "rail lists earlier steps as done");
   assert.match(text, /Next: finish the notebooks/);
   // connection + project now live in the statusline, not the HUD.
-  assert.doesNotMatch(text, /▣/, "no project chip in the HUD");
+  assert.doesNotMatch(text, /◆/, "no project chip in the HUD");
   assert.doesNotMatch(text, /BERDL/, "no connection label in the HUD");
 });
 

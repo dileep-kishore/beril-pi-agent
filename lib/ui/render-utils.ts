@@ -37,9 +37,9 @@ export function moreItems(remaining: number, noun: string): string {
   return `… ${remaining} more ${noun}${remaining === 1 ? "" : "s"}`;
 }
 
-/** Dim "[Ctrl+O: Expand]" hint, suppressed when expanded or nothing more. */
+/** Dim "Ctrl+O to expand" hint, suppressed when expanded or nothing more. */
 export function expandHint(theme: IconTheme, expanded: boolean, hasMore: boolean): string {
-  return !expanded && hasMore ? theme.fg("dim", "[Ctrl+O: Expand]") : "";
+  return !expanded && hasMore ? theme.fg("dim", "Ctrl+O to expand") : "";
 }
 
 /** Head+tail window: keep the first ceil(limit/2) and last floor(limit/2) with a middle "… N more lines". */

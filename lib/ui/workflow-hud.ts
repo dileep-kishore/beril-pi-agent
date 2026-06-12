@@ -16,7 +16,7 @@ import { stepRail } from "./step-rail.ts";
  * call). Unit-tested with a pass-through theme.
  */
 export interface HudState {
-  /** Full connection label for the `setStatus` chip (RPC fallback), e.g. "BERDL off-cluster ✓ ready". */
+  /** Full connection label for the `setStatus` chip (RPC fallback), e.g. "BERDL off-cluster ✔ ready". */
   connection?: string;
   /** Compact connection label for the statusline, e.g. "BERDL off-cluster". */
   location?: string;

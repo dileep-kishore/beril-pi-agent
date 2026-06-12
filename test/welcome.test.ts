@@ -31,7 +31,7 @@ test("welcome panel carries the identity, connection, arc, and tip", () => {
   const text = welcomePanel(theme, state, 80).join("\n");
   assert.ok(text.includes("beril"), "brand in the title");
   assert.ok(text.includes("Dileep Kishore"), "researcher");
-  assert.ok(text.includes("BERDL off-cluster ✓"), "connection");
+  assert.ok(text.includes("BERDL off-cluster ✔"), "connection");
   assert.ok(text.includes("explore") && text.includes("analyze"), "the arc steps");
   assert.ok(text.includes("hello tip"), "the tip");
 });

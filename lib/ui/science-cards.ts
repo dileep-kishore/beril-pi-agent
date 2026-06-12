@@ -57,6 +57,9 @@ export function toolErrorText(result: { content?: { type: string; text?: string 
 export function errorCard(theme: Theme, message: string): Component {
   return textCard(theme, {
     title: `${GLYPH.bad} Error`,
+    // `state: "error"` paints the BORDER red (the title is red via accentStyle); a
+    // failure is the one card that should pop with a coloured frame, not recede.
+    state: "error",
     accentStyle: domainStyle(theme, "error"),
     text: message.trim() || "The tool failed without a message.",
     maxBodyLines: 16,
@@ -304,7 +307,7 @@ export interface NotebookRun {
   error: string | null;
 }
 
-/** Notebook execution result → per-notebook ✓/✗ with the first error line. */
+/** Notebook execution result → per-notebook ✔/✘ with the first error line. */
 export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: boolean }): Component {
   const lines = r.executed.map((e) =>
     e.ok
@@ -561,7 +564,7 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
 }
 
 /**
- * The red-team pass as its own ▽-framed card (deliberately NOT an `errorCard`): a
+ * The red-team pass as its own ⊖-framed card (deliberately NOT an `errorCard`): a
  * surviving-disconfirming-checks list over a refutes-coloured frame, plus a dim
  * pointer to the full pass on disk. Pure builder — the caller decides when to
  * surface it.

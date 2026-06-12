@@ -74,25 +74,33 @@ function padTo(line: string, width: number): string {
 
 /**
  * A section divider row, exactly `w` visible columns. With a label:
- * `├─ {label} ─…─┤`; without: `├{─×(w-2)}┤`. `paint` styles the whole row.
+ * `├─ {label} ─…─┤`; without: `├{─×(w-2)}┤`. `paint` styles the *structural*
+ * fragments only — the label is emitted untouched, because callers pass
+ * already-coloured labels (e.g. `roleStyle(...)`) whose `\x1b[39m` fg-reset would
+ * otherwise leak the terminal-default colour onto the trailing dashes + `┤`.
+ * Painting the fragments around it re-establishes the border colour after the
+ * label. Width is unchanged (`visibleWidth` ignores the ANSI either way).
  */
 export function sectionDivider(paint: (s: string) => string, label: string | undefined, w: number): string {
   if (!label) return paint(`├${"─".repeat(Math.max(0, w - 2))}┤`);
   // `├─ ` + label + ` ` + dashes + `┤` must total `w` visible columns.
   const text = truncateToWidth(label, Math.max(1, w - 6));
   const dashes = Math.max(1, w - 5 - visibleWidth(text));
-  return paint(`├─ ${text} ${"─".repeat(dashes)}┤`);
+  return `${paint("├─ ")}${text} ${paint(`${"─".repeat(dashes)}┤`)}`;
 }
 
 /** Frame pre-rendered body lines as a titled card. Pure; lines are exactly `width` wide. */
 export function frameCard(theme: CardTheme, opts: CardOptions, width: number): string[] {
-  // State drives the border only when no explicit accent/styler is supplied,
-  // so existing callers (and `accent`/`accentStyle`) keep today's behaviour.
-  const accent =
-    opts.accent ?? (opts.accentStyle == null && opts.state != null ? stateAccent[opts.state] : "borderAccent");
-  // `paint` styles the border + title: a custom per-domain styler when given,
-  // else the theme accent token. `accentStyle` resets fg only, so `bold` composes.
-  const paint = opts.accentStyle ?? ((s: string) => theme.fg(accent, s));
+  // The border RECEDES: it follows the card's lifecycle state (errors/warnings/
+  // active borders pop; routine results settle to a dim `borderMuted`) and never
+  // the per-domain hue. The domain colour lives in the TITLE only (`titlePaint`),
+  // so cards read as one calm family of dim frames with coloured titles rather
+  // than a rainbow of coloured boxes — the single biggest "looks neat" win.
+  const borderColor: ThemeColor = opts.accent ?? (opts.state != null ? stateAccent[opts.state] : "borderMuted");
+  const border = (s: string) => theme.fg(borderColor, s);
+  // The title carries the accent: a custom per-domain styler when given, else the
+  // accent token. `accentStyle` resets fg only, so `bold` composes.
+  const titlePaint = opts.accentStyle ?? ((s: string) => theme.fg(opts.accent ?? "accent", s));
   const w = Math.max(MIN_WIDTH, Math.floor(width));
   const inner = w - 4; // 1 border + 1 pad on each side
 
@@ -103,9 +111,11 @@ export function frameCard(theme: CardTheme, opts: CardOptions, width: number): s
   const title = truncateToWidth(opts.title, Math.max(1, w - 6 - metaCols));
   const titleLen = visibleWidth(title);
   const dashes = Math.max(1, w - 5 - titleLen - metaCols);
-  const head = meta ? `${theme.bold(paint(title))}${paint("  ")}${theme.fg("dim", meta)}` : theme.bold(paint(title));
-  const top = `${paint("╭─ ")}${head}${paint(` ${"─".repeat(dashes)}╮`)}`;
-  const bottom = paint(`╰${"─".repeat(w - 2)}╯`);
+  const head = meta
+    ? `${theme.bold(titlePaint(title))}${border("  ")}${theme.fg("dim", meta)}`
+    : theme.bold(titlePaint(title));
+  const top = `${border("╭─ ")}${head}${border(` ${"─".repeat(dashes)}╮`)}`;
+  const bottom = border(`╰${"─".repeat(w - 2)}╯`);
 
   let body = opts.body;
   if (opts.maxBodyLines != null && body.length > opts.maxBodyLines) {
@@ -114,14 +124,14 @@ export function frameCard(theme: CardTheme, opts: CardOptions, width: number): s
     body = [...body.slice(0, shown), note];
   }
 
-  const bar = paint("│");
+  const bar = border("│");
   const bodyLine = (line: string): string => `${bar} ${padTo(line, inner)}${RESET} ${bar}`;
   const rows = body.map(bodyLine);
 
   for (const section of opts.sections ?? []) {
     // A divider precedes a section unless it is the very first row AND unlabeled
     // (a labeled first section still gets its `├─ label ─┤` header row).
-    if (rows.length > 0 || section.label) rows.push(sectionDivider(paint, section.label, w));
+    if (rows.length > 0 || section.label) rows.push(sectionDivider(border, section.label, w));
     for (const line of section.lines) rows.push(bodyLine(line));
   }
 

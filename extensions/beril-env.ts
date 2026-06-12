@@ -7,7 +7,6 @@ import { type BerdlEnv, setCachedEnv } from "../lib/readiness.ts";
 import { currentStep, nextAction } from "../lib/research-steps.ts";
 import { type FooterData, footerLines } from "../lib/ui/footer.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
-import { hexFg, phaseColor } from "../lib/ui/palette.ts";
 import { callLine, envCard, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
 import { TIPS, type WelcomeState, pickTip, welcomePanel } from "../lib/ui/welcome.ts";
 import { type HudState, workflowHud } from "../lib/ui/workflow-hud.ts";
@@ -28,10 +27,10 @@ interface SubmittedEvent {
   project: string;
 }
 
-/** Full label for the built-in footer chip, e.g. "BERDL off-cluster ✓ ready". */
+/** Full label for the built-in footer chip, e.g. "BERDL off-cluster ✔ ready". */
 function connectionLabel(env: BerdlEnv): string {
-  // Reachable-but-not-ready shows the warning mark (△), matching the footer
-  // connection chip — not the hard-down (✗) mark, which is reserved for the
+  // Reachable-but-not-ready shows the warning mark (⚠), matching the footer
+  // connection chip — not the hard-down (✘) mark, which is reserved for the
   // status-unknown error state in refreshStatus.
   return `BERDL ${env.location}${env.ready ? ` ${GLYPH.ok} ready` : ` ${GLYPH.warn} not ready`}`;
 }
@@ -104,13 +103,14 @@ export default function berilEnv(pi: ExtensionAPI) {
     announcePhase(state);
   });
 
-  // The pinned phase banner — a framed, tinted one-liner in the transcript.
+  // The pinned phase banner — a tinted one-liner in the transcript on the custom-
+  // message band. The leading glyph + phase word carry the accent (aqua), the same
+  // "current/active" colour the statusline and step rail use, so the banner reads
+  // as part of one visual language rather than a per-phase rainbow.
   pi.registerMessageRenderer("beril-phase", (message, _opts, theme) => {
     const d = message.details as { phase?: string; next?: string } | undefined;
     const phase = d?.phase ?? "phase";
-    // Tint the leading glyph + phase word with the per-phase accent (the renderer's
-    // `theme` is the real Theme, so it satisfies ColorModeTheme for hexFg).
-    const label = theme.bold(hexFg(theme, phaseColor(phase), `${GLYPH.here} ${phase}`));
+    const label = theme.bold(theme.fg("accent", `${GLYPH.here} ${phase}`));
     const next = d?.next ? theme.fg("muted", `  ${GLYPH.arrow} ${d.next}`) : "";
     const box = new Box(1, 0, (t) => theme.bg("customMessageBg", t));
     box.addChild(new Text(`${label}${next}`, 0, 0));
