@@ -18,6 +18,24 @@ export class BerilError extends Error {
   }
 }
 
+/**
+ * Whether a thrown error is a *transport* failure (the BERDL Spark Connect
+ * endpoint never answered) rather than a genuine SQL/analysis error.
+ *
+ * The distinction matters for any tool that probes the schema to draw a
+ * data-availability conclusion: a `DESCRIBE` that fails because Spark is
+ * unreachable means we *could not check* — NOT that the table/column is absent.
+ * Conflating the two makes a science tool report "your data can't answer this"
+ * during an infrastructure outage. `run_sql.py` surfaces this class with an
+ * "unreachable" message; the underlying gRPC status is `UNAVAILABLE` /
+ * `RETRIES_EXCEEDED`, so we match all three.
+ */
+export function isConnectivityError(err: unknown): boolean {
+  const stderr = err instanceof BerilError ? err.stderr : "";
+  const msg = err instanceof Error ? err.message : String(err);
+  return /unreachable|RETRIES_EXCEEDED|UNAVAILABLE/i.test(`${msg} ${stderr}`);
+}
+
 export interface BerilExecOptions {
   timeoutMs?: number;
   signal?: AbortSignal;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import berilData from "../extensions/beril-data.ts";
+import { isConnectivityError } from "../lib/beril-exec.ts";
 import { isDestructive } from "../lib/destructive.ts";
 import { resetReadinessCache } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
@@ -145,6 +146,127 @@ test("renderTable formats rows and truncates", () => {
   assert.equal(renderTable([]), "(0 rows)");
   const many = Array.from({ length: 25 }, (_, i) => ({ n: i }));
   assert.match(renderTable(many, 20), /5 more rows/);
+});
+
+test("isConnectivityError flags transport outages but not SQL/analysis errors", () => {
+  assert.ok(isConnectivityError(new Error("the BERDL Spark Connect server is unreachable (retries exhausted)")));
+  assert.ok(isConnectivityError(new Error("[RETRIES_EXCEEDED] Exceeded retries")));
+  assert.ok(isConnectivityError(new Error("UNAVAILABLE: failed to connect to all addresses")));
+  // Genuine query/resolution errors are NOT connectivity failures.
+  assert.ok(!isConnectivityError(new Error("[TABLE_OR_VIEW_NOT_FOUND] The table `db`.`t` cannot be found")));
+  assert.ok(!isConnectivityError(new Error("[PARSE_SYNTAX_ERROR] Syntax error at or near 'SELCT'")));
+});
+
+test("berdl_feasibility surfaces a Spark-unreachable outage as an error, never as 'absent'", async () => {
+  // When the schema probe fails because Spark Connect is down, the tool must NOT
+  // claim the column is absent (a false 'not-answerable' verdict). It must abort
+  // and surface the connectivity error so the user knows the DATA PLANE is down.
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return {
+      stdout: "",
+      stderr: "Query failed: the BERDL Spark Connect server is unreachable (retries exhausted).",
+      code: 1,
+      killed: false,
+    };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    /unreachable/,
+  );
+});
+
+test("berdl_feasibility surfaces a coverage-probe outage as an error, not a clean 'answerable'", async () => {
+  // DESCRIBE succeeds (column is real), but the follow-up coverage probe hits a
+  // transport outage. The bare catch used to swallow it and render the column as
+  // cleanly populated/answerable; it must now surface the connectivity error.
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    const sql = args[2] ?? "";
+    if (sql.startsWith("DESCRIBE")) {
+      return {
+        stdout: JSON.stringify({
+          returned_rows: 1,
+          limit_applied: 500,
+          rows: [{ col_name: "c", data_type: "string" }],
+        }),
+        stderr: "",
+        code: 0,
+        killed: false,
+      };
+    }
+    return {
+      stdout: "",
+      stderr: "Query failed: the BERDL Spark Connect server is unreachable (retries exhausted).",
+      code: 1,
+      killed: false,
+    };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    /unreachable/,
+  );
+});
+
+test("berdl_feasibility tolerates a non-connectivity coverage failure (coverage stays unknown)", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    const sql = args[2] ?? "";
+    if (sql.startsWith("DESCRIBE")) {
+      return {
+        stdout: JSON.stringify({ returned_rows: 1, limit_applied: 500, rows: [{ col_name: "c" }] }),
+        stderr: "",
+        code: 0,
+        killed: false,
+      };
+    }
+    return { stdout: "", stderr: "Query failed: [ARITHMETIC_OVERFLOW] value out of range", code: 1, killed: false };
+  });
+  const res = await tools.berdl_feasibility.execute(
+    "id",
+    { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+    undefined,
+    undefined,
+    ctx,
+  );
+  const checked = (res.details as any).checked;
+  assert.equal(checked[0].exists, true);
+  assert.equal(checked[0].coverage, undefined);
+});
+
+test("berdl_feasibility still records a genuinely missing table as absent (no abort)", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return {
+      stdout: "",
+      stderr: "Query failed: [TABLE_OR_VIEW_NOT_FOUND] The table or view `db`.`t` cannot be found.",
+      code: 1,
+      killed: false,
+    };
+  });
+  const res = await tools.berdl_feasibility.execute(
+    "id",
+    { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+    undefined,
+    undefined,
+    ctx,
+  );
+  assert.equal((res.details as any).checked[0].exists, false);
+  assert.match(res.content[0].text, /MISSING/);
 });
 
 test("feasibilityVerdict maps missing → not-answerable, sparse → partial, all-good → answerable", () => {

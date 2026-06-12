@@ -1,7 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { berilExec } from "../lib/beril-exec.ts";
+import { berilExec, isConnectivityError } from "../lib/beril-exec.ts";
 import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql } from "../lib/peek.ts";
 import { requireReady } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
@@ -171,7 +171,15 @@ export default function berilData(pi: ExtensionAPI) {
         let cols: QueryPayload;
         try {
           cols = await berilExec<QueryPayload>(pi, ["query", "--query", describeSql(table), "--limit", "500"]);
-        } catch {
+        } catch (err) {
+          // A transport outage (Spark Connect unreachable) means we COULDN'T CHECK —
+          // not that the table is absent. Recording `exists: false` here would render
+          // "<table> is absent" and a false "not-answerable" verdict, telling a
+          // scientist their data can't answer the question during an infra outage.
+          // Abort and let the tool surface the real connectivity error instead.
+          if (isConnectivityError(err)) throw err;
+          // A genuine resolution error (e.g. table not found) is a legitimate
+          // feasibility finding — record it as absent and keep probing the rest.
           checked.push({ table, column: c.column, exists: false });
           continue;
         }
@@ -190,8 +198,13 @@ export default function berilData(pi: ExtensionAPI) {
             const raw = cov.rows[0]?.cov;
             const num = typeof raw === "number" ? raw : Number(raw);
             if (Number.isFinite(num)) coverage = num;
-          } catch {
-            // coverage stays undefined; existence already recorded
+          } catch (err) {
+            // A transport outage means coverage was NOT measured — not that it's
+            // adequate. Leaving it undefined would let the column read as a clean,
+            // fully-populated "answerable" check (the verdict only flags sparsity
+            // when coverage != null). Surface connectivity errors like the DESCRIBE
+            // probe does; tolerate only genuine query failures (coverage undefined).
+            if (isConnectivityError(err)) throw err;
           }
         }
         checked.push({ table, column: c.column, exists, coverage });

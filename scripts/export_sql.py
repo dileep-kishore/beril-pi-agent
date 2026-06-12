@@ -106,7 +106,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--berdl-proxy",
         action="store_true",
-        help="Use BERDL proxy defaults: spark.berdl.kbase.us + grpc/https proxy http://127.0.0.1:8123.",
+        help="Use BERDL proxy defaults: metrics.berdl.kbase.us + grpc/https proxy http://127.0.0.1:8123.",
     )
     parser.add_argument(
         "--env-file",
@@ -133,7 +133,10 @@ def resolve_query(args: argparse.Namespace) -> str:
 def apply_proxy_settings(args: argparse.Namespace) -> None:
     if args.berdl_proxy:
         if args.host_template is None:
-            args.host_template = "spark.berdl.kbase.us"
+            # Tunneled/proxy path routes Spark Connect through metrics.berdl.kbase.us
+            # (spark.berdl.kbase.us is the direct-access default, unreachable through
+            # the tunnel). BERDL_SPARK_HOST_TEMPLATE overrides if the ingress changes.
+            args.host_template = os.getenv("BERDL_SPARK_HOST_TEMPLATE", "metrics.berdl.kbase.us")
         if args.grpc_proxy is None:
             args.grpc_proxy = "http://127.0.0.1:8123"
         if args.https_proxy is None:
