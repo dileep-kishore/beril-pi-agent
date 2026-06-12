@@ -12,7 +12,9 @@ from beril_cli.lifecycle import load_project
 def _proj(tmp_path, status="analysis"):
     d = tmp_path / "projects" / "demo"
     d.mkdir(parents=True)
-    (d / "beril.yaml").write_text(f"project_id: demo\nstatus: {status}\nengine:\n  name: pi\n")
+    (d / "beril.yaml").write_text(
+        f"project_id: demo\nstatus: {status}\nengine:\n  name: pi\n"
+    )
     return d
 
 
@@ -62,6 +64,64 @@ def test_illegal_set_returns_2(monkeypatch, capsys, tmp_path):
     assert "illegal" in capsys.readouterr().err.lower()
     # State must be unchanged.
     assert load_project(d)["status"] == "analysis"
+
+
+def test_set_bootstraps_exploration_for_new_project(monkeypatch, capsys, tmp_path):
+    # A brand-new project dir (files written, but no beril.yaml yet): the first
+    # `set ... proposed` must auto-create the state file at exploration, then transition.
+    d = tmp_path / "projects" / "demo"
+    d.mkdir(parents=True)
+    (d / "RESEARCH_PLAN.md").write_text("# plan")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(lifecycle_cmd.config, "load", lambda: {})
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="proposed"))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["status"] == "proposed"
+    proj = load_project(d)
+    assert proj["status"] == "proposed"
+    assert proj["project_id"] == "demo"
+    assert proj["engine"] == {"name": "pi"}
+
+
+def test_set_bootstrap_includes_author_from_config(monkeypatch, capsys, tmp_path):
+    d = tmp_path / "projects" / "demo"
+    d.mkdir(parents=True)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        lifecycle_cmd.config,
+        "load",
+        lambda: {
+            "user": {"name": "A", "affiliation": "LBL", "orcid": "0000-0001-0000-0000"}
+        },
+    )
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="proposed"))
+    assert rc == 0
+    proj = load_project(d)
+    assert proj["authors"] == [
+        {"name": "A", "affiliation": "LBL", "orcid": "0000-0001-0000-0000"}
+    ]
+
+
+def test_set_bootstrap_rejects_illegal_first_transition(monkeypatch, capsys, tmp_path):
+    # A fresh project bootstraps to exploration; skipping straight to active is illegal.
+    d = tmp_path / "projects" / "demo"
+    d.mkdir(parents=True)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(lifecycle_cmd.config, "load", lambda: {})
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="active"))
+    assert rc == 2
+    assert "illegal" in capsys.readouterr().err.lower()
+
+
+def test_set_on_missing_project_dir_returns_2(monkeypatch, capsys, tmp_path):
+    # No directory at all (e.g. a typo'd project name) → clear error, no silent creation.
+    (tmp_path / "projects").mkdir()
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(
+        _ns(action="set", state="proposed", project="nope")
+    )
+    assert rc == 2
+    assert not (tmp_path / "projects" / "nope").exists()
 
 
 def test_set_demote_is_legal(monkeypatch, capsys, tmp_path):
@@ -161,7 +221,10 @@ def test_current_picks_most_recent_non_complete(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
     rc = lifecycle_cmd.run_lifecycle(_ns(action="current", project=None))
     assert rc == 0
-    assert json.loads(capsys.readouterr().out) == {"project": "newest", "status": "analysis"}
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "newest",
+        "status": "analysis",
+    }
 
 
 def test_current_empty_when_all_complete(monkeypatch, capsys, tmp_path):

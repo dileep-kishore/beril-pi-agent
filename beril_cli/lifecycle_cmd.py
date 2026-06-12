@@ -16,14 +16,48 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from beril_cli import config
 from beril_cli.lifecycle import LifecycleError, load_project, save_project, set_status
 from beril_cli.paths import find_repo_root
 
 _MARKER_FILES = {"submitted": "SUBMITTED.md", "failed": "SUBMISSION_FAILED.md"}
+_AUTHOR_FIELDS = ("name", "affiliation", "orcid")
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _authors_from_config() -> list[dict[str, str]]:
+    """The single author block from `beril user` config, or [] when no name is set."""
+    cfg = config.load()
+    user = cfg.get("user", {}) if isinstance(cfg, dict) else {}
+    fields = {f: (user.get(f, "") or "").strip() for f in _AUTHOR_FIELDS}
+    if not fields["name"]:
+        return []
+    return [{f: fields[f] for f in _AUTHOR_FIELDS if fields[f]}]
+
+
+def _init_exploration(project_dir: Path) -> None:
+    """Seed a new project's `beril.yaml` at `exploration` (the implicit start state).
+
+    Called when a transition is requested on a project directory that exists but
+    has no state file yet — so the first `exploration → proposed` move succeeds
+    instead of erroring on a missing file.
+    """
+    now = _now()
+    proj: dict[str, object] = {
+        "project_id": project_dir.name,
+        "status": "exploration",
+        "created_at": now,
+        "last_session_at": now,
+        "branch": f"projects/{project_dir.name}",
+        "engine": {"name": "pi"},
+    }
+    authors = _authors_from_config()
+    if authors:
+        proj["authors"] = authors
+    save_project(project_dir, proj)
 
 
 def _find_current_project(projects_dir: Path) -> dict[str, str] | None:
@@ -83,6 +117,13 @@ def run_lifecycle(args: argparse.Namespace) -> int:
             if not args.state:
                 print("set requires a target <state>.", file=sys.stderr)
                 return 2
+            # A brand-new project (dir exists, no state file yet) starts at
+            # exploration — seed it so the first transition doesn't error.
+            if not (project_dir / "beril.yaml").exists():
+                if not project_dir.is_dir():
+                    print(f"project not found: {project_dir}", file=sys.stderr)
+                    return 2
+                _init_exploration(project_dir)
             new_status = set_status(project_dir, args.state)
             json.dump({"status": new_status}, sys.stdout)
             sys.stdout.write("\n")
