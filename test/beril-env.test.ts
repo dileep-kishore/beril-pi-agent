@@ -101,14 +101,14 @@ test("session_start sets the connection chip, the HUD, and the rich footer when 
   const { ctx, set, widgets, renderFooter } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   const chip = set.find(([k]) => k === "beril-connection");
-  assert.equal(chip?.[1], "BERDL off-cluster ✔ ready", "connection chip (RPC fallback)");
+  assert.equal(chip?.[1], "BERDL off-cluster ✓ ready", "connection chip (RPC fallback)");
   assert.ok(
     widgets.find(([k]) => k === "beril-workflow"),
     "workflow widget set",
   );
   // The statusline owns connection + model now.
   const footer = renderFooter();
-  assert.match(footer, /BERDL off-cluster ✔/, "footer shows the compact connection");
+  assert.match(footer, /BERDL off-cluster ✓/, "footer shows the compact connection");
   assert.match(footer, /opus-4\.8/, "footer shows the model");
   assert.match(footer, /ctx 12%/, "footer shows context usage");
   assert.match(footer, /1\.0k\/200\.0k/, "footer shows tokens/context window");
@@ -127,10 +127,10 @@ test("the statusline self-heals when a later env check confirms BERDL is up", as
   const chip = () => [...set].reverse().find(([k]) => k === "beril-connection")?.[1];
 
   setCachedEnv({ location: "off-cluster", ready: false, checks: {}, next_steps: [] });
-  assert.equal(chip(), "BERDL off-cluster ⚠ not ready", "a not-ready check shows on the chip");
+  assert.equal(chip(), "BERDL off-cluster △ not ready", "a not-ready check shows on the chip");
 
   setCachedEnv({ location: "off-cluster", ready: true, checks: {}, next_steps: [] });
-  assert.equal(chip(), "BERDL off-cluster ✔ ready", "the chip self-heals when BERDL comes up");
+  assert.equal(chip(), "BERDL off-cluster ✓ ready", "the chip self-heals when BERDL comes up");
 });
 
 test("session_start greets with the welcome header on a fresh start", async () => {
@@ -189,7 +189,7 @@ test("session_shutdown clears the chip, the widget, the footer, and the header",
   h.handlers.session_shutdown({ type: "session_shutdown", reason: "quit" }, ctx);
   assert.deepEqual(
     set.find(([k]) => k === "beril-connection" && k),
-    ["beril-connection", "BERDL off-cluster ✔ ready"],
+    ["beril-connection", "BERDL off-cluster ✓ ready"],
   );
   assert.deepEqual([...set].reverse()[0], ["beril-connection", undefined], "chip cleared last");
   assert.deepEqual([...widgets].reverse()[0], ["beril-workflow", undefined], "widget cleared");

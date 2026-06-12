@@ -8,7 +8,7 @@ import { GLYPH } from "./glyphs.ts";
  * chevron-grouped segment line in the oh-my-pi idiom — a real status bar, not a
  * keyed-status string:
  *
- *   BERDL off-cluster ✔ › ⌂ beril-pi-agent › ◆ project ▸ analyze › ctx 34% (12.3k/200k) ──── opus-4.8
+ *   BERDL off-cluster ✓ › ⌂ beril-pi-agent › ◆ project ▸ analyze › ctx 34% (12.3k/200k) ──── opus-4.8
  *
  * Groups read left→right — environment (connection), location (cwd), the work
  * (project ▸ phase), and context — joined by a dim ` › ` chevron; the model is

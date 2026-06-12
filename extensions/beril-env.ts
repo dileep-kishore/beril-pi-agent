@@ -27,10 +27,10 @@ interface SubmittedEvent {
   project: string;
 }
 
-/** Full label for the built-in footer chip, e.g. "BERDL off-cluster ✔ ready". */
+/** Full label for the built-in footer chip, e.g. "BERDL off-cluster ✓ ready". */
 function connectionLabel(env: BerdlEnv): string {
-  // Reachable-but-not-ready shows the warning mark (⚠), matching the footer
-  // connection chip — not the hard-down (✘) mark, which is reserved for the
+  // Reachable-but-not-ready shows the warning mark (△), matching the footer
+  // connection chip — not the hard-down (✗) mark, which is reserved for the
   // status-unknown error state in refreshStatus.
   return `BERDL ${env.location}${env.ready ? ` ${GLYPH.ok} ready` : ` ${GLYPH.warn} not ready`}`;
 }

@@ -20,7 +20,7 @@ test("footer is a single chevron-grouped line: connection › cwd › work › c
   const lines = footerLines(theme, full, 120);
   assert.equal(lines.length, 1, "one statusline");
   const line = lines[0];
-  assert.ok(line.includes("BERDL off-cluster ✔"), "connection + ok glyph");
+  assert.ok(line.includes("BERDL off-cluster ✓"), "connection + ok glyph");
   assert.ok(line.includes("beril-pi-agent"), "working dir");
   assert.ok(line.includes("◆ microbial-discovery"), "project");
   assert.ok(line.includes("▸ analyze"), "phase");
@@ -31,10 +31,10 @@ test("footer is a single chevron-grouped line: connection › cwd › work › c
   assert.ok(line.includes("›"), "groups joined by a chevron");
 });
 
-test("not-ready connection shows the ⚠ warn glyph (not a failure ✘)", () => {
+test("not-ready connection shows the △ warn glyph (not a failure ✗)", () => {
   const lines = footerLines(theme, { connection: "BERDL off-cluster", ready: false }, 40);
-  assert.ok(lines[0].includes("BERDL off-cluster ⚠"));
-  assert.ok(!lines[0].includes("✘"));
+  assert.ok(lines[0].includes("BERDL off-cluster △"));
+  assert.ok(!lines[0].includes("✗"));
 });
 
 test("a bare session (no project) still shows one informative line", () => {
@@ -50,7 +50,7 @@ test("a bare session (no project) still shows one informative line", () => {
     120,
   );
   assert.equal(lines.length, 1, "a single statusline");
-  assert.ok(lines[0].includes("BERDL off-cluster ✔") && lines[0].includes("beril-pi-agent"));
+  assert.ok(lines[0].includes("BERDL off-cluster ✓") && lines[0].includes("beril-pi-agent"));
   assert.ok(lines[0].includes("ctx") && lines[0].includes("gpt-5.5"));
 });
 

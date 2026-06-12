@@ -1,19 +1,22 @@
 /**
  * One status-glyph legend, shared by cards, the HUD, and the footer.
  *
- * A single, deliberately small vocabulary keyed to Pi's own Unicode conventions:
- * `✔`/`✘`/`⚠` carry the operational axis, `⊕`/`⊖` pair as the supports/refutes
- * twins, and the chevron `›` groups the statusline. Centralising them keeps the
- * meaning stable — a `✔` reads the same everywhere it appears — and the ASCII
- * tier mirrors each one for NO_COLOR / non-UTF terminals.
+ * A single, deliberately small vocabulary of plain text-presentation Unicode —
+ * NO Nerd-Font glyphs, ligatures, or emoji-presentation characters, so it renders
+ * identically in any monospace font without a special/emoji font (`✓`/`✗`/`△`
+ * deliberately avoid the emoji-capable `✔`/`✘`/`⚠`, which some terminals colour
+ * and double-width). `✓`/`✗`/`△` carry the operational axis, `⊕`/`⊖` pair as the
+ * supports/refutes twins, and the chevron `›` groups the statusline. Centralising
+ * them keeps the meaning stable, and the ASCII tier mirrors each one for
+ * NO_COLOR / non-UTF terminals.
  */
 export const GLYPH = {
   /** Operational success — a task/check that ran and passed. */
-  ok: "✔",
+  ok: "✓",
   /** Operational failure — a task/check that ran and failed. */
-  bad: "✘",
+  bad: "✗",
   /** A caution / not-fully-ready state. */
-  warn: "⚠",
+  warn: "△",
   /** A pending / not-yet-done state. */
   pending: "○",
   /** Work currently underway. */

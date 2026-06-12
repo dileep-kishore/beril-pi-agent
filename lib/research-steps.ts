@@ -30,7 +30,7 @@ const STATE_STEP: Record<string, number> = {
 /**
  * Render the checklist as a compact breadcrumb with the current step marked,
  * e.g. `explore · plan · ▸analyze · review · submit`. A `complete` project shows
- * the full checklist with a trailing `✔`. An unknown state returns the plain
+ * the full checklist with a trailing `✓`. An unknown state returns the plain
  * checklist with nothing marked (never throws).
  */
 export function stepBreadcrumb(state: string): string {

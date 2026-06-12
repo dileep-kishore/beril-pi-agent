@@ -5,7 +5,7 @@ import { GLYPH } from "./glyphs.ts";
 /**
  * The shared step rail for the research arc `explore → plan → analyze → review →
  * submit`, used by both the workflow HUD and the welcome panel so the two never
- * drift. Done steps read dim with a `✔`, the current step is bold + accent-colored
+ * drift. Done steps read dim with a `✓`, the current step is bold + accent-colored
  * with a `▸` "you are here", and future steps are muted with a `○` pending mark —
  * the glyph>word>color channel ordering the unified theme uses everywhere. The
  * current-step accent matches the statusline so "where you are" is one colour

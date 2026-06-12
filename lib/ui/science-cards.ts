@@ -307,7 +307,7 @@ export interface NotebookRun {
   error: string | null;
 }
 
-/** Notebook execution result → per-notebook ✔/✘ with the first error line. */
+/** Notebook execution result → per-notebook ✓/✗ with the first error line. */
 export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: boolean }): Component {
   const lines = r.executed.map((e) =>
     e.ok
