@@ -205,16 +205,19 @@ export function parseClaimLedger(planMd: string, reportMd: string): ClaimRow[] {
 
 /** Infer an `EvidencePointer["kind"]` from a bullet's `[tag]` or `PMID` marker. */
 function pointerKind(bullet: string): EvidencePointer["kind"] {
-  const tag = bullet.match(/\[(query|notebook|figure|paper)\]/i);
+  const tag = bullet.match(/\[(query|notebook|figure|paper|web|docs)\]/i);
   if (tag) return tag[1].toLowerCase() as EvidencePointer["kind"];
   if (/\bPMID[:\s]/i.test(bullet)) return "paper";
+  if (/\bhttps?:\/\//i.test(bullet)) return "web";
   return "query";
 }
 
-/** A path / notebook hash / PMID token in a bullet, if one is present. */
+/** A path / notebook hash / PMID / URL token in a bullet, if one is present. */
 function pointerLocator(bullet: string): string | null {
   const pmid = bullet.match(/\bPMID[:\s]\s*(\d+)/i);
   if (pmid) return `PMID:${pmid[1]}`;
+  const url = bullet.match(/\bhttps?:\/\/\S+/i);
+  if (url) return url[0].replace(/[).,]+$/, "");
   const hash = bullet.match(/\b(?:sha256:)?[0-9a-f]{12,64}\b/i);
   if (hash) return hash[0];
   const path = bullet.match(/\b[\w./-]+\.(?:ipynb|py|png|svg|pdf|csv|parquet)\b/i);

@@ -23,8 +23,8 @@ export type ConfidenceTier = "high" | "medium" | "low";
 
 /** A typed, re-openable pointer to the artifact behind a claim. */
 export interface EvidencePointer {
-  kind: "query" | "notebook" | "figure" | "paper";
-  /** notebook path (+ optional `#cell-N`), figure path, query hash, or PMID/DOI. */
+  kind: "query" | "notebook" | "figure" | "paper" | "web" | "docs";
+  /** notebook path (+ `#cell-N`), figure path, query hash, PMID/DOI, or a web/docs source URL. */
   locator: string;
   /** The exact, verbatim source sentence/number this claim rests on. */
   exact: string;
