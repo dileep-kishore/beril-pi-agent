@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import berilLit, { assessStances, expandQueries, resolveCitation } from "../extensions/beril-literature.ts";
+import berilLit, { assessStances, expandQueries, resolveCitation, resolveDoi } from "../extensions/beril-literature.ts";
 
 function harness() {
   const tools: any = {};
@@ -72,14 +72,22 @@ test("lit_abstract returns abstract text + record (fetch stubbed)", async () => 
   }
 });
 
-test("lit_search returns normalized records (fetch stubbed)", async () => {
+test("lit_search merges PubMed + Europe PMC (routed by URL, deduped)", async () => {
   const { tools } = harness();
-  const r: any = await withStubbedFetch(
-    [() => ({ esearchresult: { idlist: ["1"] } }), () => summaryMap([{ pmid: "1", title: "A" }])],
+  // lit_search now fans out to PubMed (esearch -> esummary) and Europe PMC (/search)
+  // concurrently, so route by URL rather than by call sequence.
+  const r: any = await withRoutedFetch(
+    (url) => {
+      if (url.includes("esearch.fcgi")) return { esearchresult: { idlist: ["1"] } };
+      if (url.includes("esummary.fcgi")) return summaryMap([{ pmid: "1", title: "A" }]);
+      // Europe PMC: a DOI-only open-access record with a distinct title (survives dedupe).
+      return { resultList: { result: [{ doi: "10.9/z", title: "OA Preprint", pubYear: "2024", source: "PPR" }] } };
+    },
     () => tools.lit_search.execute("id", { query: "x", max: 5 }, undefined, undefined, ctx),
   );
-  assert.equal(r.details.records[0].pmid, "1");
-  assert.equal(r.details.records[0].title, "A");
+  const records = r.details.records;
+  assert.ok(records.some((x: any) => x.pmid === "1" && x.title === "A"));
+  assert.ok(records.some((x: any) => x.doi === "10.9/z"));
 });
 
 test("lit_fetch returns a single record (fetch stubbed)", async () => {
@@ -234,6 +242,24 @@ test("resolveCitation returns ok:true when the record resolves with a title", as
   const check = await resolveCitation("7", undefined, async () => ({ pmid: "7", title: "Title7" }));
   assert.equal(check.ok, true);
   assert.equal(check.title, "Title7");
+});
+
+test("resolveDoi returns ok:true when the DOI resolves at Europe PMC", async () => {
+  const check = await resolveDoi("10.1/x", undefined, async () => [{ pmid: "1", doi: "10.1/x", title: "A" }]);
+  assert.equal(check.ok, true);
+  assert.equal(check.title, "A");
+  assert.equal(check.pmid, "1");
+});
+
+test("resolveDoi returns ok:false when the DOI does not resolve", async () => {
+  const check = await resolveDoi("10.bad/x", undefined, async () => []);
+  assert.equal(check.ok, false);
+  assert.match(check.reason ?? "", /did not resolve/);
+});
+
+test("resolveDoi returns ok:false when the resolved record has no title", async () => {
+  const check = await resolveDoi("10.1/y", undefined, async () => [{ pmid: "", doi: "10.1/y", title: "" }]);
+  assert.equal(check.ok, false);
 });
 
 test("assessStances returns all-NEI when no model and no fallback auth", async () => {

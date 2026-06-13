@@ -4,6 +4,7 @@ import { complete, getModel } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Context, Model, ProviderStreamOptions } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { searchEuropePmc } from "../lib/europepmc.ts";
 import { type LitRecord, fetchAbstract, fetchArticle, searchPubmed } from "../lib/lit.ts";
 import {
   abstractCard,
@@ -100,6 +101,23 @@ export async function resolveCitation(
     return { pmid, ok: true, title: rec.title };
   } catch {
     return { pmid, ok: false, reason: "did not resolve at PubMed — probable fabrication" };
+  }
+}
+
+/** Resolve a DOI via Europe PMC before it may be written; flag unresolvable ones. */
+export async function resolveDoi(
+  doi: string,
+  signal?: AbortSignal,
+  searcher: (q: string, max?: number, s?: AbortSignal) => Promise<LitRecord[]> = searchEuropePmc,
+): Promise<CitationCheck> {
+  try {
+    const hits = await searcher(`DOI:${doi}`, 1, signal);
+    if (!hits.length || !hits[0].title) {
+      return { pmid: "", ok: false, reason: "DOI did not resolve at Europe PMC — probable fabrication" };
+    }
+    return { pmid: hits[0].pmid ?? "", ok: true, title: hits[0].title };
+  } catch {
+    return { pmid: "", ok: false, reason: "DOI check errored" };
   }
 }
 
@@ -210,7 +228,8 @@ function formatReferences(topic: string, records: LitRecord[]): string {
       ? `${r.authors.slice(0, 3).join(", ")}${r.authors.length > 3 ? " et al." : ""}. `
       : "";
     const cite = `- ${authors}${r.title ?? "(untitled)"}. *${r.journal ?? "?"}* (${r.year ?? "?"}).`;
-    lines.push(r.pmid ? `${cite} PMID:${r.pmid}` : cite);
+    const id = r.pmid ? ` PMID:${r.pmid}` : r.doi ? ` DOI:${r.doi}` : "";
+    lines.push(`${cite}${id}`);
   }
   return `${lines.join("\n")}\n`;
 }
@@ -226,7 +245,14 @@ export default function berilLiterature(pi: ExtensionAPI) {
     }),
     async execute(_id, params, signal, _onUpdate, _ctx) {
       const max = params.max ?? 20;
-      const records = await searchPubmed(params.query, max, signal);
+      // Dual-source: PubMed (PMID-bearing, listed first so it wins the dedupe key)
+      // + Europe PMC (open-access full text + DOIs + preprints). Both keyless;
+      // either failing never fails the tool.
+      const [pm, epmc] = await Promise.all([
+        searchPubmed(params.query, max, signal).catch(() => [] as LitRecord[]),
+        searchEuropePmc(params.query, max, signal).catch(() => [] as LitRecord[]),
+      ]);
+      const records = dedupe([...pm, ...epmc]);
       const text = `${records.length} result(s) for "${params.query}"`;
       return { content: [{ type: "text", text }], details: { records } };
     },
@@ -348,13 +374,20 @@ export default function berilLiterature(pi: ExtensionAPI) {
       // and drop any that don't resolve — an unresolvable PMID is a probable
       // fabrication and must not reach references.md.
       const checks = await Promise.all(
-        records.map((r) =>
-          r.pmid
-            ? resolveCitation(r.pmid, ctx.signal).catch(
-                (): CitationCheck => ({ pmid: r.pmid as string, ok: false, reason: "check errored" }),
-              )
-            : Promise.resolve<CitationCheck>({ pmid: "", ok: true }),
-        ),
+        records.map((r) => {
+          if (r.pmid) {
+            return resolveCitation(r.pmid, ctx.signal).catch(
+              (): CitationCheck => ({ pmid: r.pmid as string, ok: false, reason: "check errored" }),
+            );
+          }
+          // Europe-PMC-only records have a DOI but no PMID — verify the DOI resolves.
+          if (r.doi) {
+            return resolveDoi(r.doi, ctx.signal).catch(
+              (): CitationCheck => ({ pmid: "", ok: false, reason: "DOI check errored" }),
+            );
+          }
+          return Promise.resolve<CitationCheck>({ pmid: "", ok: true });
+        }),
       );
       const verified = records.filter((_, i) => checks[i].ok);
       const dropped = checks.filter((c) => !c.ok);

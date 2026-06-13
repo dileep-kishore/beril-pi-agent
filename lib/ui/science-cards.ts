@@ -166,8 +166,13 @@ export function formatLitMarkdown(records: LitRecord[], limit: number): string {
       ? ` — ${r.authors.slice(0, 3).join(", ")}${r.authors.length > 3 ? " et al." : ""}`
       : "";
     const venue = `*${r.journal ?? "?"}* (${r.year ?? "?"})`;
-    const pmid = r.pmid ? ` · [PMID ${r.pmid}](https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/)` : "";
-    return `- **${r.title ?? "(untitled)"}**${authors}. ${venue}${pmid}`;
+    // PMID link when present (PubMed); otherwise a DOI link (Europe-PMC-only records).
+    const id = r.pmid
+      ? ` · [PMID ${r.pmid}](https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/)`
+      : r.doi
+        ? ` · [DOI ${r.doi}](https://doi.org/${r.doi})`
+        : "";
+    return `- **${r.title ?? "(untitled)"}**${authors}. ${venue}${id}`;
   });
   const more = records.length > shown.length ? `\n\n_… ${records.length - shown.length} more_` : "";
   return (bullets.join("\n") || "_(no results)_") + more;
