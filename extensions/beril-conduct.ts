@@ -13,9 +13,15 @@ import { CONDUCT_CONTRACT } from "../lib/conduct.ts";
  *
  * Headless runs (`--print`/`--mode json`) get the contract too: it shapes
  * behavior without any UI, so there is no `ctx.hasUI` gate.
+ *
+ * Under Pi 0.79 project trust, an untrusted project gets no contract: it grants
+ * no capability, so we no-op safely (return undefined → Pi keeps its assembled
+ * base prompt) rather than steer the agent as a co-scientist in a context the
+ * user has not trusted.
  */
 export default function berilConduct(pi: ExtensionAPI) {
-  pi.on("before_agent_start", (event) => ({
-    systemPrompt: `${event.systemPrompt}\n\n${CONDUCT_CONTRACT}`,
-  }));
+  pi.on("before_agent_start", (event, ctx) => {
+    if (!ctx.isProjectTrusted()) return undefined;
+    return { systemPrompt: `${event.systemPrompt}\n\n${CONDUCT_CONTRACT}` };
+  });
 }

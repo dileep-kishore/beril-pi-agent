@@ -13,6 +13,12 @@ export default function berilSafety(pi: ExtensionAPI) {
     const toolName = (event as { toolName?: string }).toolName;
     const input = ((event as { input?: Record<string, unknown> }).input ?? {}) as Record<string, unknown>;
     if (!toolName || !isDestructive(toolName, input)) return undefined;
+    // Fail-closed under Pi 0.79 project trust: an untrusted project must never run
+    // an irreversible operation. The gate cannot pop a trusted confirm dialog here,
+    // so the only safe action is to deny (the reason surfaces to the user).
+    if (!ctx.isProjectTrusted()) {
+      return { block: true, reason: `Destructive tool ${toolName} blocked: project is not trusted` };
+    }
     if (!ctx.hasUI) {
       return { block: true, reason: `Destructive tool ${toolName} blocked in non-interactive mode` };
     }
