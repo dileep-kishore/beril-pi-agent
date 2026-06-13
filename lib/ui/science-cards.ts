@@ -166,8 +166,13 @@ export function formatLitMarkdown(records: LitRecord[], limit: number): string {
       ? ` — ${r.authors.slice(0, 3).join(", ")}${r.authors.length > 3 ? " et al." : ""}`
       : "";
     const venue = `*${r.journal ?? "?"}* (${r.year ?? "?"})`;
-    const pmid = r.pmid ? ` · [PMID ${r.pmid}](https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/)` : "";
-    return `- **${r.title ?? "(untitled)"}**${authors}. ${venue}${pmid}`;
+    // PMID link when present (PubMed); otherwise a DOI link (Europe-PMC-only records).
+    const id = r.pmid
+      ? ` · [PMID ${r.pmid}](https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/)`
+      : r.doi
+        ? ` · [DOI ${r.doi}](https://doi.org/${r.doi})`
+        : "";
+    return `- **${r.title ?? "(untitled)"}**${authors}. ${venue}${id}`;
   });
   const more = records.length > shown.length ? `\n\n_… ${records.length - shown.length} more_` : "";
   return (bullets.join("\n") || "_(no results)_") + more;
@@ -200,6 +205,56 @@ export function abstractCard(theme: Theme, record: LitRecord, abstract: string):
     title: "Abstract",
     accentStyle: domainStyle(theme, "literature"),
     markdown: `${formatLitMarkdown([record], 1)}\n\n${body}`,
+  });
+}
+
+/** A fetched web page → a card carrying the source URL + retrieval date, then the extracted text. */
+export function webDocCard(
+  theme: Theme,
+  d: { title: string; byline: string; markdown: string; finalUrl: string; retrievedAt: string; siteName: string },
+): Component {
+  const head = [
+    d.byline ? theme.fg("muted", d.byline) : "",
+    `${theme.fg("muted", "source ")}${theme.fg("text", hyperlink(d.finalUrl, d.finalUrl))}`,
+    `${theme.fg("muted", "retrieved ")}${theme.fg("dim", d.retrievedAt)}${d.siteName ? theme.fg("dim", ` · ${d.siteName}`) : ""}`,
+    "",
+  ].filter((l) => l !== "");
+  const body = d.markdown.trim() ? d.markdown.trim() : "_(no readable content extracted)_";
+  return markdownCard(theme, {
+    title: cardHeader(theme, { title: `Web ${GLYPH.bullet} ${d.title}` }),
+    accentStyle: domainStyle(theme, "literature"),
+    state: "settled",
+    markdown: `${head.join("\n")}\n${body}`,
+    maxBodyLines: 40,
+  });
+}
+
+/** A library-docs lookup → a card with the source + snippets, or an honest best-effort note. */
+export function docsCard(
+  theme: Theme,
+  r: {
+    ok: boolean;
+    library: string;
+    libraryId?: string;
+    snippets: string;
+    note?: string;
+    retrievedAt: string;
+    sourceUrl: string;
+  },
+): Component {
+  const head = [
+    `${theme.fg("muted", "library ")}${theme.fg("text", r.libraryId ?? r.library)}`,
+    `${theme.fg("muted", "source ")}${theme.fg("text", hyperlink(r.sourceUrl, r.sourceUrl))}`,
+    `${theme.fg("muted", "retrieved ")}${theme.fg("dim", r.retrievedAt)} ${theme.fg("dim", "· Context7")}`,
+    "",
+  ];
+  const body = r.ok ? r.snippets : `_${r.note ?? "no docs returned"}_`;
+  return markdownCard(theme, {
+    title: cardHeader(theme, { title: `Docs ${GLYPH.bullet} ${r.library}` }),
+    accentStyle: domainStyle(theme, r.ok ? "literature" : "neutral"),
+    state: r.ok ? "settled" : "warning",
+    markdown: `${head.join("\n")}\n${body}`,
+    maxBodyLines: 50,
   });
 }
 
@@ -383,6 +438,8 @@ const KIND_GLYPH: Record<EvidencePointer["kind"], string> = {
   notebook: GLYPH.kindNotebook,
   figure: GLYPH.kindFigure,
   paper: GLYPH.kindPaper,
+  web: GLYPH.kindWeb,
+  docs: GLYPH.kindDocs,
 };
 
 function evidenceLines(theme: Theme, items: EvidencePointer[]): string[] {

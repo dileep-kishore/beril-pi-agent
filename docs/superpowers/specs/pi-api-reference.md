@@ -1,11 +1,11 @@
 <!--
 Provenance: extracted by parallel sub-agents reading the LOCALLY INSTALLED
-@earendil-works/pi-coding-agent@0.78.1 (dist/*.d.ts, docs/, examples/) and the
+@earendil-works/pi-coding-agent (dist/*.d.ts, docs/, examples/) and the
 BERIL-research-observatory repo (beril_cli, scripts/, tools/, .claude/skills/).
 Quotes are verbatim from those sources. Companion to 2026-06-05-beril-pi-agent-design.md.
 -->
 
-# beril-pi-agent — Implementation Reference (verified against Pi 0.78.1)
+# beril-pi-agent — Implementation Reference (verified against the pinned Pi version in package.json)
 
 Package paths: Pi install at `/Users/g8k/npm-global/lib/node_modules/@earendil-works/pi-coding-agent`; BERIL repo scripts/tools under `BERIL-research-observatory/`. Import root is `@earendil-works/pi-coding-agent`; tool param schemas use `import { Type } from "typebox"`.
 
@@ -162,6 +162,7 @@ export interface ExtensionContext {
     modelRegistry: ModelRegistry;
     model: Model<any> | undefined;
     isIdle(): boolean;
+    isProjectTrusted(): boolean;   // Pi 0.79+ project trust; false => no trusted confirm dialog
     signal: AbortSignal | undefined;
     abort(): void;
     hasPendingMessages(): boolean;
@@ -441,7 +442,7 @@ submissions: []          # {status, attempted_at, approved_at (join key), archiv
 | beril-safety gate | `pi.on("tool_call", ...)` → inspect `event.toolName`/`event.input`, `ctx.hasUI`-gated `confirm`/`select`, `return {block,reason}` | n/a (intercepts other tools) | n/a (the gate itself) |
 | session_start status widget | `pi.on("session_start", ...)` + `ctx.ui.setStatus("beril-connection", ...)`, `ctx.hasUI` guard, dispose in `session_shutdown` | `beril doctor`/`beril user` for state | No |
 
-Safety-gate blueprint (verbatim `permission-gate.ts` pattern): default-deny when headless (`if (!ctx.hasUI) return { block: true, reason: "...no UI" }`), else `await ctx.ui.select(...)` / `confirm(...)`, block unless approved.
+Safety-gate blueprint (verbatim `permission-gate.ts` pattern): fail-closed first on `if (!ctx.isProjectTrusted()) return { block: true, reason: "...not trusted" }` (Pi 0.79 project trust — an untrusted project can pop no trusted confirm dialog, so deny), then default-deny when headless (`if (!ctx.hasUI) return { block: true, reason: "...no UI" }`), else `await ctx.ui.select(...)` / `confirm(...)`, block unless approved.
 
 ---
 

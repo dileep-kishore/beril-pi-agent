@@ -63,6 +63,17 @@ export function currentStep(state: string): string | undefined {
 }
 
 /**
+ * The Pi session display name for a project at a lifecycle state — `<project>` or
+ * `<project> · <phase>` (e.g. `aquila · analyze`). Wired to `pi.setSessionName` so
+ * a resumed session reads meaningfully in Pi's selector instead of a raw UUID.
+ * Uses the text-presentation bullet (never a raw "·") to keep the glyph invariant.
+ */
+export function sessionName(project: string, state?: string): string {
+  const phase = state ? currentStep(state) : undefined;
+  return phase ? `${project} ${GLYPH.bullet} ${phase}` : project;
+}
+
+/**
  * The single most useful next action for a lifecycle state, phrased for a
  * scientist. Kept independent of exact slash-command names where a step has no
  * single command, so the hint stays accurate as the surface grows.

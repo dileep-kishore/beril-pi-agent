@@ -10,7 +10,7 @@ activate.
 ## Layout
 
 - `extensions/`, `lib/`, `skills/`, `prompts/`, `themes/` — the Pi package (TypeScript + resources).
-- `beril_cli/` — the bundled `beril` CLI (Python): launcher + `env`/`query`/`export`/`discover`/`hash`/`notebook`/`submit`/`lifecycle`/`user` subcommands + the lifecycle state machine.
+- `beril_cli/` — the bundled `beril` CLI (Python): the launcher, the BERDL/lifecycle/governance subcommands (see `beril --help`), and the lifecycle state machine.
 - `scripts/`, `tools/` — the BERDL execution substrate the subcommands wrap (Spark/MinIO access, notebook hashing, reviewer, uploads). Invoked via `uv run` / subprocess.
 - `projects/<id>/` — your research projects (each with a `beril.yaml` lifecycle file). Created as you work.
 - `docs/superpowers/` — design spec, verified Pi API reference, and implementation plan.

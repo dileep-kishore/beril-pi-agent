@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type ClaimTally, parseClaimLedger, tallyClaims } from "../lib/claim-ledger.ts";
 import { type BerdlEnv, onEnvChange, setCachedEnv } from "../lib/readiness.ts";
-import { currentStep, nextAction } from "../lib/research-steps.ts";
+import { currentStep, nextAction, sessionName } from "../lib/research-steps.ts";
 import { type FooterData, footerLines } from "../lib/ui/footer.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import { callLine, envCard, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
@@ -105,6 +105,19 @@ export default function berilEnv(pi: ExtensionAPI) {
     pushFooterRender();
   }
 
+  /**
+   * Name the Pi session after the active project + phase, so a resumed session
+   * (`beril start` defaults to `--continue`) reads as "<project> · <phase>" in the
+   * selector instead of a raw UUID. Idempotent via getSessionName(); no-op until a
+   * project is known. setSessionName/getSessionName live on the ExtensionAPI (pi).
+   */
+  function applySessionName(): void {
+    if (!hud.project) return;
+    const name = sessionName(hud.project, hud.state);
+    if (pi.getSessionName() === name) return;
+    pi.setSessionName(name);
+  }
+
   // Listen for lifecycle/submission broadcasts from beril-governance and reflect
   // them in the HUD + footer. Registered at load so a listener exists before any emit.
   pi.events.on("beril:lifecycle", (data) => {
@@ -113,6 +126,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     hud.state = state;
     hud.submitted = false;
     renderHud();
+    applySessionName();
     announcePhase(state);
   });
 
@@ -206,6 +220,7 @@ export default function berilEnv(pi: ExtensionAPI) {
       hud.project = cur.project;
       if (cur.status) hud.state = cur.status;
       renderHud();
+      applySessionName();
       claims = await readClaimTally(ctx.cwd, cur.project);
       pushFooterRender();
     } catch {

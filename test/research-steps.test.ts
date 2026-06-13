@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RESEARCH_STEPS, currentStep, stepBreadcrumb } from "../lib/research-steps.ts";
+import { RESEARCH_STEPS, currentStep, sessionName, stepBreadcrumb } from "../lib/research-steps.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 
 test("breadcrumb marks the current step per lifecycle state", () => {
@@ -32,4 +32,11 @@ test("currentStep gives the statusline phase label per state", () => {
   assert.equal(currentStep("analysis"), "review");
   assert.equal(currentStep("complete"), "complete");
   assert.equal(currentStep("nonsense"), undefined);
+});
+
+test("sessionName combines project + phase, or just project for unknown state", () => {
+  assert.equal(sessionName("aquila", "active"), `aquila ${GLYPH.bullet} analyze`);
+  assert.equal(sessionName("aquila", "complete"), `aquila ${GLYPH.bullet} complete`);
+  assert.equal(sessionName("aquila", "nonsense"), "aquila");
+  assert.equal(sessionName("aquila"), "aquila");
 });

@@ -73,3 +73,26 @@ def test_default_channel_pins_release(monkeypatch, tmp_path):
         pass
     assert called.get("release") is True
     assert "pull" not in called
+
+
+def test_with_continue_prepends_by_default():
+    assert start._with_continue([]) == ["--continue"]
+    assert start._with_continue(["explore the data"]) == ["--continue", "explore the data"]
+
+
+def test_with_continue_respects_explicit_session_flags():
+    assert start._with_continue(["--continue"]).count("--continue") == 1
+    assert "--continue" not in start._with_continue(["--resume"])
+    assert "--continue" not in start._with_continue(["--session", "abc123"])
+    assert "--continue" not in start._with_continue(["--no-session"])
+    # joined --flag=value form is matched on the token before '='
+    assert "--continue" not in start._with_continue(["--session-id=proj-x"])
+
+
+def test_start_injects_continue_into_execvp(monkeypatch, tmp_path):
+    _stub_launch(monkeypatch, tmp_path)
+    monkeypatch.setattr(start, "_checkout_release", lambda root, v: 0)
+    captured: dict = {}
+    monkeypatch.setattr(start.os, "execvp", lambda binary, argv: captured.setdefault("argv", argv))
+    start.run_start(extra_args=["explore the data"])
+    assert captured["argv"] == ["pi", "--continue", "explore the data"]

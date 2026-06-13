@@ -29,7 +29,7 @@ export const litConfig = {
   baseBackoffMs: 800,
 };
 
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
@@ -37,7 +37,7 @@ function sleep(ms: number): Promise<void> {
 // read-modify-write below is atomic (no await between), so each caller reserves a
 // distinct, increasing slot — turning a parallel burst into a paced stream.
 let nextSlot = 0;
-async function acquireSlot(): Promise<void> {
+export async function acquireSlot(): Promise<void> {
   const now = Date.now();
   const wait = Math.max(0, nextSlot - now);
   nextSlot = Math.max(now, nextSlot) + litConfig.minIntervalMs;
@@ -47,6 +47,8 @@ async function acquireSlot(): Promise<void> {
 /** A normalized, minimal citation record (matches the Python esummary normalizer). */
 export interface LitRecord {
   pmid?: string;
+  /** DOI — populated by the Europe PMC client; PubMed esummary leaves it unset. */
+  doi?: string;
   title?: string;
   journal?: string;
   year?: string;

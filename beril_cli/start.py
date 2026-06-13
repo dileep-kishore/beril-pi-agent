@@ -17,6 +17,24 @@ from beril_cli.paths import find_repo_root
 
 GITHUB_API_TIMEOUT_SECONDS = 10
 
+# Session-control flags pi understands; if the user passes any of these we must NOT
+# also inject --continue (it would conflict with or override their explicit choice).
+_SESSION_FLAGS = frozenset(
+    {"-c", "--continue", "-r", "--resume", "--session", "--session-id", "--fork", "--no-session"}
+)
+
+
+def _with_continue(extra_args: list[str]) -> list[str]:
+    """Prepend ``--continue`` so ``beril start`` resumes the researcher's most-recent
+    project thread, unless the user already chose a session (``--continue``/``--resume``/
+    ``--session``/``--fork``/...). Matches the token before any ``=`` so joined forms
+    like ``--session-id=proj`` are caught too. ``pi --continue`` on a fresh checkout
+    with no prior session degrades to a new session.
+    """
+    if any(arg.split("=", 1)[0] in _SESSION_FLAGS for arg in extra_args):
+        return extra_args
+    return ["--continue", *extra_args]
+
 
 def _sync_auth_token(env_path: Path) -> None:
     """Sync KBASE_AUTH_TOKEN from live environment into .env if available."""
@@ -306,8 +324,10 @@ def run_start(
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)
-    # Replace the current process with the agent
-    os.execvp(binary, [agent, *extra_args])
+    # Replace the current process with the agent. Default to resuming the most-recent
+    # project thread (--continue) so the researcher's named session carries forward,
+    # unless they passed an explicit session flag.
+    os.execvp(binary, [agent, *_with_continue(extra_args)])
 
     # execvp doesn't return on success; this is only reached on failure
     return 1  # pragma: no cover

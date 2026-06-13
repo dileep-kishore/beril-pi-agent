@@ -67,6 +67,10 @@ export const GLYPH = {
   kindFigure: "▣",
   /** Evidence kind: paper. */
   kindPaper: "¶",
+  /** Evidence kind: web page. */
+  kindWeb: "⊞",
+  /** Evidence kind: library docs. */
+  kindDocs: "⊟",
 } as const;
 
 export type GlyphTier = "unicode" | "ascii";
@@ -100,6 +104,8 @@ const ASCII: Record<keyof typeof GLYPH, string> = {
   kindNotebook: "[nb]",
   kindFigure: "[fig]",
   kindPaper: "[doc]",
+  kindWeb: "[web]",
+  kindDocs: "[docs]",
 };
 
 /** Active glyph tier: ascii when NO_COLOR or a non-UTF locale is detected, else unicode. */

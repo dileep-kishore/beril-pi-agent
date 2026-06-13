@@ -8,9 +8,18 @@ import {
   createAgentSession,
   createExtensionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { parallelMap } from "./parallel-map.ts";
+import { REVIEW_PANEL, type SpecialistSpec } from "./review-rubric.ts";
 
 /** Default reviewer model — direct Anthropic Opus 4.8 (1M ctx). */
 const DEFAULT_REVIEW_MODEL = "claude-opus-4-8";
+
+/**
+ * The read-only tool allowlist every review subagent (single or panel) is built
+ * with — by construction it can never reach a destructive tool, `bash`, `edit`,
+ * or `write`. The fan-out safety invariant is a test over this constant.
+ */
+export const REVIEW_TOOLS = ["read", "grep", "find", "ls"] as const;
 
 /** The minimal session surface {@link runReviewSubagent} drives. */
 export interface ReviewSession {
@@ -67,7 +76,7 @@ const defaultFactory: SessionFactory = async ({ model, cwd, rubric, modelRegistr
   const { session } = await createAgentSession({
     model,
     cwd,
-    tools: ["read", "grep", "find", "ls"],
+    tools: [...REVIEW_TOOLS],
     resourceLoader: isolatedLoader(rubric),
     sessionManager: SessionManager.inMemory(cwd),
     modelRegistry,
@@ -118,4 +127,70 @@ export async function runReviewSubagent(
     ctx.signal?.removeEventListener("abort", onAbort);
     session.dispose();
   }
+}
+
+/** One specialist's panel result — its markdown section, or null + the error. */
+export interface PanelResult {
+  spec: SpecialistSpec;
+  text: string | null;
+  error?: string;
+}
+
+/**
+ * Run N specialist reviewers CONCURRENTLY over the same project, each an isolated
+ * read-only subagent via {@link runReviewSubagent} (so the read-only allowlist is
+ * inherited, not re-implemented). Bounded by `concurrency` (default: panel size).
+ * One failing panelist is captured as `{ text: null, error }`, never sinking the
+ * batch. `ctx.signal` aborts every in-flight panelist through runReviewSubagent.
+ */
+export async function runReviewPanel(
+  ctx: Pick<ExtensionCommandContext, "model" | "modelRegistry" | "signal">,
+  opts: {
+    projectDir: string;
+    project: string;
+    modelOverride?: string;
+    panel?: readonly SpecialistSpec[];
+    concurrency?: number;
+  },
+  factory: SessionFactory = defaultFactory,
+): Promise<PanelResult[]> {
+  const panel = opts.panel ?? REVIEW_PANEL;
+  const settled = await parallelMap(panel, opts.concurrency ?? panel.length, (spec) =>
+    runReviewSubagent(
+      ctx,
+      {
+        projectDir: opts.projectDir,
+        rubric: spec.rubric,
+        task: `Review project "${opts.project}" at ${opts.projectDir} against your rubric. Output only your assigned section.`,
+        modelOverride: opts.modelOverride,
+      },
+      factory,
+    ),
+  );
+  return panel.map((spec, i) => {
+    const r = settled[i];
+    return r.ok ? { spec, text: r.value } : { spec, text: null, error: r.error.message };
+  });
+}
+
+/** Strip a single leading YAML frontmatter block (`---\n…\n---`) from markdown. Pure. */
+export function stripFrontmatter(md: string): string {
+  return md.replace(/^---\n[\s\S]*?\n---\n?/, "");
+}
+
+/**
+ * Merge specialist panel results into ONE review document: a single panel
+ * frontmatter + `# Panel Review` title, then each panelist's section (its own
+ * frontmatter stripped, since the merge owns the header). A failed/empty panelist
+ * becomes an explicit "did not complete" stub so the gap is visible, not silent.
+ * Pure — the caller still owns the report_hash footer. `dateISO` is YYYY-MM-DD.
+ */
+export function mergePanelReviews(project: string, results: PanelResult[], dateISO: string): string {
+  const head = `---\nreviewer: BERIL Multi-Specialist Panel\ndate: ${dateISO}\nproject: ${project}\n---\n\n# Panel Review: ${project}\n`;
+  const sections = results.map((r) => {
+    const body = (r.text ?? "").trim();
+    if (!body) return `## ${r.spec.title}\n\n_Reviewer did not complete${r.error ? `: ${r.error}` : ""}._\n`;
+    return stripFrontmatter(body);
+  });
+  return `${head}\n${sections.join("\n\n")}\n`;
 }
