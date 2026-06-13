@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { berilExec } from "../lib/beril-exec.ts";
-import { runReviewSubagent } from "../lib/review-agent.ts";
+import { mergePanelReviews, runReviewPanel, runReviewSubagent } from "../lib/review-agent.ts";
 import { appendReportHashFooter, nextReviewPath, sha256File } from "../lib/review-finalize.ts";
 import { PLAN_REVIEW_RUBRIC, PROJECT_REVIEW_RUBRIC } from "../lib/review-rubric.ts";
 
@@ -16,22 +16,25 @@ type ReviewSubagent = typeof runReviewSubagent;
 interface ParsedArgs {
   project: string;
   plan: boolean;
+  panel: boolean;
   model?: string;
 }
 
-/** Parse `<project> [--plan] [--model <id>]`. */
+/** Parse `<project> [--plan] [--panel] [--model <id>]`. */
 function parseArgs(raw: string): ParsedArgs | undefined {
   const parts = raw.trim().split(/\s+/).filter(Boolean);
   let project: string | undefined;
   let plan = false;
+  let panel = false;
   let model: string | undefined;
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i];
     if (p === "--plan") plan = true;
+    else if (p === "--panel") panel = true;
     else if (p === "--model") model = parts[++i];
     else if (!project) project = p;
   }
-  return project ? { project, plan, model } : undefined;
+  return project ? { project, plan, panel, model } : undefined;
 }
 
 /**
@@ -50,7 +53,12 @@ export default function berilReview(pi: ExtensionAPI) {
         if (ctx.hasUI) ctx.ui.notify("Usage: /berdl-review <project> [--plan] [--model <id>]", "warning");
         return;
       }
-      const { project, plan, model } = parsed;
+      const { project, plan, panel, model } = parsed;
+      if (plan && panel) {
+        if (ctx.hasUI)
+          ctx.ui.notify("Use --panel for a project panel or --plan for a plan review, not both.", "warning");
+        return;
+      }
       if (!ctx.isIdle()) {
         if (ctx.hasUI) ctx.ui.notify("Agent is busy — wait for the current turn to finish.", "warning");
         return;
@@ -82,6 +90,38 @@ export default function berilReview(pi: ExtensionAPI) {
         // reviewed/complete project just adds a new REVIEW_N.md without a transition.
         advanceToReviewed = status === "analysis";
         reportHashPre = sha256File(reportPath);
+      }
+
+      // --panel: dispatch the multi-specialist panel concurrently (each an isolated
+      // read-only subagent) and merge their sections into one REVIEW_N.md. Project
+      // reviews only (panel implies !plan); same footer + lifecycle + TOCTOU as single.
+      if (panel) {
+        const panelFn = (ctx as { __reviewPanel?: typeof runReviewPanel }).__reviewPanel ?? runReviewPanel;
+        const results = await panelFn(ctx, { projectDir, project, modelOverride: model });
+        if (results.every((r) => !r.text?.trim())) {
+          if (ctx.hasUI) ctx.ui.notify("All panel reviewers failed — nothing written.", "error");
+          return;
+        }
+        // TOCTOU: discard if REPORT.md changed under the panel's feet.
+        if (sha256File(reportPath) !== reportHashPre) {
+          if (ctx.hasUI) ctx.ui.notify("REPORT.md changed during review — discarding (re-run /berdl-review).", "error");
+          return;
+        }
+        const merged = mergePanelReviews(project, results, new Date().toISOString().slice(0, 10));
+        const path = nextReviewPath(projectDir, "REVIEW");
+        await writeFile(path, appendReportHashFooter(merged, reportHashPre as string), "utf8");
+        if (advanceToReviewed) {
+          const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
+          pi.events.emit("beril:lifecycle", { project, state: result.status });
+        }
+        if (ctx.hasUI) {
+          const suffix = advanceToReviewed ? "; project marked reviewed." : "";
+          ctx.ui.notify(`Panel review written: ${path}${suffix}`, "info");
+        }
+        pi.sendUserMessage(
+          `An independent multi-specialist panel review of "${project}" is at ${path}. Follow the berdl-review skill to read it and guide any fixes.`,
+        );
+        return;
       }
 
       const rubric = plan ? PLAN_REVIEW_RUBRIC : PROJECT_REVIEW_RUBRIC;
