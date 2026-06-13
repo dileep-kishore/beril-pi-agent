@@ -27,6 +27,7 @@ function harness(execResult: any = READY) {
   const renderers: any = {};
   const messages: any[] = [];
   const events = fakeBus();
+  let sessionNameValue: string | undefined;
   const pi: any = {
     registerTool: (t: any) => (tools[t.name] = t),
     registerCommand: (n: string, o: any) => (commands[n] = o),
@@ -35,9 +36,23 @@ function harness(execResult: any = READY) {
     sendMessage: (m: any) => messages.push(m),
     on: (e: string, h: any) => (handlers[e] = h),
     exec: async () => ({ stdout: JSON.stringify(execResult), stderr: "", code: 0, killed: false }),
+    getSessionName: () => sessionNameValue,
+    setSessionName: (n: string) => {
+      sessionNameValue = n;
+    },
     events,
   };
-  return { pi, tools, commands, handlers, shortcuts, renderers, messages, events };
+  return {
+    pi,
+    tools,
+    commands,
+    handlers,
+    shortcuts,
+    renderers,
+    messages,
+    events,
+    getSessionName: () => sessionNameValue,
+  };
 }
 
 function uiCtx(hasUI: boolean) {
