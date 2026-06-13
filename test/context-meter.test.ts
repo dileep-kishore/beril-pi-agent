@@ -14,15 +14,17 @@ test("contextColor warns on EITHER percent or absolute tokens", () => {
   assert.equal(contextColor(20, 160_000), "warning", "160k tokens at 20% → warn via token floor");
 });
 
-test("contextColor escalates at ≥70% or ≥270k tokens", () => {
-  assert.equal(contextColor(70, 1000), "thinkingHigh"); // percent gate
-  assert.equal(contextColor(10, 270_000), "thinkingHigh"); // absolute-token gate
+test("the 55–85% band is one warning tier (no green-on-green escalation)", () => {
+  // The previous build reused `thinkingHigh` (green) for a mid tier, so it was
+  // indistinguishable from `success`. There is now a single amber warning tier.
+  assert.equal(contextColor(70, 1000), "warning");
+  assert.equal(contextColor(84, 350_000), "warning");
 });
 
-test("contextColor alarms on EITHER 90% or 500k tokens", () => {
-  assert.equal(contextColor(92, 1), "error");
+test("contextColor alarms on EITHER ≥85% or ≥400k tokens", () => {
+  assert.equal(contextColor(85, 1), "error");
   assert.equal(contextColor(95, 1), "error");
-  assert.equal(contextColor(10, 600_000), "error");
+  assert.equal(contextColor(10, 400_000), "error");
 });
 
 test("contextGauge fills cells proportionally to percent", () => {

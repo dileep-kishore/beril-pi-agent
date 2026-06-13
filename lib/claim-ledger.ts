@@ -20,6 +20,24 @@ export interface ClaimRow {
   stale?: boolean;
 }
 
+/** A compact tally of a ledger — total claims, and how many are settled either way. */
+export interface ClaimTally {
+  total: number;
+  supported: number;
+  refuted: number;
+}
+
+/** Count a ledger into a statusline-sized tally (one home for the supported/refuted rule). */
+export function tallyClaims(rows: ClaimRow[]): ClaimTally {
+  let supported = 0;
+  let refuted = 0;
+  for (const r of rows) {
+    if (r.status === "supported") supported++;
+    else if (r.status === "refuted") refuted++;
+  }
+  return { total: rows.length, supported, refuted };
+}
+
 const STATUS_VALUES: readonly ClaimStatus[] = [
   "open",
   "supported",

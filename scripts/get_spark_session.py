@@ -148,7 +148,10 @@ def get_spark_session(
         os.environ.setdefault("https_proxy", "http://127.0.0.1:8123")
         os.environ.setdefault("no_proxy", "localhost,127.0.0.1")
         if host_template is None:
-            host_template = "spark.berdl.kbase.us"
+            # Tunneled/proxy path routes Spark Connect through metrics.berdl.kbase.us
+            # (spark.berdl.kbase.us is the direct-access default, unreachable through
+            # the tunnel). BERDL_SPARK_HOST_TEMPLATE overrides if the ingress changes.
+            host_template = os.getenv("BERDL_SPARK_HOST_TEMPLATE", "metrics.berdl.kbase.us")
         if auto_spawn:
             ensure_hub()
 

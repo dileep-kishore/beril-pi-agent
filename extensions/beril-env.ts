@@ -1,13 +1,14 @@
-import { basename } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Key, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
-import { type BerdlEnv, setCachedEnv } from "../lib/readiness.ts";
+import { type ClaimTally, parseClaimLedger, tallyClaims } from "../lib/claim-ledger.ts";
+import { type BerdlEnv, onEnvChange, setCachedEnv } from "../lib/readiness.ts";
 import { currentStep, nextAction } from "../lib/research-steps.ts";
 import { type FooterData, footerLines } from "../lib/ui/footer.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
-import { hexFg, phaseColor } from "../lib/ui/palette.ts";
 import { callLine, envCard, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
 import { TIPS, type WelcomeState, pickTip, welcomePanel } from "../lib/ui/welcome.ts";
 import { type HudState, workflowHud } from "../lib/ui/workflow-hud.ts";
@@ -26,6 +27,12 @@ interface LifecycleEvent {
 }
 interface SubmittedEvent {
   project: string;
+}
+interface ClaimsEvent {
+  project: string;
+  total: number;
+  supported: number;
+  refuted: number;
 }
 
 /** Full label for the built-in footer chip, e.g. "BERDL off-cluster ✓ ready". */
@@ -47,6 +54,9 @@ export default function berilEnv(pi: ExtensionAPI) {
   let uiCtx: ExtensionContext | undefined;
   // Mutable HUD/footer state, updated by connection refreshes + lifecycle events.
   const hud: HudState = {};
+  // Claim-ledger tally for the active project, shown on the statusline. Updated by
+  // the `beril:claims` broadcast (and seeded on session_start); footer-only.
+  let claims: ClaimTally | undefined;
   // The TUI handle from the footer factory — lets async state changes repaint the
   // statusline (the footer reads `hud`/`uiCtx` live on each render).
   let tuiHandle: { requestRender(): void } | undefined;
@@ -58,6 +68,8 @@ export default function berilEnv(pi: ExtensionAPI) {
   let tipIndex = 0;
   // The last phase a banner was shown for, so a banner fires only on a change.
   let lastPhase: string | undefined;
+  // One-shot: re-probe readiness on first input if the session-start probe failed.
+  let connectionHealTried = false;
 
   function pushFooterRender(): void {
     tuiHandle?.requestRender();
@@ -104,13 +116,14 @@ export default function berilEnv(pi: ExtensionAPI) {
     announcePhase(state);
   });
 
-  // The pinned phase banner — a framed, tinted one-liner in the transcript.
+  // The pinned phase banner — a tinted one-liner in the transcript on the custom-
+  // message band. The leading glyph + phase word carry the accent (aqua), the same
+  // "current/active" colour the statusline and step rail use, so the banner reads
+  // as part of one visual language rather than a per-phase rainbow.
   pi.registerMessageRenderer("beril-phase", (message, _opts, theme) => {
     const d = message.details as { phase?: string; next?: string } | undefined;
     const phase = d?.phase ?? "phase";
-    // Tint the leading glyph + phase word with the per-phase accent (the renderer's
-    // `theme` is the real Theme, so it satisfies ColorModeTheme for hexFg).
-    const label = theme.bold(hexFg(theme, phaseColor(phase), `${GLYPH.here} ${phase}`));
+    const label = theme.bold(theme.fg("accent", `${GLYPH.here} ${phase}`));
     const next = d?.next ? theme.fg("muted", `  ${GLYPH.arrow} ${d.next}`) : "";
     const box = new Box(1, 0, (t) => theme.bg("customMessageBg", t));
     box.addChild(new Text(`${label}${next}`, 0, 0));
@@ -123,17 +136,37 @@ export default function berilEnv(pi: ExtensionAPI) {
     renderHud();
   });
 
+  // The claim_ledger tool broadcasts the tally whenever it parses a project, so the
+  // statusline reflects where the science stands without re-reading anything.
+  pi.events.on("beril:claims", (data) => {
+    const { total, supported, refuted } = data as ClaimsEvent;
+    claims = { total, supported, refuted };
+    pushFooterRender();
+  });
+
+  /** Reflect a freshly-resolved env in the connection chip + HUD + footer. */
+  function applyEnvToHud(env: BerdlEnv): void {
+    hud.connection = connectionLabel(env);
+    hud.location = compactLocation(env);
+    hud.ready = env.ready;
+    if (!uiCtx?.hasUI) return;
+    uiCtx.ui.setStatus(STATUS_KEY, uiCtx.ui.theme.fg(env.ready ? "success" : "warning", connectionLabel(env)));
+    renderHud();
+  }
+
+  // The statusline tracks the SHARED env cache, not just its own probe: every data
+  // tool refreshes readiness via `requireReady` → `setCachedEnv`, so a connection
+  // that comes up after a failed session-start probe (cold SSH tunnels / pproxy)
+  // still surfaces — the chip self-heals the moment any tool confirms BERDL is up,
+  // instead of staying stuck on "BERDL ?".
+  const unsubscribeEnv = onEnvChange(applyEnvToHud);
+
   /** Re-run the readiness check, update the connection chip + HUD + footer. Returns the env (UI only). */
   async function refreshStatus(ctx: ExtensionContext): Promise<BerdlEnv | undefined> {
     if (!ctx.hasUI) return undefined;
     try {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
-      setCachedEnv(env);
-      hud.connection = connectionLabel(env);
-      hud.location = compactLocation(env);
-      hud.ready = env.ready;
-      ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg(env.ready ? "success" : "warning", connectionLabel(env)));
-      renderHud();
+      setCachedEnv(env); // fires onEnvChange → applyEnvToHud (chip + HUD + footer)
       return env;
     } catch {
       hud.connection = "BERDL status unknown";
@@ -142,6 +175,41 @@ export default function berilEnv(pi: ExtensionAPI) {
       ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("error", "BERDL status unknown"));
       renderHud();
       return undefined;
+    }
+  }
+
+  /** Parse a project's plan + report into a claim tally (best-effort; undefined when empty/unreadable). */
+  async function readClaimTally(cwd: string, project: string): Promise<ClaimTally | undefined> {
+    try {
+      const dir = join(cwd, "projects", project);
+      const [plan, report] = await Promise.all([
+        readFile(join(dir, "RESEARCH_PLAN.md"), "utf8").catch(() => ""),
+        readFile(join(dir, "REPORT.md"), "utf8").catch(() => ""),
+      ]);
+      const tally = tallyClaims(parseClaimLedger(plan, report));
+      return tally.total > 0 ? tally : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Seed the active project's stage + claim tally on a cold start, so the statusline
+   * shows where the science stands before any tool runs. The event bus has no replay,
+   * so we ask the CLI which project is active (`lifecycle current`). Best-effort.
+   */
+  async function seedActiveProject(ctx: ExtensionContext): Promise<void> {
+    claims = undefined; // start clean so a completed/removed project doesn't leave a stale tally
+    try {
+      const cur = await berilExec<{ project?: string; status?: string }>(pi, ["lifecycle", "current"]);
+      if (!cur.project) return;
+      hud.project = cur.project;
+      if (cur.status) hud.state = cur.status;
+      renderHud();
+      claims = await readClaimTally(ctx.cwd, cur.project);
+      pushFooterRender();
+    } catch {
+      // best-effort: a missing/unreadable project must not break startup
     }
   }
 
@@ -157,7 +225,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     }
   }
 
-  /** The live statusline: connection · project · phase · context% · model. */
+  /** The live statusline: connection › cwd+branch › project ▸ phase › claims › ctx% — ORCID · model. */
   function installFooter(ctx: ExtensionContext): void {
     ctx.ui.setFooter((tui, theme, footerData) => {
       tuiHandle = tui;
@@ -167,16 +235,21 @@ export default function berilEnv(pi: ExtensionAPI) {
         invalidate() {},
         render(width: number): string[] {
           const usage = uiCtx?.getContextUsage();
+          // getGitBranch() → "detached" on a pinned release; show only a real branch.
+          const branch = footerData.getGitBranch();
           const data: FooterData = {
             connection: hud.location,
             ready: hud.ready,
             cwd: uiCtx?.cwd ? basename(uiCtx.cwd) : undefined,
+            branch: branch && branch !== "detached" ? branch : undefined,
             project: hud.project,
             phase: hud.state ? currentStep(hud.state) : undefined,
+            claims,
             context: usage
               ? { tokens: usage.tokens, percent: usage.percent, contextWindow: usage.contextWindow }
               : undefined,
             model: uiCtx?.model?.id,
+            orcid: Boolean(identity?.orcid),
           };
           return footerLines(theme, data, width);
         },
@@ -211,6 +284,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute(_id, _params, _signal, _onUpdate, _ctx) {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
+      setCachedEnv(env); // keep the shared cache + statusline in sync with what the agent sees
       const steps = env.next_steps?.length ? `\nNext steps:\n- ${env.next_steps.join("\n- ")}` : "";
       const text = `BERDL ${env.location}: ${env.ready ? "ready" : "NOT ready"}${steps}`;
       return { content: [{ type: "text", text }], details: env };
@@ -265,20 +339,9 @@ export default function berilEnv(pi: ExtensionAPI) {
     uiCtx = ctx;
     await refreshStatus(ctx);
     identity = await fetchIdentity();
-    // One best-effort seed read so the step rail survives a restart. The bus has
-    // no history; only shell out when a project is actually known (none on a
-    // cold start), keeping startup free of a mandatory extra exec.
-    if (ctx.hasUI && hud.project) {
-      try {
-        const proj = await berilExec<{ status?: string }>(pi, ["lifecycle", "status", hud.project]);
-        if (proj.status) {
-          hud.state = proj.status;
-          renderHud();
-        }
-      } catch {
-        // best-effort: a missing/unreadable project must not break startup
-      }
-    }
+    // Seed the active project's stage + claim tally so the arc + claims show on a
+    // fresh restart, not just after the first in-session lifecycle transition.
+    if (ctx.hasUI) await seedActiveProject(ctx);
 
     // The custom header/footer are TUI-only (no-op in rpc/json/print).
     if (ctx.mode === "tui") {
@@ -298,10 +361,18 @@ export default function berilEnv(pi: ExtensionAPI) {
       headerActive = false;
       ctx.ui.setHeader(undefined);
     }
+    // If the session-start probe failed (chip stuck on "BERDL ?"), re-check once
+    // now that the user is interacting — by now the remote tunnels/pproxy are up.
+    // One-shot so a genuinely-disconnected session doesn't re-exec on every input.
+    if (!connectionHealTried && hud.location === "BERDL ?" && ctx.hasUI) {
+      connectionHealTried = true;
+      void refreshStatus(ctx);
+    }
     return { action: "continue" } as const;
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    unsubscribeEnv();
     if (ctx.hasUI) {
       ctx.ui.setStatus(STATUS_KEY, undefined);
       ctx.ui.setWidget(WIDGET_KEY, undefined);

@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseClaimLedger, parseEvidence } from "../lib/claim-ledger.ts";
+import { type ClaimRow, parseClaimLedger, parseEvidence, tallyClaims } from "../lib/claim-ledger.ts";
+
+test("tallyClaims counts total + supported + refuted (other statuses don't tally)", () => {
+  const rows: ClaimRow[] = [
+    { hypothesis: "a", status: "supported", confidence: "high", supports: 2, refutes: 0 },
+    { hypothesis: "b", status: "refuted", confidence: "low", supports: 0, refutes: 3 },
+    { hypothesis: "c", status: "open", confidence: "medium", supports: 1, refutes: 1 },
+  ];
+  assert.deepEqual(tallyClaims(rows), { total: 3, supported: 1, refuted: 1 });
+  assert.deepEqual(tallyClaims([]), { total: 0, supported: 0, refuted: 0 });
+});
 
 const PLAN = `# Research Plan: AMR Atlas
 

@@ -4,7 +4,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
-import { type ClaimRow, parseClaimLedger, parseEvidence } from "../lib/claim-ledger.ts";
+import { type ClaimRow, parseClaimLedger, parseEvidence, tallyClaims } from "../lib/claim-ledger.ts";
 import { requireReady } from "../lib/readiness.ts";
 import type { EvidenceView } from "../lib/science.ts";
 import { linesCard } from "../lib/ui/card.ts";
@@ -94,6 +94,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
       const read = async (name: string) => readFile(join(dir, name), "utf8").catch(() => "");
       const [planMd, reportMd] = await Promise.all([read("RESEARCH_PLAN.md"), read("REPORT.md")]);
       const rows = parseClaimLedger(planMd, reportMd);
+      // Broadcast the tally so the statusline reflects where the science stands.
+      pi.events.emit("beril:claims", { project: params.project, ...tallyClaims(rows) });
       const text = rows.length
         ? `${rows.length} claim(s): ${rows.map((r) => `${r.status}/${r.confidence}`).join(", ")}`
         : "No hypotheses or findings parsed.";

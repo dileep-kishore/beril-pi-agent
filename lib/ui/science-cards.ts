@@ -57,6 +57,9 @@ export function toolErrorText(result: { content?: { type: string; text?: string 
 export function errorCard(theme: Theme, message: string): Component {
   return textCard(theme, {
     title: `${GLYPH.bad} Error`,
+    // `state: "error"` paints the BORDER red (the title is red via accentStyle); a
+    // failure is the one card that should pop with a coloured frame, not recede.
+    state: "error",
     accentStyle: domainStyle(theme, "error"),
     text: message.trim() || "The tool failed without a message.",
     maxBodyLines: 16,
@@ -187,6 +190,16 @@ export function articleCard(theme: Theme, record: LitRecord): Component {
     title: "Article",
     accentStyle: domainStyle(theme, "literature"),
     markdown: formatLitMarkdown([record], 1),
+  });
+}
+
+/** A single article's abstract → a literature card with its citation + abstract text. */
+export function abstractCard(theme: Theme, record: LitRecord, abstract: string): Component {
+  const body = abstract.trim() ? abstract.trim() : "_(no abstract available)_";
+  return markdownCard(theme, {
+    title: "Abstract",
+    accentStyle: domainStyle(theme, "literature"),
+    markdown: `${formatLitMarkdown([record], 1)}\n\n${body}`,
   });
 }
 
@@ -561,7 +574,7 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
 }
 
 /**
- * The red-team pass as its own ▽-framed card (deliberately NOT an `errorCard`): a
+ * The red-team pass as its own ⊖-framed card (deliberately NOT an `errorCard`): a
  * surviving-disconfirming-checks list over a refutes-coloured frame, plus a dim
  * pointer to the full pass on disk. Pure builder — the caller decides when to
  * surface it.

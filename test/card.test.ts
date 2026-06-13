@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { type CardTheme, frameCard } from "../lib/ui/card.ts";
+import { type CardTheme, frameCard, sectionDivider } from "../lib/ui/card.ts";
 
 // A pass-through theme: styling is identity, so visibleWidth == raw length and the
 // border math is easy to assert. Accepts any ThemeColor.
@@ -62,13 +62,13 @@ test("never throws and stays width-exact at the minimum width", () => {
   for (const line of lines) assert.equal(visibleWidth(line), w);
 });
 
-test("accentStyle overrides the theme accent for the border + title", () => {
+test("accentStyle paints the title, while the border stays neutral", () => {
   // A styler that injects a zero-width marker so we can see where it was applied.
   const mark = "​";
   const styled = (s: string) => `${mark}${s}${mark}`;
   const lines = frameCard(fakeTheme, { title: "Data", accentStyle: styled, body: ["row"] }, 40);
-  assert.ok(lines[0].includes(mark), "top border is painted by accentStyle");
-  assert.ok(lines.at(-1)?.includes(mark), "bottom border is painted by accentStyle");
+  assert.ok(lines[0].includes(mark), "the title (on the top border) is painted by accentStyle");
+  assert.ok(!lines.at(-1)?.includes(mark), "the bottom border is NOT painted by accentStyle (it recedes)");
   // The marker is zero-width, so the frame stays exactly `width` columns.
   for (const line of lines) assert.equal(visibleWidth(line), 40);
 });
@@ -93,6 +93,23 @@ test("labeled sections render width-exact with a divider row", () => {
       "a section divider row is present",
     );
   }
+});
+
+test("sectionDivider re-paints the trailing structure after a pre-colored label", () => {
+  // A pre-colored label (as science cards pass via roleStyle/theme.fg) ends in an
+  // fg reset; the divider must re-establish the border colour after it so the
+  // trailing dashes + ┤ don't fall back to the terminal-default colour.
+  const ESC = "\x1b";
+  const border = (s: string) => `${ESC}[2m${s}${ESC}[22m`; // dim on/off (ANSI → zero visible width)
+  const label = `${ESC}[32mSupports${ESC}[39m`; // pre-colored, ends in an fg-only reset
+  const row = sectionDivider(border, label, 40);
+  assert.ok(row.includes(label), "the pre-colored label is emitted untouched");
+  assert.ok(row.startsWith(`${ESC}[2m├─ ${ESC}[22m`), "the leading ├─ is painted by the border");
+  // The fragment after the label re-opens the border paint and ends with ┤ + its close.
+  const afterLabel = row.slice(row.indexOf(label) + label.length);
+  assert.ok(afterLabel.includes(`${ESC}[2m`), "trailing structure re-opens the border paint");
+  assert.ok(afterLabel.endsWith(`┤${ESC}[22m`), "trailing dashes + ┤ are re-painted by the border");
+  assert.equal(visibleWidth(row), 40, "still exactly width");
 });
 
 test("state sets the border colour and stays width-exact (no accent)", () => {

@@ -18,9 +18,9 @@ test("hexFg downgrades to the 256-colour cube when not truecolor", () => {
   assert.ok(!out.includes("38;2;"), "no truecolor escape in 256 mode");
 });
 
-test("domainHex returns a stable per-domain hue (incl. the violet plan has no theme key for)", () => {
-  assert.equal(domainHex("plan"), "#b08cff");
-  assert.equal(domainHex("data"), "#36c5d0");
+test("domainHex returns a stable per-domain hue, drawn from the beryl palette", () => {
+  assert.equal(domainHex("plan"), "#a99bf2");
+  assert.equal(domainHex("data"), "#34d6c4");
   assert.notEqual(domainHex("literature"), domainHex("data"));
 });
 
@@ -41,13 +41,14 @@ test("256-downgrade never emits an out-of-range color index (>255)", () => {
 });
 
 test("roleStyle emits the truecolor rgb for refutes", () => {
-  assert.ok(roleStyle(truecolor, "refutes")("x").includes("38;2;240;101;58"));
+  // #e76b7a = 231,107,122
+  assert.ok(roleStyle(truecolor, "refutes")("x").includes("38;2;231;107;122"));
 });
 
-test("roleStyle pins refutes to xterm-256 index 203", () => {
-  assert.ok(roleStyle(palette256, "refutes")("x").includes("38;5;203"));
+test("roleStyle pins refutes to xterm-256 index 174", () => {
+  assert.ok(roleStyle(palette256, "refutes")("x").includes("38;5;174"));
 });
 
-test("roleStyle pins supports to xterm-256 index 43", () => {
-  assert.ok(roleStyle(palette256, "supports")("x").includes("38;5;43"));
+test("roleStyle pins supports to xterm-256 index 78", () => {
+  assert.ok(roleStyle(palette256, "supports")("x").includes("38;5;78"));
 });

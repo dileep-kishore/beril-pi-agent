@@ -47,9 +47,29 @@ function summaryMap(records: Array<{ pmid: string; title: string }>) {
   return { result };
 }
 
-test("registers lit_search + lit_fetch tools + /literature-review", () => {
+test("registers lit_search + lit_fetch + lit_abstract tools + /literature-review", () => {
   const { tools, commands } = harness();
-  assert.ok(tools.lit_search && tools.lit_fetch && commands["literature-review"]);
+  assert.ok(tools.lit_search && tools.lit_fetch && tools.lit_abstract && commands["literature-review"]);
+});
+
+test("lit_abstract returns abstract text + record (fetch stubbed)", async () => {
+  const { tools } = harness();
+  // esummary (JSON metadata) and efetch (plain-text abstract) are routed by URL,
+  // since lit_abstract fires both in parallel.
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL) => {
+    const url = String(input);
+    if (url.includes("efetch.fcgi")) return { ok: true, text: async () => "The abstract body." } as unknown as Response;
+    return { ok: true, json: async () => summaryMap([{ pmid: "9", title: "Title9" }]) } as unknown as Response;
+  }) as typeof globalThis.fetch;
+  try {
+    const r: any = await tools.lit_abstract.execute("id", { pmid: "9" }, undefined, undefined, ctx);
+    assert.equal(r.details.record.pmid, "9");
+    assert.match(r.details.abstract, /The abstract body\./);
+    assert.match(r.content[0].text, /The abstract body\./);
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test("lit_search returns normalized records (fetch stubbed)", async () => {

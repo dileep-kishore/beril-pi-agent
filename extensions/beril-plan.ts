@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { markdownCard } from "../lib/ui/card.ts";
+import { domainStyle } from "../lib/ui/palette.ts";
 import { callLine, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
 
 /**
@@ -43,8 +44,9 @@ export default function berilPlan(pi: ExtensionAPI) {
       const d = result.details as { project: string; markdown: string };
       return markdownCard(theme, {
         title: `Research plan · ${d.project}`,
-        markdown: d.markdown,
+        accentStyle: domainStyle(theme, "plan"),
         maxBodyLines: expanded ? 400 : 40,
+        markdown: d.markdown,
       });
     },
   });
@@ -58,11 +60,7 @@ export default function berilPlan(pi: ExtensionAPI) {
         return;
       }
       pi.sendUserMessage(
-        `Follow the research-plan skill to draft RESEARCH_PLAN.md for project "${project}". ` +
-          `Ground it in the research question, the data you actually found (use berdl_discover / berdl_peek), and references.md if present, ` +
-          `and use the skill's template. First ask up to 3 grounded clarifying questions (only if they would change the analysis), then call berdl_feasibility, then draft the plan. After clarifying the question and before drafting, call the berdl_feasibility tool with the candidate tables and their key columns; a not-answerable verdict means reshape the question first. First confirm the question is answerable with the available data — if it is not, say so plainly instead of writing a plan. ` +
-          `After writing the plan, call the research_plan tool to show it, move "${project}" to "proposed" with lifecycle_transition, ` +
-          `and use request_checkpoint to ask the scientist whether to: approve and start the analysis (/analyze ${project}), get an independent plan review first (/berdl-review ${project} --plan), or iterate on the plan.`,
+        `Follow the research-plan skill to draft RESEARCH_PLAN.md for project "${project}". Ground it in the research question, the data you actually found (use berdl_discover / berdl_peek), and references.md if present, and use the skill's template. First ask up to 3 grounded clarifying questions (only if they would change the analysis), then call berdl_feasibility, then draft the plan. After clarifying the question and before drafting, call the berdl_feasibility tool with the candidate tables and their key columns; a not-answerable verdict means reshape the question first. First confirm the question is answerable with the available data — if it is not, say so plainly instead of writing a plan. After writing the plan, call the research_plan tool to show it, move "${project}" to "proposed" with lifecycle_transition, and use request_checkpoint to ask the scientist whether to: approve and start the analysis (/analyze ${project}), get an independent plan review first (/berdl-review ${project} --plan), or iterate on the plan.`,
       );
     },
   });

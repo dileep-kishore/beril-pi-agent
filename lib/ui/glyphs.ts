@@ -1,9 +1,14 @@
 /**
  * One status-glyph legend, shared by cards, the HUD, and the footer.
  *
- * The science cards had each grown their own marks (`✓`/`✗`/`○`/`+`/`·`/`↑`)
- * with overlapping meaning; centralising them here keeps the visual vocabulary
- * consistent so a `✓` means the same thing everywhere it appears.
+ * A single, deliberately small vocabulary of plain text-presentation Unicode —
+ * NO Nerd-Font glyphs, ligatures, or emoji-presentation characters, so it renders
+ * identically in any monospace font without a special/emoji font (`✓`/`✗`/`△`
+ * deliberately avoid the emoji-capable `✔`/`✘`/`⚠`, which some terminals colour
+ * and double-width). `✓`/`✗`/`△` carry the operational axis, `⊕`/`⊖` pair as the
+ * supports/refutes twins, and the chevron `›` groups the statusline. Centralising
+ * them keeps the meaning stable, and the ASCII tier mirrors each one for
+ * NO_COLOR / non-UTF terminals.
  */
 export const GLYPH = {
   /** Operational success — a task/check that ran and passed. */
@@ -20,12 +25,14 @@ export const GLYPH = {
   add: "+",
   /** A neutral separator (separator only — no operational meaning). */
   bullet: "·",
+  /** A statusline group separator (chevron). */
+  chevron: "›",
   /** Sequence/flow between steps. */
   arrow: "→",
   /** "you are here" — the current step/phase. */
   here: "▸",
   /** A project. */
-  project: "▣",
+  project: "◆",
   /** Submitted / promoted upward. */
   up: "↑",
   /** Working directory / location. */
@@ -36,8 +43,8 @@ export const GLYPH = {
   gaugeEmpty: "▱",
   /** Evidence that supports a claim. */
   supports: "⊕",
-  /** Evidence that refutes a claim. */
-  refutes: "▽",
+  /** Evidence that refutes a claim (the twin of `supports`). */
+  refutes: "⊖",
   /** A claim with insufficient/unresolved evidence. */
   unresolved: "◌",
   /** A low confidence meter cell. */
@@ -72,6 +79,7 @@ const ASCII: Record<keyof typeof GLYPH, string> = {
   inProgress: "[.]",
   add: "+",
   bullet: "-",
+  chevron: ">",
   arrow: "->",
   here: ">",
   project: "#",
@@ -80,7 +88,7 @@ const ASCII: Record<keyof typeof GLYPH, string> = {
   gaugeFull: "#",
   gaugeEmpty: "-",
   supports: "(+)",
-  refutes: "(v)",
+  refutes: "(-)",
   unresolved: "(?)",
   meterLow: ".",
   meterHalf: "o",

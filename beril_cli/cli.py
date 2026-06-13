@@ -104,8 +104,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # lifecycle
     lifecycle_parser = sub.add_parser("lifecycle", help="Command the project lifecycle state machine")
-    lifecycle_parser.add_argument("action", choices=["status", "set", "approve", "marker"])
-    lifecycle_parser.add_argument("project", help="Project directory name under projects/")
+    lifecycle_parser.add_argument("action", choices=["status", "set", "approve", "marker", "current"])
+    lifecycle_parser.add_argument(
+        "project", nargs="?", default=None, help="Project directory name under projects/ (omit for 'current')"
+    )
     lifecycle_parser.add_argument("state", nargs="?", default=None, help="Target state (for 'set')")
     lifecycle_parser.add_argument("--orcid", default=None)
     lifecycle_parser.add_argument("--report-hash", dest="report_hash", default=None)

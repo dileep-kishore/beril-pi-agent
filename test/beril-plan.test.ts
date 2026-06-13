@@ -25,6 +25,7 @@ const theme = {
   italic: (s: string) => s,
   strikethrough: (s: string) => s,
   underline: (s: string) => s,
+  getColorMode: () => "truecolor", // the plan card's violet accentStyle calls getColorMode
 } as any;
 
 test("registers the research_plan tool and /research-plan command", () => {

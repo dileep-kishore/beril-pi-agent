@@ -49,7 +49,7 @@ function row(theme: WelcomeTheme, label: string, value: string): string {
 /** Build the welcome panel as framed lines (each exactly `width` columns). */
 export function welcomePanel(theme: WelcomeTheme, s: WelcomeState, width: number): string[] {
   const conn = s.connection
-    ? theme.fg(s.ready ? "success" : "warning", `${s.connection} ${s.ready ? GLYPH.ok : GLYPH.bad}`)
+    ? theme.fg(s.ready ? "success" : "warning", `${s.connection} ${s.ready ? GLYPH.ok : GLYPH.warn}`)
     : theme.fg("muted", "not connected — /berdl-connect");
   const who = s.researcher
     ? `${theme.fg("text", s.researcher)}${

@@ -27,17 +27,24 @@ export type Domain =
   | "error"
   | "neutral";
 
-/** Domain → hex. Cool→warm spread chosen for legible separation on dark terminals. */
+/**
+ * Domain → hex, drawn from the same beryl palette as `themes/beril.json` `vars`
+ * so a domain accent never drifts from the active theme. Since the card frame now
+ * recedes to a dim border (see `card.ts`), this hue tints only the card *title*,
+ * so a literature title still reads distinct from a data title without painting a
+ * rainbow of frames. One green (`governance`/`supports`) and one red
+ * (`error`/`refutes`) — no near-duplicates.
+ */
 const DOMAIN_HEX: Record<Domain, string> = {
-  data: "#36c5d0", // cyan — query / peek / discover / env
-  literature: "#5f87ff", // blue — lit search / fetch
-  plan: "#b08cff", // violet — research plan (no violet exists in the theme keys)
-  analysis: "#3aa0c0", // teal — notebooks
-  governance: "#9cc79a", // green — lifecycle / user / hash
-  destructive: "#d99a3c", // amber — export / submit (irreversible)
-  checkpoint: "#b08cff", // violet — checkpoint identity
-  error: "#cc6666", // red — failures
-  neutral: "#8a929c", // gray — fallback
+  data: "#34d6c4", // aqua — query / peek / discover / env
+  literature: "#6bb6e8", // blue — lit search / fetch
+  plan: "#a99bf2", // violet — research plan
+  analysis: "#1f9c90", // deep aqua — notebooks (same family as data, one shade down)
+  governance: "#5ec98b", // green — lifecycle / user / hash
+  destructive: "#e0a13f", // amber — export / submit (irreversible)
+  checkpoint: "#a99bf2", // violet — checkpoint (distinguished from plan by glyph/title)
+  error: "#e76b7a", // red — failures
+  neutral: "#929ba4", // gray — fallback
 };
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -81,21 +88,21 @@ export function domainStyle(theme: ColorModeTheme, domain: Domain): (s: string) 
 export type Role = "supports" | "refutes" | "unresolved" | "confHigh" | "confMedium" | "confLow" | "info";
 
 const ROLE_HEX: Record<Role, string> = {
-  supports: "#2ec4b6",
-  refutes: "#f0653a",
-  unresolved: "#8a929c",
-  confHigh: "#d8dee2",
-  confMedium: "#8a929c",
-  confLow: "#666c75",
-  info: "#56b4e9",
+  supports: "#5ec98b", // the one green (== theme success / governance)
+  refutes: "#e76b7a", // the one red (== theme error)
+  unresolved: "#929ba4",
+  confHigh: "#d4dbe1",
+  confMedium: "#929ba4",
+  confLow: "#69727c",
+  info: "#6bb6e8",
 };
 
 /** Hand-pinned xterm-256 indices for the colorblind-critical roles so they never
  *  drift under quantization (the lipgloss CompleteColor pattern). */
 const ROLE_256: Partial<Record<Role, number>> = {
-  supports: 43,
-  refutes: 203,
-  info: 74,
+  supports: 78, // green
+  refutes: 174, // coral-red
+  info: 74, // blue
 };
 
 /** ANSI fg for a role, truecolor or 256-pinned, fg-only reset. */
@@ -106,16 +113,4 @@ export function roleStyle(theme: ColorModeTheme, role: Role): (s: string) => str
     if (pinned != null && theme.getColorMode() === "256color") return `\x1b[38;5;${pinned}m${s}\x1b[39m`;
     return hexFg(theme, hex, s);
   };
-}
-
-/** Per-phase accent hex for the phase banner's leading glyph. */
-export function phaseColor(phase: string): string {
-  const map: Record<string, Domain> = {
-    explore: "data",
-    plan: "plan",
-    analyze: "analysis",
-    review: "literature",
-    submit: "governance",
-  };
-  return domainHex(map[phase] ?? "neutral");
 }

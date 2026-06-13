@@ -282,3 +282,37 @@ def test_checkout_release_warns_on_fetch_failure_but_continues(monkeypatch, tmp_
     assert rc == 0
     err = capsys.readouterr().err
     assert "git fetch --tags failed" in err
+
+
+# ── default theme provisioning ────────────────────────────
+
+
+def test_ensure_default_theme_creates_settings_when_absent(tmp_path: Path) -> None:
+    start._ensure_default_theme(tmp_path)
+    data = json.loads((tmp_path / ".pi" / "settings.json").read_text())
+    assert data["theme"] == "beril"
+
+
+def test_ensure_default_theme_adds_to_existing_without_clobbering(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"packages": [".."]}))
+    start._ensure_default_theme(tmp_path)
+    data = json.loads(settings.read_text())
+    assert data == {"packages": [".."], "theme": "beril"}
+
+
+def test_ensure_default_theme_respects_an_existing_choice(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"theme": "dark"}))
+    start._ensure_default_theme(tmp_path)
+    assert json.loads(settings.read_text())["theme"] == "dark", "an explicit theme is never overridden"
+
+
+def test_ensure_default_theme_leaves_malformed_settings_untouched(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{ not json")
+    start._ensure_default_theme(tmp_path)  # must not raise
+    assert settings.read_text() == "{ not json"

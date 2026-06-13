@@ -10,15 +10,18 @@ import { GLYPH } from "./glyphs.ts";
  */
 
 /**
- * Three-tier dual gate: warn at ≥50% or ≥150k tokens, escalate at ≥70% or
- * ≥270k tokens, alarm at ≥90% or ≥500k tokens — whichever fires first.
+ * A clean green→amber→red traffic light on a dual gate (percentage OR absolute
+ * tokens, whichever trips first — a big window can hold a lot of tokens while
+ * still low-percent): healthy below ~55%/160k, `warning` from there, `error` at
+ * ≥85% or ≥400k. Uses only the three semantic role tokens, so the "getting full"
+ * tier is always visibly distinct from the healthy tier (the previous build
+ * reused `thinkingHigh`, which is green — indistinguishable from `success`).
  */
 export function contextColor(percent: number | null, tokens: number | null): ThemeColor {
   const p = percent ?? 0;
   const t = tokens ?? 0;
-  if (p >= 90 || t >= 500_000) return "error";
-  if (p >= 70 || t >= 270_000) return "thinkingHigh";
-  if (p >= 50 || t >= 150_000) return "warning";
+  if (p >= 85 || t >= 400_000) return "error";
+  if (p >= 55 || t >= 160_000) return "warning";
   return "success";
 }
 

@@ -1,23 +1,23 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { contextColor, contextGauge, formatTokens } from "./context-meter.ts";
+import { contextColor, formatTokens } from "./context-meter.ts";
 import { GLYPH } from "./glyphs.ts";
 
 /**
- * The rich, always-visible statusline (a custom `setFooter` component). It is a
- * two-line, oh-my-pi-style segmented line — a real status bar, not a keyed-status
- * string:
+ * The always-visible statusline (a custom `setFooter` component): a single,
+ * chevron-grouped segment line in the oh-my-pi idiom — a real status bar, not a
+ * keyed-status string:
  *
- *   BERDL off-cluster ✓ · 📁 beril-pi-agent
- *   ▣ project ▸ analyze · ctx ▰▰▱▱▱▱ 34% (12.3k / 200k) · opus-4.8
+ *   BERDL off-cluster ✓ › ⌂ beril-pi-agent (main) › ◆ proj ▸ analyze › 3 claims 2✓ 1⊖ › ctx 34% (12.3k/200k) ──── ORCID ✓ · opus-4.8
  *
- * Line 1 is the environment (connection · working dir); line 2 is the work
- * (project ▸ phase · context gauge · model). Empty segments are dropped and an
- * all-empty line is omitted, so a bare session still shows a useful two lines.
- * Context is coloured by `contextColor` so a filling window is visible at a
- * glance. Pure: takes a theme + the current data and returns the (width-clamped)
- * lines; the `beril-env` extension owns the live state and the `setFooter`
- * wiring. Unit-tested with a pass-through theme.
+ * Groups read left→right — environment (connection), location (cwd + git branch),
+ * the work (project ▸ phase), the claim tally, and context — joined by a dim ` › `
+ * chevron; the researcher chip + model are right-justified by a dim gap rule.
+ * Empty groups drop out, and when the line is too narrow the trailing droppable
+ * groups are shed so the connection + work always survive. Branch uses Pi's own
+ * `(branch)` convention (no special glyph). Pure: takes a theme + the current data
+ * and returns the (width-clamped) line; the `beril-env` extension owns the live
+ * state and the `setFooter` wiring. Unit-tested with a pass-through theme.
  */
 
 /** The theme surface the footer needs — a real `Theme` satisfies it; tests pass a fake. */
@@ -29,17 +29,23 @@ export interface FooterData {
   ready?: boolean;
   /** Working-directory basename, e.g. "beril-pi-agent". */
   cwd?: string;
+  /** Git branch of the working dir, e.g. "main"; omitted when detached/unknown. */
+  branch?: string;
   project?: string;
   /** Current research phase, e.g. "analyze". */
   phase?: string;
+  /** Claim-ledger tally for the active project (omitted when there are no claims). */
+  claims?: { total: number; supported: number; refuted: number };
   context?: { tokens: number | null; percent: number | null; contextWindow?: number | null };
   /** Model id. */
   model?: string;
+  /** The researcher's ORCID is on file — shows a verified-identity chip by the model. */
+  orcid?: boolean;
 }
 
 /**
- * The connection chip on line 1: a colored connection label + a glyph reflecting
- * readiness. `ready` → `${GLYPH.ok}`/success; present-but-not-ready (`!ready`) →
+ * The connection chip: a colored connection label + a glyph reflecting readiness.
+ * `ready` → `${GLYPH.ok}`/success; present-but-not-ready (`!ready`) →
  * `${GLYPH.warn}`/warning (a caution, not an operational failure).
  */
 export function connectionChip(theme: FooterTheme, connection: string, ready: boolean): string {
@@ -47,48 +53,72 @@ export function connectionChip(theme: FooterTheme, connection: string, ready: bo
   return theme.fg(ready ? "success" : "warning", `${connection} ${mark}`);
 }
 
-/** The context segment: a gauge + percent + (tokens / window), coloured by fullness. */
-function contextSegment(theme: FooterTheme, c: NonNullable<FooterData["context"]>): string {
-  const gauge = contextGauge(c.percent);
-  const pct = c.percent != null ? `${Math.round(c.percent)}%` : "—";
-  const win = c.contextWindow ? ` / ${formatTokens(c.contextWindow)}` : "";
-  return theme.fg(contextColor(c.percent, c.tokens), `ctx ${gauge} ${pct} (${formatTokens(c.tokens)}${win})`);
+/** The location group: `⌂ cwd` plus the git branch in Pi's `(branch)` convention. All dim. */
+function locationSegment(theme: FooterTheme, cwd: string, branch?: string): string {
+  return theme.fg("dim", `${GLYPH.folder} ${cwd}${branch ? ` (${branch})` : ""}`);
 }
 
-/** Build the two-line statusline. Drops empty segments/lines; clamps each line to `width`. */
+/** The claim tally: `3 claims 2✓ 1⊖` — count muted, supported green, refuted red. */
+function claimsSegment(theme: FooterTheme, c: NonNullable<FooterData["claims"]>): string {
+  const noun = c.total === 1 ? "claim" : "claims";
+  const sup = c.supported > 0 ? ` ${theme.fg("success", `${c.supported}${GLYPH.ok}`)}` : "";
+  const ref = c.refuted > 0 ? ` ${theme.fg("error", `${c.refuted}${GLYPH.refutes}`)}` : "";
+  return `${theme.fg("muted", `${c.total} ${noun}`)}${sup}${ref}`;
+}
+
+/** The context group: `ctx 34%` (coloured by fullness) + a dim `(tokens/window)`. */
+function contextSegment(theme: FooterTheme, c: NonNullable<FooterData["context"]>): string {
+  const pct = c.percent != null ? `${Math.round(c.percent)}%` : "—";
+  const win = c.contextWindow ? `/${formatTokens(c.contextWindow)}` : "";
+  const head = theme.fg(contextColor(c.percent, c.tokens), `ctx ${pct}`);
+  return `${head} ${theme.fg("dim", `(${formatTokens(c.tokens)}${win})`)}`;
+}
+
+/** Build the single-line statusline. Drops empty groups; sheds trailing groups, then clamps, to fit `width`. */
 export function footerLines(theme: FooterTheme, d: FooterData, width: number): string[] {
   if (width <= 0) return [];
-  const sep = theme.fg("dim", ` ${GLYPH.bullet} `);
+  const chevron = theme.fg("dim", ` ${GLYPH.chevron} `);
 
-  // Line 1 — the environment.
-  const top: string[] = [];
-  if (d.connection) top.push(connectionChip(theme, d.connection, d.ready ?? false));
-  if (d.cwd) top.push(theme.fg("dim", `${GLYPH.folder} ${d.cwd}`));
-
-  // Line 2 — the work. Project + phase group on the left with context; model
-  // pushed to the right edge, joined by a gap rule when there's room.
-  const bottom: string[] = [];
+  // The work group (project ▸ phase) survives shedding alongside the connection.
   const where: string[] = [];
   if (d.project) where.push(theme.fg("accent", `${GLYPH.project} ${d.project}`));
   if (d.phase) where.push(theme.fg("accent", `${GLYPH.here} ${d.phase}`));
-  if (where.length) bottom.push(where.join(" "));
-  if (d.context) bottom.push(contextSegment(theme, d.context));
-  const model = d.model ? theme.fg("dim", d.model) : "";
 
-  const lines: string[] = [];
-  if (top.length) lines.push(truncateToWidth(top.join(sep), width));
+  const groups: { text: string; keep: boolean }[] = [];
+  if (d.connection) groups.push({ text: connectionChip(theme, d.connection, d.ready ?? false), keep: true });
+  if (d.cwd) groups.push({ text: locationSegment(theme, d.cwd, d.branch), keep: false });
+  if (where.length) groups.push({ text: where.join(" "), keep: true });
+  if (d.claims && d.claims.total > 0) groups.push({ text: claimsSegment(theme, d.claims), keep: false });
+  if (d.context) groups.push({ text: contextSegment(theme, d.context), keep: false });
 
-  if (bottom.length || model) {
-    const left = bottom.join(sep);
-    const gap = model ? width - visibleWidth(left) - visibleWidth(model) - 2 : 0;
-    if (model && gap >= 1) {
-      // Gap-rule right-justify: left segments, a dim rule, then the model.
-      lines.push(`${left} ${theme.fg("dim", "─".repeat(gap))} ${model}`);
-    } else {
-      // Too narrow for a rule — fall back to the separator-joined, clamped layout.
-      const segments = model ? [...bottom, model] : bottom;
-      lines.push(truncateToWidth(segments.join(sep), width));
-    }
+  // Right side, gap-justified: a verified-ORCID chip then the model.
+  const rightParts: string[] = [];
+  if (d.orcid) rightParts.push(theme.fg("success", `ORCID ${GLYPH.ok}`));
+  if (d.model) rightParts.push(theme.fg("dim", d.model));
+  const right = rightParts.join(theme.fg("dim", ` ${GLYPH.bullet} `));
+  if (!groups.length && !right) return [];
+
+  // Shed droppable groups from the right until the line (left groups + right side)
+  // fits; required groups (connection, work) stay even if they then truncate.
+  let shown = groups;
+  const fits = (gs: { text: string }[]): boolean => {
+    const left = gs.map((g) => g.text).join(chevron);
+    const need = right ? visibleWidth(left) + visibleWidth(right) + 3 : visibleWidth(left);
+    return need <= width;
+  };
+  while (!fits(shown) && shown.some((g) => !g.keep)) {
+    const lastDroppable = shown.map((g) => g.keep).lastIndexOf(false);
+    shown = shown.filter((_, i) => i !== lastDroppable);
   }
-  return lines;
+
+  const left = shown.map((g) => g.text).join(chevron);
+  if (!right) return [truncateToWidth(left, width)];
+
+  const gap = width - visibleWidth(left) - visibleWidth(right) - 2;
+  if (gap >= 1) {
+    // Gap-rule right-justify: left groups, a dim rule, then the right side.
+    return [`${left} ${theme.fg("dim", "─".repeat(gap))} ${right}`];
+  }
+  // Too narrow for a rule — chevron-join the right side and clamp.
+  return [truncateToWidth(`${left}${chevron}${right}`, width)];
 }

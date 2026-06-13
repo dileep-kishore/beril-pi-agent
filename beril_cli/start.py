@@ -39,6 +39,30 @@ def _sync_auth_token(env_path: Path) -> None:
         print("Refreshed KBASE_AUTH_TOKEN in .env")
 
 
+def _ensure_default_theme(repo_root: Path, theme: str = "beril") -> None:
+    """Make the bundled `beril` theme the default look on first launch.
+
+    The theme ships in the package (`themes/beril.json`) and is registered by
+    `pi install -l .`, but a *registered* theme is only selectable, not active.
+    Pi reads the active theme from `.pi/settings.json` (project settings), which is
+    git-ignored and user-local, so it can't be shipped in the repo. We provision it
+    here — the same way `beril start` already syncs the KBase token into `.env` —
+    setting `theme` only when the user hasn't chosen one, so an explicit pick is
+    never overridden. Best-effort: a malformed settings file is left untouched.
+    """
+    settings_path = repo_root / ".pi" / "settings.json"
+    try:
+        data = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        if not isinstance(data, dict) or data.get("theme"):
+            return  # unreadable shape, or the user already chose a theme
+        data["theme"] = theme
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+        print(f"Set the default theme to '{theme}' in .pi/settings.json")
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Warning: could not set the default theme: {exc}", file=sys.stderr)
+
+
 def _github_repo_slug(repo_root: Path) -> str | None:
     """Return 'owner/repo' parsed from origin's URL, or None if it isn't a GitHub remote."""
     result = subprocess.run(
@@ -276,6 +300,9 @@ def run_start(
 
     # Refresh KBASE_AUTH_TOKEN in .env from live environment (tokens expire)
     _sync_auth_token(repo_root / ".env")
+
+    # Make the bundled beril theme the default look (only if no theme is set yet).
+    _ensure_default_theme(repo_root)
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import berilEnv from "../extensions/beril-env.ts";
+import { resetReadinessCache, setCachedEnv } from "../lib/readiness.ts";
 
 const READY = { ready: true, location: "off-cluster", checks: {}, next_steps: [] };
 
@@ -109,8 +110,40 @@ test("session_start sets the connection chip, the HUD, and the rich footer when 
   const footer = renderFooter();
   assert.match(footer, /BERDL off-cluster ✓/, "footer shows the compact connection");
   assert.match(footer, /opus-4\.8/, "footer shows the model");
-  assert.match(footer, /ctx .*12%/, "footer shows context usage with a gauge");
-  assert.match(footer, /1\.0k \/ 200\.0k/, "footer shows tokens / context window");
+  assert.match(footer, /ctx 12%/, "footer shows context usage");
+  assert.match(footer, /1\.0k\/200\.0k/, "footer shows tokens/context window");
+});
+
+test("the statusline self-heals when a later env check confirms BERDL is up", async () => {
+  // The reported bug: a failed session-start probe leaves the chip stuck on
+  // "BERDL ?" even after the remote connection comes up. The chip now tracks the
+  // SHARED env cache, so any tool's requireReady → setCachedEnv updates it.
+  resetReadinessCache(); // drop listeners leaked by earlier tests so only ours fires
+  const h = harness();
+  berilEnv(h.pi);
+  const { ctx, set } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+
+  const chip = () => [...set].reverse().find(([k]) => k === "beril-connection")?.[1];
+
+  setCachedEnv({ location: "off-cluster", ready: false, checks: {}, next_steps: [] });
+  assert.equal(chip(), "BERDL off-cluster △ not ready", "a not-ready check shows on the chip");
+
+  setCachedEnv({ location: "off-cluster", ready: true, checks: {}, next_steps: [] });
+  assert.equal(chip(), "BERDL off-cluster ✓ ready", "the chip self-heals when BERDL comes up");
+});
+
+test("beril:claims surfaces the claim tally on the statusline", async () => {
+  resetReadinessCache();
+  const h = harness();
+  berilEnv(h.pi);
+  const { ctx, renderFooter } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+  h.events.emit("beril:claims", { project: "demo", total: 3, supported: 2, refuted: 1 });
+  const footer = renderFooter();
+  assert.match(footer, /3 claims/, "claim count");
+  assert.match(footer, /2✓/, "supported tally");
+  assert.match(footer, /1⊖/, "refuted tally");
 });
 
 test("session_start greets with the welcome header on a fresh start", async () => {
@@ -186,8 +219,8 @@ test("beril:lifecycle puts the step rail in the HUD and the project in the foote
   // analysis points the scientist at the review step, with a 'Next' hint.
   assert.match(hud, /▸ review/, "marks the current step in the HUD");
   assert.match(hud, /Next:.*review the report/, "shows the next action");
-  assert.doesNotMatch(hud, /▣ demo/, "project no longer duplicated in the HUD");
-  assert.match(renderFooter(), /▣ demo/, "project shows in the footer");
+  assert.doesNotMatch(hud, /◆ demo/, "project no longer duplicated in the HUD");
+  assert.match(renderFooter(), /◆ demo/, "project shows in the footer");
 });
 
 test("beril:lifecycle event is a no-op without UI", async () => {
