@@ -54,7 +54,8 @@ uv run beril start                               # refresh token, pin release, e
 ## TypeScript / Pi Package Stack
 
 - **Language**: TypeScript (strict), ESM (`"type": "module"`).
-- **Runtime**: Pi, verified against **0.78.1** (peer/dev-pinned in `package.json`).
+- **Runtime**: Pi, pinned in `package.json` (the dev/peer pins are the source of
+  truth — check the pinned version, don't assume).
 - **Package manager**: Bun.
 - **Linting/formatting**: Biome (`biome.json`, 2-space indent, 120 cols).
 - **Tests**: `node --test` running `.ts` directly via Node's strip-only type
@@ -62,8 +63,9 @@ uv run beril start                               # refresh token, pin release, e
   properties, no namespaces).
 - **Layout**: `extensions/*.ts` are the Pi extensions (one concern each: tools,
   commands, widgets, renderers, hooks). `lib/` is the shared logic they import —
-  the `beril` exec bridge, the science-card renderer (`lib/ui/`), the calibrated-
-  trust model, the review subagent, rubrics, and pure parsers. `skills/`,
+  e.g. the `beril` exec bridge, the literature + web clients, the science-card
+  renderer (`lib/ui/`), the calibrated-trust model, the review subagent (+ a
+  bounded parallel-map), rubrics, and pure parsers. `skills/`,
   `prompts/`, `themes/` are resources Pi loads by directory.
 
 ## Python / `beril` CLI Stack
@@ -110,19 +112,24 @@ tool / `beril lifecycle`. The commands woven through it:
 `/berdl-start → /literature-review → /research-plan → /analyze → /synthesize →
 /berdl-review → /submit`, plus `/berdl-refute` (adversarial red-team pass).
 
-**The extensions** (13, one concern each):
+**The extensions** (one concern each — see `extensions/` for the current set):
 
 - `beril-env` — connection lifecycle (`berdl_env_check`, `/berdl-connect`,
   `/berdl-status`, `/berdl-welcome`) + the workflow HUD, custom footer, and
   first-launch welcome panel.
 - `beril-data` — `berdl_query` (bounded read-only SQL), `berdl_discover`,
   `berdl_peek`, `berdl_feasibility`, `berdl_export` (destructive); `/berdl-preview`.
+- `beril-web` — read-only `web_read` (local fetch → readable-article extract
+  behind an SSRF/private-IP + size + timeout guard) and `docs_lookup` (current
+  library docs via Context7's no-key tier). Both free/keyless; never destructive.
+  Web/docs evidence stays LOW tier (cannot lift a claim on its own).
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list` and
   `/analyze` (links the plan to executed notebooks).
 - `beril-plan` — `research_plan` plan-card tool and `/research-plan`.
-- `beril-literature` — `lit_search` / `lit_fetch` / `lit_abstract` / `lit_stance` and
-  `/literature-review` (in-process model calls for query expansion + stance,
-  verify-on-write of PMIDs to drop fabrications).
+- `beril-literature` — `lit_search` (dual-source: PubMed + Europe PMC, both
+  keyless) / `lit_fetch` / `lit_abstract` / `lit_stance` and `/literature-review`
+  (in-process model calls for query expansion + stance, verify-on-write of PMIDs
+  and DOIs to drop fabrications).
 - `beril-governance` — lifecycle + reproducibility + identity: `notebook_hash`,
   `lifecycle_transition`, `claim_ledger`, `evidence`, `beril_user`,
   `lakehouse_submit` (destructive); `/synthesize`, `/submit`.
@@ -142,9 +149,11 @@ tool / `beril lifecycle`. The commands woven through it:
 **Safety & calibrated trust** are the two cross-cutting invariants:
 
 - Destructive tools (`berdl_export` overwrite, `lakehouse_submit`, bash
-  `mc rm`/`rm -rf`) are defined in `lib/destructive.ts` and gated centrally by
-  `beril-safety`: confirm in interactive mode, **blocked** headless
-  (`--print`/`--mode json`/`--mode rpc`) — never silently accepted.
+  `mc rm`/`rm -rf`, plus bash touching sensitive paths like `.env`/`~/.ssh`) are
+  defined in `lib/destructive.ts` and gated centrally by `beril-safety`:
+  **blocked** when the project is untrusted (Pi project trust), **blocked**
+  headless (`--print`/`--mode json`/`--mode rpc`), else confirm interactively —
+  never silently accepted. `beril-conduct` likewise no-ops on an untrusted project.
 - Confidence is **computed, never verbalized** (`lib/science.ts`): high = ≥2
   independent re-runnable results, medium = exactly 1, low = literature-only.
   Claims must not sound more certain than their artifacts support; every claim
@@ -164,10 +173,10 @@ These are gotchas that have tripped up agents in the past:
   token, moves the release pin, and execs the *already-installed* package.
   Confirm with `pi list`.
 
-- **Pi 0.78.1 has a MINIMAL theme/symbol API.** The installed Pi is far older
-  than the `oh-my-pi` HEAD clone — do **not** design themes/renderers against
-  HEAD APIs. Verify against the installed version and
-  `docs/superpowers/specs/pi-api-reference.md`.
+- **The pinned Pi has a MINIMAL theme/symbol API.** The installed Pi (see the
+  `package.json` pin, currently the 0.79 line) is far older than the `oh-my-pi`
+  HEAD clone — do **not** design themes/renderers against HEAD APIs. Verify
+  against the installed version and `docs/superpowers/specs/pi-api-reference.md`.
 
 - **`renderResult` is also called on FAILURE.** Pi invokes a tool's custom
   `renderResult` on failure with `details = {}` and `context.isError = true`
@@ -214,3 +223,16 @@ These are gotchas that have tripped up agents in the past:
   branches). Set `BERIL_UPDATE_CHANNEL=main` to fast-forward to `origin/main`
   instead; an explicit `--version vX.Y.Z` always wins. To ship new work via the
   release channel, cut a new release tag — the pin tracks tags, not `main`.
+
+- **Project trust is fail-closed (Pi project trust).** `beril-safety` denies any
+  destructive tool when `ctx.isProjectTrusted()` is false (checked before the
+  headless/confirm path), and `beril-conduct` skips the conduct contract on an
+  untrusted project. Don't "fix" these by removing the guard — an untrusted
+  project must never run an irreversible op.
+
+- **New capabilities stay free + keyless by default; nothing third-party in a
+  core path.** The standing priority is fit/robustness > minimal code > no
+  required paid API. `web_read` extracts article text locally and `docs_lookup`
+  uses a no-key tier (keys only lift limits, optional). Don't put a third-party
+  package in a core path (tool access / the safety gate / reproducibility), and
+  prefer free/no-key/already-have sources.

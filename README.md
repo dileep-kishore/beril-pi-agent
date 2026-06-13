@@ -2,7 +2,7 @@
 
 A [Pi](https://github.com/earendil-works/pi) package that turns the **BERIL Research Observatory** into a terminal/TUI research workbench.
 
-BERIL's scientific judgment (query patterns, research protocols, rubrics, biological interpretation) stays as Pi **skills**; connection, execution, state, safety, and rendering live in five thin Pi **extensions** that shell out to a **bundled `beril` CLI** (in `beril_cli/` + `scripts/` + `tools/`). The proven Python keeps the logic and reproducibility; the package owns the Pi surface.
+BERIL's scientific judgment (query patterns, research protocols, rubrics, biological interpretation) stays as Pi **skills**; connection, execution, state, safety, and rendering live in thin Pi **extensions** (one concern each, see `extensions/`) that shell out to a **bundled `beril` CLI** (in `beril_cli/` + `scripts/` + `tools/`). The proven Python keeps the logic and reproducibility; the package owns the Pi surface.
 
 > **Self-contained.** This repo replaces the Claude Code / Codex skill layer of the original BERIL Research Observatory and bundles its own BERDL execution substrate — it does **not** depend on that repo at runtime. It is also a terminal workbench: no web app / Observatory UI.
 
@@ -45,8 +45,12 @@ feasibility) → `/literature-review <topic>` → `/research-plan <project>` →
 - `beril-governance` — lifecycle + reproducibility (`notebook_hash`,
   `lifecycle_transition`, `beril_user`, `lakehouse_submit`) and
   `/synthesize` → `/berdl-review` → `/submit`.
-- `beril-literature` — `lit_search` / `lit_fetch` and `/literature-review`.
+- `beril-literature` — literature tools (PubMed + Europe PMC, free/keyless) and
+  `/literature-review`.
+- `beril-web` — read-only `web_read` (open web) and `docs_lookup` (current
+  library docs); both keyless, and web/docs evidence stays low-tier.
 - `beril-checkpoint` — the `request_checkpoint` decision tool.
+- `beril-refute` — `/berdl-refute`, the adversarial red-team pass.
 - `beril-conduct` / `beril-display` — the always-on research-conduct contract
   and the de-emphasis defaults.
 - `beril-safety` — the central destructive-action gate (`berdl_export`,
@@ -67,10 +71,10 @@ them.
 
 ## Requirements
 
-- [Pi](https://pi.dev) `@earendil-works/pi-coding-agent` (verified against **0.78.1**).
+- [Pi](https://pi.dev) `@earendil-works/pi-coding-agent` (pinned in `package.json`).
 - Python ≥ 3.11 and [`uv`](https://docs.astral.sh/uv/) (the bundled `beril` CLI ships in this repo).
 - A KBase account + `KBASE_AUTH_TOKEN` (from <https://narrative.kbase.us/#auth2/account>) in a `.env` at the repo root.
-- Optional: `NCBI_API_KEY` (and `NCBI_EMAIL`) in `.env` to lift the PubMed rate limit from ~3 to ~10 req/s — useful when the co-scientist fans out many `lit_search` calls. Get a key at <https://www.ncbi.nlm.nih.gov/account/settings/>.
+- **No API keys are required** for literature or web/docs — PubMed + Europe PMC and the docs lookup all work keyless by default. Optional keys only raise rate limits: `NCBI_API_KEY` (and `NCBI_EMAIL`) for PubMed (<https://www.ncbi.nlm.nih.gov/account/settings/>), `CONTEXT7_API_KEY` for `docs_lookup`.
 
 ## Setup
 
@@ -110,7 +114,10 @@ uv run beril start            # always launches Pi (beril is a Pi workbench)
 `beril start` refreshes your KBase token in `.env`, then execs **Pi** with this package and the
 bundled `beril` already on PATH (so the extensions resolve it — **no manual
 `source .venv/bin/activate`**), and hands off onboarding to the `beril-env` extension (run
-`/berdl-start` any time to re-orient). beril is a **Pi workbench**: `beril start` always launches
+`/berdl-start` any time to re-orient). It **resumes your most-recent project session by default**
+(`--continue`); pass an explicit session flag (`--resume` / `--session …` / `--no-session`) to
+override, and sessions are named `<project> · <phase>` so the picker stays legible. beril is a
+**Pi workbench**: `beril start` always launches
 `pi` (a stale config can't redirect it). Other agents like Claude/Codex are still used *inside*
 skills and subagents — e.g. the `/berdl-review` Opus reviewer — but never as the launcher.
 
@@ -175,7 +182,7 @@ Pi runs extensions with **full system access** and has no built-in sandbox. This
 - **Docker** — mount the BERIL repo, run `pi` in the container.
 - **OpenShell / Gondolin** — route tools through a local micro-VM.
 
-Destructive tools (`berdl_export` overwrite, `lakehouse_submit`'s `mc rm --recursive --force`) always prompt in interactive mode and are **blocked** in `--print`/`--mode json`/`--mode rpc`.
+Destructive tools (`berdl_export` overwrite, `lakehouse_submit`'s `mc rm --recursive --force`, and bash touching sensitive paths like `.env`/`~/.ssh`/keys) always prompt in interactive mode and are **blocked** in `--print`/`--mode json`/`--mode rpc`. The gate is **fail-closed under Pi project trust**: in an untrusted project every destructive action is blocked outright.
 
 ## Development
 
