@@ -73,7 +73,9 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
         labels = [`${opts[0].label} (auto: no interactive UI)`];
       }
       const choice = labels.join(", ") || "(no choice — the scientist dismissed the prompt; wait for their direction)";
-      pi.events.emit("beril:checkpoint", { title: params.title, choice });
+      // Record only a real decision on the cross-session bus: a dismissed prompt
+      // (labels === []) is a non-decision and must not become the "last checkpoint".
+      if (labels.length) pi.events.emit("beril:checkpoint", { title: params.title, choice });
       return {
         content: [{ type: "text", text: `Scientist chose: ${choice}` }],
         details: { title: params.title, summary: params.summary, choice, choices: labels },

@@ -101,8 +101,11 @@ export default function berilMemory(pi: ExtensionAPI) {
   // store is the source of truth — a compaction can fire in a resumed session
   // that never flushed).
   pi.on("before_agent_start", async (event, ctx) => {
-    if (!pendingReinject || !ctx.isProjectTrusted()) return undefined;
-    pendingReinject = false; // one-shot — never stack the block across turns
+    if (!pendingReinject) return undefined;
+    // Consume the one-shot regardless of trust, so a compaction that happened while
+    // untrusted can't replay a stale snapshot if trust is granted later this session.
+    pendingReinject = false;
+    if (!ctx.isProjectTrusted()) return undefined; // fail-closed: no re-injection on an untrusted project
     try {
       const cur = await berilExec<{ project?: string }>(pi, ["lifecycle", "current"]);
       if (!cur.project) return undefined;

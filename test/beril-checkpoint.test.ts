@@ -98,12 +98,14 @@ test("falls back to proceed (first option) in headless runs", async () => {
   assert.match((res.details as any).choice, /Approve and continue \(auto/);
 });
 
-test("notes when the scientist dismisses the overlay", async () => {
-  const { tools } = harness();
+test("notes when the scientist dismisses the overlay (and records no decision on the bus)", async () => {
+  const { tools, emitted } = harness();
   const ctx = { mode: "tui", hasUI: true, ui: { custom: async () => ({ labels: [] }) } };
   const res = await tools.request_checkpoint.execute("id", { title: "Proceed?" }, undefined, undefined, ctx);
   assert.match((res.details as any).choice, /dismissed/);
   assert.deepEqual((res.details as any).choices, []);
+  // A dismissed prompt is a non-decision: it must NOT be broadcast as a "last checkpoint".
+  assert.deepEqual(emitted, []);
 });
 
 test("renderResult records a single decision in a checkpoint card", async () => {

@@ -42,6 +42,7 @@ export function makeAsideOverlay(
   let answer = "";
   let aborted = false;
   let scroll = 0;
+  let maxScroll = 0; // overflow ceiling, recomputed each render; bounds the down-arrow
   let cache: { width: number; lines: string[] } | undefined;
 
   const invalidate = () => {
@@ -79,6 +80,7 @@ export function makeAsideOverlay(
       // Scroll on overflow so a long answer stays readable; cap the visible window.
       const maxVisible = 18;
       const max = Math.max(0, all.length - maxVisible);
+      maxScroll = max;
       if (scroll > max) scroll = max;
       const visible = all.length > maxVisible ? all.slice(scroll, scroll + maxVisible) : all;
       const more =
@@ -110,7 +112,7 @@ export function makeAsideOverlay(
       if (matchesKey(data, Key.up) && scroll > 0) {
         scroll -= 1;
         invalidate();
-      } else if (matchesKey(data, Key.down)) {
+      } else if (matchesKey(data, Key.down) && scroll < maxScroll) {
         scroll += 1;
         invalidate();
       } else if (matchesKey(data, Key.enter)) {
