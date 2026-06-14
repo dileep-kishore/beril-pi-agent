@@ -1,7 +1,20 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { DEFAULT_CHECKPOINT_OPTIONS, checkpointCard } from "../lib/ui/checkpoint.ts";
+import { type CheckpointPick, makeCheckpointOverlay, normalizeOptions } from "../lib/ui/checkpoint-overlay.ts";
+import { checkpointCard } from "../lib/ui/checkpoint.ts";
 import { callLine, errorCard, toolErrorText } from "../lib/ui/science-cards.ts";
+
+/**
+ * A typed checkpoint option: a short label, an optional one-line rationale, and an
+ * optional longer preview. Plain strings are accepted too (coerced to `{ label }`),
+ * so existing callers that pass `string[]` keep working.
+ */
+const CheckpointOption = Type.Object({
+  label: Type.String({ description: "Short choice label shown in the list." }),
+  rationale: Type.Optional(Type.String({ description: "One-line why-pick-this, shown dim under the label." })),
+  preview: Type.Optional(Type.String({ description: "Longer markdown preview, shown in the pane below the list." })),
+});
+const CheckpointChoice = Type.Union([Type.String(), CheckpointOption]);
 
 /**
  * The science-checkpoint tool. Approval in this workbench is reserved for two
@@ -26,21 +39,44 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
         }),
       ),
       options: Type.Optional(
-        Type.Array(Type.String(), { description: "Choices to offer (default: approve / adjust / stop)." }),
+        Type.Array(CheckpointChoice, {
+          description:
+            "Choices to offer (default: approve / adjust / stop). Each may be a plain label or {label, rationale?, preview?}.",
+        }),
+      ),
+      multi: Type.Optional(
+        Type.Boolean({
+          description: "Allow the scientist to select more than one option (space toggles, enter confirms).",
+        }),
       ),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
-      const options = params.options?.length ? params.options : DEFAULT_CHECKPOINT_OPTIONS;
-      let choice: string;
-      if (ctx.hasUI) {
-        const picked = await ctx.ui.select(params.title, options);
-        choice = picked ?? "(no choice — the scientist dismissed the prompt; wait for their direction)";
+      const opts = normalizeOptions(params.options);
+      const multi = params.multi === true;
+      let labels: string[];
+      if (ctx.mode === "tui") {
+        // Interactive TUI: the bespoke focusable overlay (rationale + preview, single/multi).
+        const pick = await ctx.ui.custom<CheckpointPick>(
+          makeCheckpointOverlay(opts, multi, params.title, params.summary),
+          { overlay: true, overlayOptions: { width: "70%", anchor: "center", maxHeight: "80%" } },
+        );
+        labels = pick.labels;
+      } else if (ctx.hasUI) {
+        // RPC and other UI-but-not-TUI surfaces have no `custom`; degrade to single-select.
+        const picked = await ctx.ui.select(
+          params.title,
+          opts.map((o) => o.label),
+        );
+        labels = picked ? [picked] : [];
       } else {
-        choice = `${options[0]} (auto: no interactive UI)`;
+        // Headless: no one to ask — proceed with the first option and say so (unchanged contract).
+        labels = [`${opts[0].label} (auto: no interactive UI)`];
       }
+      const choice = labels.join(", ") || "(no choice — the scientist dismissed the prompt; wait for their direction)";
+      pi.events.emit("beril:checkpoint", { title: params.title, choice });
       return {
         content: [{ type: "text", text: `Scientist chose: ${choice}` }],
-        details: { title: params.title, summary: params.summary, choice },
+        details: { title: params.title, summary: params.summary, choice, choices: labels },
       };
     },
     renderCall(args, theme) {
@@ -48,7 +84,10 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
     },
     renderResult(result, _opts, theme, context) {
       if (context?.isError) return errorCard(theme, toolErrorText(result));
-      return checkpointCard(theme, result.details as { title: string; summary?: string; choice: string });
+      return checkpointCard(
+        theme,
+        result.details as { title: string; summary?: string; choice: string; choices?: string[] },
+      );
     },
   });
 }
