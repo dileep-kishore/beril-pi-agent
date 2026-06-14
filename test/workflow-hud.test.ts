@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import { glyph } from "../lib/ui/glyphs.ts";
+import { applyToolStart, substepRail, substepsForPhase } from "../lib/ui/substeps.ts";
 import { workflowHud } from "../lib/ui/workflow-hud.ts";
 
 const theme = {
@@ -31,4 +33,28 @@ test("before any project, shows just a getting-started next hint", () => {
   assert.equal(lines.length, 1);
   assert.match(lines[0], /Next:/);
   assert.doesNotMatch(lines[0], /▸/, "no current-step marker without a project state");
+});
+
+test("renders an indented sub-step line between the rail and the next hint", () => {
+  const substeps = applyToolStart(substepsForPhase("analyze"), "notebook_run", {});
+  const lines = workflowHud(theme, { project: "demo", state: "active", substeps });
+  // rail, sub-step line, next hint — three lines.
+  assert.equal(lines.length, 3);
+  // The sub-step line is the rendered rail, two-space indented, and marks `run` active.
+  assert.equal(lines[1], `  ${substepRail(theme, substeps)}`, "the sub-step line is two-space indented");
+  assert.ok(lines[1].includes(`${glyph("here")} run`), "run is active on the sub-step line");
+  assert.match(lines[2], /Next:/, "the next hint still comes last");
+});
+
+test("renders no sub-step line when substeps is undefined (regression: 3-test contract)", () => {
+  // Existing-contract states with substeps undefined must keep their exact line counts.
+  assert.equal(workflowHud(theme, {}).length, 1, "no project → 1 line");
+  assert.equal(workflowHud(theme, { project: "demo", state: "active" }).length, 2, "project → rail + next only");
+  // An empty (no-manifest) overlay also adds no line.
+  const empty = substepsForPhase("review");
+  assert.equal(
+    workflowHud(theme, { project: "demo", state: "reviewed", substeps: empty }).length,
+    2,
+    "empty overlay adds no line",
+  );
 });

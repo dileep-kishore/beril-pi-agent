@@ -2,6 +2,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { nextAction } from "../research-steps.ts";
 import { GLYPH } from "./glyphs.ts";
 import { stepRail } from "./step-rail.ts";
+import { type SubstepState, substepRail } from "./substeps.ts";
 
 /**
  * The always-visible "workflow HUD" shown above the editor: where the active
@@ -27,6 +28,8 @@ export interface HudState {
   state?: string;
   /** Set once the active project has been submitted, to mark the arc done. */
   submitted?: boolean;
+  /** Live sub-step progress within the current phase (tool-derived); omitted/empty renders no line. */
+  substeps?: SubstepState;
 }
 
 type HudTheme = Theme;
@@ -38,6 +41,13 @@ export function workflowHud(theme: HudTheme, s: HudState): string[] {
   if (s.project || s.state) {
     const rail = stepRail(theme, s.state);
     lines.push(s.submitted ? `${rail}   ${theme.fg("success", `${GLYPH.up} submitted`)}` : rail);
+  }
+
+  // The live within-phase sub-step rail, indented under the main rail. Tool-derived;
+  // renders zero lines when absent/empty so the no-project HUD stays a single line.
+  if (s.substeps) {
+    const sub = substepRail(theme, s.substeps);
+    if (sub) lines.push(`  ${sub}`);
   }
 
   // The "what's next" hint always shows (a getting-started nudge before any project).
