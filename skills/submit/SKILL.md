@@ -7,7 +7,7 @@ description: Use when the author is ready to stand behind a BERIL research proje
 
 `/submit` is the **approval event**: the moment the responsible author stands behind a research project and commits it to the BERDL lakehouse archive as complete. This skill is the judgment layer — what "ready" means, what a complete project contains, and what the author is attesting to. The mechanics (locking, hashing, marker files, upload, idempotent retry) are handled by the `/submit` command and its tools, not by you.
 
-To submit, run `/submit <project>`. It transitions the project to `complete` via `lifecycle_transition`, verifies the approval against `notebook_hash`-tracked content, gates on `beril_user` ORCID identity, and archives via `lakehouse_submit` (a destructive, confirmation-gated overwrite of the remote archive). The central `beril-safety` gate confirms the destructive upload before it runs.
+To submit, run `/submit <project>`. Use `/whereami` first to confirm the project is reviewed and `/next` if the path is unclear. The command transitions the project to `complete` via `lifecycle_transition`, verifies the approval against `notebook_hash`-tracked content, gates on `beril_user` ORCID identity, and archives via `lakehouse_submit` (a destructive, confirmation-gated overwrite of the remote archive). The central `beril-safety` gate confirms the destructive upload before it runs.
 
 ## What submission means
 

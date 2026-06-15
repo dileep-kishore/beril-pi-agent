@@ -273,6 +273,7 @@ export function hashCard(theme: Theme, hashes: Record<string, string>): Componen
     const short = h.replace(/^sha256:/, "").slice(0, 12);
     return `${theme.fg("text", nb)}  ${theme.fg("dim", `sha256:${short}…`)}`;
   });
+  lines.push("", verifyLine(theme, "rerun notebook_hash before review/submit"));
   return linesCard(theme, {
     title: cardHeader(theme, { title: `Notebook hashes ${GLYPH.bullet} ${entries.length}` }),
     accentStyle,
@@ -331,6 +332,7 @@ export function scaffoldCard(theme: Theme, r: { created: string[]; skipped: stri
     ...r.skipped.map((p) => theme.fg("dim", `${GLYPH.bullet} ${p} (exists)`)),
   ];
   if (!lines.length) lines.push(theme.fg("muted", "(no notebooks)"));
+  lines.push("", verifyLine(theme, "open RESEARCH_PLAN.md and inspect generated notebooks before running"));
   return linesCard(theme, {
     title: cardHeader(theme, { title: `Notebooks scaffolded ${GLYPH.bullet} ${r.created.length} new` }),
     accentStyle: domainStyle(theme, "analysis"),
@@ -358,6 +360,7 @@ export function notebookListCard(theme: Theme, notebooks: NotebookInfo[]): Compo
       : theme.fg("warning", `${GLYPH.pending} no outputs`);
     return `${theme.fg("text", n.path)}  ${theme.fg("dim", `${n.cells} cells`)}  ${mark}`;
   });
+  lines.push("", verifyLine(theme, "open notebooks with no outputs, or rerun notebook_run"));
   return linesCard(theme, {
     title: `Notebooks ${GLYPH.bullet} ${notebooks.length}`,
     accentStyle,
@@ -380,6 +383,7 @@ export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: 
       : `${theme.fg("error", GLYPH.bad)} ${theme.fg("text", e.notebook)} ${theme.fg("dim", e.error ? `— ${e.error.split("\n")[0]}` : "")}`,
   );
   if (!lines.length) lines.push(theme.fg("muted", "(nothing executed)"));
+  lines.push("", verifyLine(theme, "open executed notebooks and inspect saved outputs / first failed cell"));
   const title = cardHeader(theme, {
     title: r.ok
       ? `Notebooks executed ${GLYPH.bullet} ${r.executed.length} ${GLYPH.ok}`
@@ -427,6 +431,11 @@ export function confidenceFooter(theme: Theme, tier: ConfidenceTier, caveat?: st
   const [g, color] = m[tier];
   const c = `${g} ${theme.fg(color, `confidence: ${tier}`)}`;
   return c + (caveat ? theme.fg("dim", ` — ${caveat}`) : "");
+}
+
+/** Standard verification footer: one concrete way to check the artifact behind a card. */
+export function verifyLine(theme: Theme, action: string): string {
+  return `${theme.fg("muted", "Verify     ")}${theme.fg("text", action)}`;
 }
 
 // EvidenceView is the pure home; re-exported so existing importers keep working.
@@ -478,6 +487,7 @@ export function evidenceCard(theme: Theme, v: EvidenceView): Component {
       lines: v.unresolved.map((u) => `  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", u)}`),
     });
   }
+  body.push("", verifyLine(theme, "open the listed source pointers, or rerun claim_ledger / evidence"));
   return linesCard(theme, {
     title: cardHeader(theme, {
       icon: statusIcon(theme, evState),
@@ -621,6 +631,7 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
       .join("  ")
       .trimEnd(),
   );
+  lines.push("", verifyLine(theme, "open REPORT.md / RESEARCH_PLAN.md, then inspect a finding with evidence"));
   return linesCard(theme, {
     title: cardHeader(theme, { title: `Claim ledger ${GLYPH.bullet} ${rows.length}` }),
     accentStyle,

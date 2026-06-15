@@ -4,6 +4,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import {
+  claimLedgerCard,
   confidenceFooter,
   discoverCard,
   envCard,
@@ -15,6 +16,7 @@ import {
   queryCard,
   redTeamCard,
   toolErrorText,
+  verifyLine,
 } from "../lib/ui/science-cards.ts";
 
 // Pass-through theme so rendered widths are easy to assert (no ANSI inflation).
@@ -220,4 +222,22 @@ test("redTeamCard frames surviving checks + a full-pass pointer (not an error ca
   assert.ok(text.includes("alternate codon-usage bias not ruled out"), "lists the surviving check");
   assert.ok(text.includes("full pass: REFUTATION_1.md"), "points at the full pass on disk");
   assert.ok(!/error/i.test(text), "framed as a red-team pass, not an error");
+});
+
+test("verifyLine renders a standard verification footer", () => {
+  assert.equal(verifyLine(theme, "rerun notebook_hash"), "Verify     rerun notebook_hash");
+});
+
+test("claimLedgerCard includes a concrete verification footer", () => {
+  const lines = claimLedgerCard(theme, [
+    {
+      hypothesis: "H1",
+      status: "supported",
+      confidence: "medium",
+      supports: 1,
+      refutes: 0,
+      stale: false,
+    },
+  ]).render(100);
+  assert.match(lines.join("\n"), /Verify\s+open REPORT\.md/);
 });

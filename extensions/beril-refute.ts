@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { projectCompletions } from "../lib/project-completions.ts";
 import { runReviewSubagent } from "../lib/review-agent.ts";
 import { nextReviewPath } from "../lib/review-finalize.ts";
 import { REFUTATION_RUBRIC } from "../lib/review-rubric.ts";
@@ -34,6 +35,7 @@ export function parseRefuteArgs(raw: string): RefuteArgs | undefined {
 export default function berilRefute(pi: ExtensionAPI) {
   pi.registerCommand("berdl-refute", {
     description: "Actively try to refute a project's headline findings (red-team pass), then write REFUTATION_N.md.",
+    getArgumentCompletions: projectCompletions,
     async handler(args: string, ctx: ExtensionCommandContext) {
       const parsed = parseRefuteArgs(args);
       if (!parsed) {

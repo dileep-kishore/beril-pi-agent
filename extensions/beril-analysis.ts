@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
+import { projectCompletions } from "../lib/project-completions.ts";
 import {
   type NotebookInfo,
   type NotebookRun,
@@ -124,6 +125,7 @@ export default function berilAnalysis(pi: ExtensionAPI) {
 
   pi.registerCommand("analyze", {
     description: "Scaffold + run the analysis notebooks for a project, checking in after the first result.",
+    getArgumentCompletions: projectCompletions,
     async handler(args: string, ctx: ExtensionCommandContext) {
       const project = args.trim();
       if (!project) {
