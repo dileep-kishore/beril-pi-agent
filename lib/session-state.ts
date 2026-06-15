@@ -27,8 +27,6 @@ export interface ResearchStateSnapshot {
   claims: { total: number; supported: number; refuted: number };
   /** `<= 160` chars, single line: the scientist's last checkpoint choice. Omitted when unknown. */
   lastCheckpoint?: string;
-  /** `<= 240` chars, single line, OPTIONAL — omitted in v1. */
-  note?: string;
 }
 
 /** Inputs the memory extension gathers before shaping a snapshot. */
@@ -37,7 +35,6 @@ export interface SnapshotInput {
   phase: string;
   claims: ClaimTally;
   lastCheckpoint?: string;
-  note?: string;
 }
 
 /** Collapse to a single line and clamp to `max` chars (with an ellipsis when cut). */
@@ -64,8 +61,6 @@ export function buildSnapshot(input: SnapshotInput): ResearchStateSnapshot {
   };
   const checkpoint = input.lastCheckpoint && clampLine(input.lastCheckpoint, 160);
   if (checkpoint) snap.lastCheckpoint = checkpoint;
-  const note = input.note && clampLine(input.note, 240);
-  if (note) snap.note = note;
   return snap;
 }
 

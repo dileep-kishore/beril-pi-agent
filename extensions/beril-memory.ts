@@ -33,15 +33,13 @@ export default function berilMemory(pi: ExtensionAPI) {
   // `session_compact`, disarmed after the first `before_agent_start` consumes it.
   let pendingReinject = false;
 
-  // `title -> choice`, clamped to 160 chars on a single line so it can drop
-  // straight into the snapshot without further shaping.
+  // Stash the raw `title -> choice`; buildSnapshot owns the single-line clamp.
   pi.events.on("beril:checkpoint", (data) => {
     const d = data as { title?: string; choice?: string };
     const title = (d.title ?? "").trim();
     const choice = (d.choice ?? "").trim();
     if (!choice) return;
-    const line = `${title} -> ${choice}`.replace(/\s+/g, " ").trim();
-    lastCheckpoint = line.length > 160 ? `${line.slice(0, 159)}…` : line;
+    lastCheckpoint = `${title} -> ${choice}`;
   });
 
   /** Parse a project's plan + report into a claim tally (best-effort; never throws). */

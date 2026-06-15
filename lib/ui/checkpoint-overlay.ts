@@ -73,7 +73,8 @@ export function buildOverlay(
 ): Component {
   let cursor = 0;
   const selected = new Set<number>();
-  let invalidated = true;
+  // A cleared cache is the sole "needs redraw" signal (parity with aside-overlay):
+  // any state change that affects the render sets `cache = undefined`.
   let cache: { width: number; lines: string[] } | undefined;
 
   const accentStyle = domainStyle(theme, "checkpoint");
@@ -114,12 +115,12 @@ export function buildOverlay(
 
   function move(delta: number): void {
     cursor = (cursor + delta + opts.length) % opts.length;
-    invalidated = true;
+    cache = undefined;
   }
 
   return {
     render(width: number): string[] {
-      if (!invalidated && cache && cache.width === width) return cache.lines;
+      if (cache && cache.width === width) return cache.lines;
       const inner = Math.max(8, Math.floor(width)) - 4;
       const lines = frameCard(
         theme,
@@ -131,7 +132,6 @@ export function buildOverlay(
         width,
       );
       cache = { width, lines };
-      invalidated = false;
       return lines;
     },
     handleInput(data: string): void {
@@ -146,7 +146,7 @@ export function buildOverlay(
       if (multi && matchesKey(data, Key.space)) {
         if (selected.has(cursor)) selected.delete(cursor);
         else selected.add(cursor);
-        invalidated = true;
+        cache = undefined;
         return;
       }
       if (matchesKey(data, Key.enter)) {
@@ -164,7 +164,6 @@ export function buildOverlay(
       }
     },
     invalidate(): void {
-      invalidated = true;
       cache = undefined;
     },
   };

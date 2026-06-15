@@ -10,9 +10,8 @@ test("buildSnapshot derives step from phase and copies the tally", () => {
   assert.equal(snap.phase, "analysis");
   assert.equal(snap.step, "review"); // currentStep("analysis") === "review"
   assert.deepEqual(snap.claims, { total: 3, supported: 1, refuted: 1 });
-  // Optional fields omitted when absent.
+  // Optional field omitted when absent.
   assert.equal(snap.lastCheckpoint, undefined);
-  assert.equal(snap.note, undefined);
 });
 
 test("buildSnapshot coerces an unknown phase to an empty step", () => {
@@ -20,18 +19,15 @@ test("buildSnapshot coerces an unknown phase to an empty step", () => {
   assert.equal(snap.step, "");
 });
 
-test("buildSnapshot clamps + single-lines lastCheckpoint and note, omits empty", () => {
+test("buildSnapshot clamps + single-lines lastCheckpoint, omits empty", () => {
   const snap = buildSnapshot({
     project: "p",
     phase: "active",
     claims: TALLY,
     lastCheckpoint: `Approve the plan?\n -> ${"x".repeat(300)}`,
-    note: `multi\nline\n${"y".repeat(400)}`,
   });
   assert.ok(snap.lastCheckpoint && snap.lastCheckpoint.length <= 160);
   assert.ok(!snap.lastCheckpoint?.includes("\n"));
-  assert.ok(snap.note && snap.note.length <= 240);
-  assert.ok(!snap.note?.includes("\n"));
   // A whitespace-only checkpoint collapses to nothing and is omitted.
   const blank = buildSnapshot({ project: "p", phase: "active", claims: TALLY, lastCheckpoint: "   " });
   assert.equal(blank.lastCheckpoint, undefined);
