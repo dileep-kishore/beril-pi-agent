@@ -106,7 +106,12 @@ export function applyToolStart(s: SubstepState, toolName: string, args: unknown)
   const idx = s.steps.findIndex((step) => step.key === target.key);
   if (idx < 0) return s;
   const detail = detailFromArgs(toolName, args);
-  if (s.steps[idx].status === "active" && s.steps[idx].detail === detail) return s;
+  const cur = s.steps[idx].status;
+  // Monotonic forward: a finished step never reopens when its tool re-runs (e.g. a
+  // second berdl_query after lit_search has already advanced the rail). Also the
+  // no-op short-circuit when already active with the same detail.
+  if (cur === "done" || cur === "failed") return s;
+  if (cur === "active" && s.steps[idx].detail === detail) return s;
   return {
     phase: s.phase,
     steps: s.steps.map((step, i) => {

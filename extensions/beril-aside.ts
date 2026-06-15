@@ -44,8 +44,14 @@ export default function berilAside(pi: ExtensionAPI) {
       };
 
       let overlay: AsideController | undefined;
+      // The overlay pushes its answer from OUTSIDE the input loop, so it must ask
+      // the TUI to repaint — invalidate() only clears the component's cache, it
+      // does not schedule a frame (same async-push pattern as the footer in
+      // beril-env.ts). Structural type to avoid importing TUI.
+      let tui: { requestRender(): void } | undefined;
       const overlayDone = ctx.ui.custom<void>(
-        (_tui, theme, _kb, done) => {
+        (t, theme, _kb, done) => {
+          tui = t;
           overlay = makeAsideOverlay(theme, question, () => controller.abort(), done);
           return overlay;
         },
@@ -59,6 +65,7 @@ export default function berilAside(pi: ExtensionAPI) {
       if (overlay && !overlay.isAborted()) {
         if (result.ok) overlay.setAnswer(result.answer);
         else if (!result.aborted) overlay.setError(result.error ?? "the aside failed");
+        tui?.requestRender(); // paint the answer/error now, not on the next keystroke
       }
 
       // Wait for the scientist to dismiss the overlay. Persist nothing.

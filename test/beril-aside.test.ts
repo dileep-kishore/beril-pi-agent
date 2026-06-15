@@ -152,12 +152,24 @@ function harness(
     model: unknown;
     args: string;
     complete: AsideDeps["complete"];
+    // Default true: dismiss (Esc) as soon as the overlay opens, mimicking the
+    // scientist. Set false to drive the answer-then-dismiss path by hand.
+    autoDismiss: boolean;
   }> = {},
 ) {
   const writes = { sendMessage: 0, sendUserMessage: 0, appendEntry: 0 };
   const notifies: { message: string; type?: string }[] = [];
   let handler: ((args: string, ctx: any) => Promise<void>) | undefined;
   let customShown = false;
+  // The async-push repaint: the overlay must ask the TUI to render when the answer
+  // lands (invalidate() alone never schedules a frame). Spy on requestRender.
+  let renders = 0;
+  const tuiSpy = {
+    requestRender: () => {
+      renders++;
+    },
+  };
+  let comp: { handleInput?(data: string): void } | undefined;
 
   const pi = {
     registerCommand(_name: string, opts: { handler: (args: string, ctx: any) => Promise<void> }) {
@@ -198,16 +210,18 @@ function harness(
       notify(message: string, type?: string) {
         notifies.push({ message, type });
       },
-      // Resolve immediately: invoke the factory, then call its done() seam.
+      // Invoke the factory (passing a tui with a requestRender spy), then by
+      // default mimic the scientist dismissing once the answer is in.
       async custom<T>(factory: (tui: any, theme: any, kb: any, done: (r: T) => void) => any) {
         customShown = true;
         let resolve!: (r: T) => void;
         const p = new Promise<T>((r) => {
           resolve = r;
         });
-        const comp = factory({}, fakeTheme, {}, resolve);
-        // Mimic the scientist dismissing once the answer is in.
-        Promise.resolve().then(() => comp.handleInput?.("\x1b")); // Esc
+        comp = factory(tuiSpy, fakeTheme, {}, resolve);
+        if (overrides.autoDismiss !== false) {
+          Promise.resolve().then(() => comp?.handleInput?.("\x1b")); // Esc
+        }
         return p;
       },
     },
@@ -220,6 +234,8 @@ function harness(
     notifies,
     run: async () => handler?.(overrides.args ?? "what is X?", ctx),
     wasShown: () => customShown,
+    renders: () => renders,
+    dismiss: () => comp?.handleInput?.("\x1b"),
   };
 }
 
@@ -237,6 +253,18 @@ test("NO-SESSION-WRITE: a full /aside run never writes to the session", async ()
   await h.run();
   assert.deepEqual(h.writes, { sendMessage: 0, sendUserMessage: 0, appendEntry: 0 });
   assert.equal(h.wasShown(), true);
+});
+
+test("repaints the overlay when the answer arrives (requestRender, not on next keystroke)", async () => {
+  // Hold the overlay open so the answer push runs while it is still visible.
+  const h = harness({ complete: async () => assistant("the answer", "stop"), autoDismiss: false });
+  berilAside(h.pi);
+  const runP = h.run();
+  // Let runAside resolve and the answer push (setAnswer + requestRender) run.
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(h.renders() >= 1, "the overlay requests a repaint when the answer lands");
+  h.dismiss(); // Esc — release the awaiting handler
+  await runP;
 });
 
 test("guard: headless (non-tui) /aside notifies and writes nothing", async () => {

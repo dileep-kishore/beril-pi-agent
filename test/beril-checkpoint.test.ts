@@ -91,11 +91,13 @@ test("rpc mode: degrades to single-select via ctx.ui.select", async () => {
   assert.equal((res.details as any).choice, "Adjust");
 });
 
-test("falls back to proceed (first option) in headless runs", async () => {
-  const { tools } = harness();
+test("falls back to proceed (first option) in headless runs (and records no decision on the bus)", async () => {
+  const { tools, emitted } = harness();
   const ctx = { mode: "print", hasUI: false, ui: {} };
   const res = await tools.request_checkpoint.execute("id", { title: "Continue?" }, undefined, undefined, ctx);
   assert.match((res.details as any).choice, /Approve and continue \(auto/);
+  // A headless auto-pick is not the scientist's decision: it must NOT broadcast.
+  assert.deepEqual(emitted, []);
 });
 
 test("notes when the scientist dismisses the overlay (and records no decision on the bus)", async () => {

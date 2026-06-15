@@ -55,6 +55,18 @@ test("applyToolStart marks earlier steps done (monotonic forward) and the owner 
   assert.equal(afterRun.steps[2].status, "pending", "hash is still pending");
 });
 
+test("applyToolStart never reopens a finished step when its tool re-runs (monotonic)", () => {
+  // analyze: scaffold(0) run(1) hash(2) promote(3). Advance past run, end it, then
+  // re-run notebook_run — the finished run step must NOT flip back to active.
+  let s = substepsForPhase("analyze");
+  s = applyToolStart(s, "notebook_run", {}); // run active, scaffold done
+  s = applyToolEnd(s, "notebook_run", false); // run done
+  s = applyToolStart(s, "notebook_hash", {}); // advance the rail past run
+  const afterReRun = applyToolStart(s, "notebook_run", {}); // re-run the finished step
+  assert.equal(afterReRun, s, "a re-run of a finished step is a no-op (no visual regression)");
+  assert.equal(afterReRun.steps[1].status, "done", "run stays done");
+});
+
 test("applyToolStart returns the SAME reference when nothing changes (no-op short-circuit)", () => {
   const start = substepsForPhase("analyze");
   // A tool that does not belong to this phase is a no-op.
