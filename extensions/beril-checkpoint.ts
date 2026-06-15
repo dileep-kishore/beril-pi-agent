@@ -1,6 +1,11 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { type CheckpointPick, makeCheckpointOverlay, normalizeOptions } from "../lib/ui/checkpoint-overlay.ts";
+import {
+  type CheckpointOpt,
+  type CheckpointPick,
+  makeCheckpointOverlay,
+  normalizeOptions,
+} from "../lib/ui/checkpoint-overlay.ts";
 import { checkpointCard } from "../lib/ui/checkpoint.ts";
 import { callLine, errorCard, toolErrorText } from "../lib/ui/science-cards.ts";
 
@@ -14,7 +19,6 @@ const CheckpointOption = Type.Object({
   rationale: Type.Optional(Type.String({ description: "One-line why-pick-this, shown dim under the label." })),
   preview: Type.Optional(Type.String({ description: "Longer markdown preview, shown in the pane below the list." })),
 });
-const CheckpointChoice = Type.Union([Type.String(), CheckpointOption]);
 
 /**
  * The science-checkpoint tool. Approval in this workbench is reserved for two
@@ -39,9 +43,9 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
         }),
       ),
       options: Type.Optional(
-        Type.Array(CheckpointChoice, {
+        Type.Array(CheckpointOption, {
           description:
-            "Choices to offer (default: approve / adjust / stop). Each may be a plain label or {label, rationale?, preview?}.",
+            "Choices to offer (default: approve / adjust / stop). Use {label, rationale?, preview?}. Legacy string options are accepted via argument preparation.",
         }),
       ),
       multi: Type.Optional(
@@ -50,6 +54,13 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
         }),
       ),
     }),
+    prepareArguments(args: unknown) {
+      const prepared = { ...(args as Record<string, unknown>) };
+      if (Array.isArray(prepared.options)) {
+        prepared.options = prepared.options.map((o) => (typeof o === "string" ? { label: o } : o));
+      }
+      return prepared as { title: string; summary?: string; options?: CheckpointOpt[]; multi?: boolean };
+    },
     async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
       const opts = normalizeOptions(params.options);
       const multi = params.multi === true;

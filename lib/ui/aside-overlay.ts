@@ -18,7 +18,10 @@ import { domainStyle } from "./palette.ts";
  */
 
 /** A footer line scientists can trust: this is not saved and the agent will not see it. */
-const FOOTER = "not saved to the conversation · the agent will not see this · Esc to dismiss";
+function footerText(): string {
+  const sep = ` ${glyph("bullet")} `;
+  return ["not saved to the conversation", "the agent will not see this", "Esc to dismiss"].join(sep);
+}
 
 export interface AsideController extends Component {
   setAnswer(answer: string): void;
@@ -85,13 +88,13 @@ export function makeAsideOverlay(
       const visible = all.length > maxVisible ? all.slice(scroll, scroll + maxVisible) : all;
       const more =
         all.length > maxVisible
-          ? [theme.fg("muted", `↕ ${scroll + 1}–${scroll + visible.length} of ${all.length}`)]
+          ? [theme.fg("muted", `scroll ${scroll + 1}-${scroll + visible.length} of ${all.length}`)]
           : [];
       const lines = frameCard(
         theme,
         {
           title: `${glyph("here")} aside`,
-          body: [banner, "", ...visible, ...more, "", theme.fg("dim", truncateToWidth(FOOTER, inner))],
+          body: [banner, "", ...visible, ...more, "", theme.fg("dim", truncateToWidth(footerText(), inner))],
           accentStyle: domainStyle(theme, "neutral"),
         },
         width,
