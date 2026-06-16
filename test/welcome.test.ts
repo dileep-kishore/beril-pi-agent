@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { BRANDS } from "../lib/ui/brand.ts";
 import { TIPS, type WelcomeTheme, pickTip, welcomePanel } from "../lib/ui/welcome.ts";
 
 const theme = {
@@ -10,6 +11,7 @@ const theme = {
 } as unknown as WelcomeTheme;
 
 const state = {
+  brand: BRANDS.beril,
   connection: "BERDL off-cluster",
   ready: true,
   researcher: "Dileep Kishore",
@@ -29,7 +31,7 @@ test("welcome panel is a frame whose every line is exactly `width` columns", () 
 
 test("welcome panel carries the identity, connection, arc, and tip", () => {
   const text = welcomePanel(theme, state, 80).join("\n");
-  assert.ok(text.includes("beril"), "brand in the title");
+  assert.ok(text.includes("BERIL"), "brand in the title/body");
   assert.ok(text.includes("Dileep Kishore"), "researcher");
   assert.ok(text.includes("BERDL off-cluster ✓"), "connection");
   assert.ok(text.includes("explore") && text.includes("analyze"), "the arc steps");

@@ -63,7 +63,7 @@ feasibility) → `/literature-review <topic>` → `/research-plan <project>` →
 `pitfall-capture`, `berdl-minio`. Invoke as `/skill:<name>` or let the model use
 them.
 
-**Prompts** (`prompts/`) — `/berdl-start` onboarding. **Themes** (`themes/`) — `beril`.
+**Prompts** (`prompts/`) — `/berdl-start` onboarding. **Themes** (`themes/`) — `beril` (BERIL branding) and `phenix` (PHENIX branding). BERDL labels are reserved for the connection/data-access layer.
 
 > Where each capability lives (skill vs extension vs sub-agent vs command),
 > including the unmigrated cloud skills, is recorded in
@@ -109,6 +109,7 @@ From the repo root:
 
 ```bash
 uv run beril start            # always launches Pi (beril is a Pi workbench)
+uv run beril start --theme phenix  # switch the project-local Pi theme/brand
 ```
 
 `beril start` refreshes your KBase token in `.env`, then execs **Pi** with this package and the

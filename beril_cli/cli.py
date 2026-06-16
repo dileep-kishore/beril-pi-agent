@@ -35,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="VERSION",
         help="Pin to a specific release tag (e.g. v0.3.4.5). Defaults to the latest tag.",
     )
+    start_parser.add_argument(
+        "--theme",
+        default=None,
+        metavar="THEME",
+        help="Set the Pi theme for this checkout (e.g. beril, phenix, dark, light, or a custom registered theme).",
+    )
 
     # env
     env_parser = sub.add_parser("env", help="Report BERDL environment readiness")
@@ -157,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_start(
             extra_args=remaining,
             version=args.version,
+            theme=args.theme,
         )
 
     if args.command == "env":
