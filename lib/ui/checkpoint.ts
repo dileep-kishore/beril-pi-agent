@@ -18,11 +18,18 @@ export interface CheckpointResult {
   title: string;
   summary?: string;
   choice: string;
+  /** The individual choices when more than one was selected (typed multi-select). */
+  choices?: string[];
 }
 
-/** A card recording a checkpoint question and the scientist's decision. */
+/** A card recording a checkpoint question and the scientist's decision(s). */
 export function checkpointCard(theme: Theme, d: CheckpointResult): Component {
-  const body = `${d.summary ? `${d.summary}\n\n` : ""}**Decision:** ${d.choice}`;
+  // One decision → a `**Decision:**` line; several (multi-select) → a `**Decisions:**` bullet list.
+  const decision =
+    d.choices && d.choices.length > 1
+      ? `**Decisions:**\n${d.choices.map((c) => `- ${c}`).join("\n")}`
+      : `**Decision:** ${d.choice}`;
+  const body = `${d.summary ? `${d.summary}\n\n` : ""}${decision}`;
   return markdownCard(theme, {
     title: `${GLYPH.checkpoint} Checkpoint · ${d.title}`,
     markdown: body,

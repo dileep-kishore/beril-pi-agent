@@ -6,6 +6,7 @@ Actions:
   approve <project> ...       Write the `approval` block (--orcid --report-hash --review --review-hash).
   marker <project> --kind ..  Write SUBMITTED.md or SUBMISSION_FAILED.md.
   current                     Emit {project, status} of the active project, or {} if none.
+  session-state <project>     Store (--set <json>) or read (--get) the research_state snapshot.
 """
 
 from __future__ import annotations
@@ -110,6 +111,35 @@ def run_lifecycle(args: argparse.Namespace) -> int:
         if args.action == "status":
             proj = load_project(project_dir)
             json.dump(proj, sys.stdout, default=str)
+            sys.stdout.write("\n")
+            return 0
+
+        if args.action == "session-state":
+            # Persist / read the small, tool-derived research-state snapshot the
+            # TS memory extension flushes before a context compaction. It is a
+            # non-authoritative annotation block — `save_project` appends it AFTER
+            # the canonical `_KEY_ORDER` keys (incl. any pre-existing `approval`),
+            # so it round-trips losslessly without disturbing lifecycle state.
+            proj = load_project(project_dir)  # no beril.yaml -> LifecycleError -> rc 2
+            if args.get_state:
+                json.dump(proj.get("research_state", {}), sys.stdout, default=str)
+                sys.stdout.write("\n")
+                return 0
+            if args.state_json is None:
+                print("session-state requires --set <json> or --get.", file=sys.stderr)
+                return 2
+            try:
+                block = json.loads(args.state_json)
+            except json.JSONDecodeError as exc:
+                print(f"invalid --set JSON: {exc}", file=sys.stderr)
+                return 2
+            if not isinstance(block, dict):
+                print("--set must be a JSON object.", file=sys.stderr)
+                return 2
+            block["updated_at"] = _now()  # server-stamped, not client-trusted
+            proj["research_state"] = block
+            save_project(project_dir, proj)
+            json.dump({"research_state": block}, sys.stdout, default=str)
             sys.stdout.write("\n")
             return 0
 

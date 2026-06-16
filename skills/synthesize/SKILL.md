@@ -7,7 +7,7 @@ description: Use when analysis notebooks for a BERDL project have been run and t
 
 Interpret analysis outputs for a BERDL project and draft the findings in `REPORT.md`. This skill holds the scientific judgment — how to read results, assess a hypothesis, compare against the literature, and structure the narrative. The mechanics of state changes, report hashing, and status bookkeeping are delegated to Pi tools and commands.
 
-Invoke via `/synthesize <project>`. The command resolves the project, sets it active, and asks you to move it to `analysis` when the report is complete; this skill supplies the interpretation.
+Invoke via `/synthesize <project>`. The command resolves the project, sets it active, and asks you to move it to `analysis` when the report is complete; this skill supplies the interpretation. Use `/whereami` to orient the scientist before interpreting and `/next` after the report/review seam.
 
 ## When to proceed (judgment, not bookkeeping)
 

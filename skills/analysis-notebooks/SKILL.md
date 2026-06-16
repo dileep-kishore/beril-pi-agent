@@ -5,6 +5,10 @@ description: Use when turning an approved BERDL research plan into analysis note
 
 # Analysis notebooks
 
+## Pi-native workflow surface
+
+Use `/whereami` before launching analysis and `/next` after the first-result checkpoint. This skill owns notebook-design judgment; `/analyze <project>` owns orchestration, while `notebook_scaffold`, `notebook_run`, `notebook_list`, and the HUD sub-step rail expose execution state in Pi.
+
 Notebooks are a BERDL project's primary audit trail: a human (and the reviewer)
 should be able to read them top-to-bottom and see exactly how each finding was
 produced. Do as much work as possible in notebooks rather than ad-hoc shell or

@@ -1,0 +1,61 @@
+import type { BerdlEnv } from "./readiness.ts";
+import { currentStep, nextAction } from "./research-steps.ts";
+import type { ResearchStateSnapshot } from "./session-state.ts";
+
+/** The deterministic workflow orientation shown by /whereami and /next. */
+export interface WorkflowView {
+  project?: string;
+  status?: string;
+  phase?: string;
+  next: string;
+  command: string;
+  claims?: { total: number; supported: number; refuted: number };
+  lastCheckpoint?: string;
+  env?: Pick<BerdlEnv, "location" | "ready">;
+  updatedAt?: string;
+}
+
+/** A concrete next command/action for the lifecycle state — no model guessing. */
+export function recommendedCommand(state?: string, project?: string): string {
+  const p = project ? ` ${project}` : " <project>";
+  switch (state) {
+    case "exploration":
+      return "use berdl_discover / berdl_peek / berdl_query, then /research-plan";
+    case "proposed":
+      return `/analyze${p}`;
+    case "active":
+      return `/analyze${p}`;
+    case "analysis":
+      return `/berdl-review${p}`;
+    case "reviewed":
+      return `/submit${p}`;
+    case "complete":
+      return "done — reopen intentionally before changing the project";
+    default:
+      return "/berdl-status, then explore data or start a project";
+  }
+}
+
+/** Shape the UI view from current lifecycle state + optional persisted research_state. */
+export function buildWorkflowView(
+  current: { project?: string; status?: string } | undefined,
+  researchState?: Partial<ResearchStateSnapshot>,
+  env?: BerdlEnv,
+): WorkflowView {
+  const project = current?.project || researchState?.project;
+  const status = current?.status || researchState?.phase;
+  return {
+    project,
+    status,
+    phase: status ? currentStep(status) : undefined,
+    next: nextAction(status ?? ""),
+    command: recommendedCommand(status, project),
+    claims: researchState?.claims,
+    lastCheckpoint: researchState?.lastCheckpoint,
+    env: env ? { location: env.location, ready: env.ready } : undefined,
+    updatedAt:
+      typeof (researchState as { updated_at?: unknown } | undefined)?.updated_at === "string"
+        ? (researchState as { updated_at?: string }).updated_at
+        : undefined,
+  };
+}

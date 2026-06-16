@@ -5,6 +5,10 @@ description: Use when turning a research question and explored data into a writt
 
 # Research plan
 
+## Pi-native workflow surface
+
+Use `/whereami` to orient the scientist before drafting and `/next` after the checkpoint if the next command is unclear. Keep deterministic mechanics in tools/commands: this skill supplies the scientific judgment for feasibility, hypotheses, and plan quality; `/research-plan <project>` starts the drafting flow, `research_plan` renders the artifact, `lifecycle_transition` moves state, and `request_checkpoint` records the decision seam.
+
 The research plan is the **contract** for what the analysis will do. It is
 written once the question is clear and the data has been explored, and it moves
 a project from `exploration` to `proposed`. Do not write or run notebooks yet —

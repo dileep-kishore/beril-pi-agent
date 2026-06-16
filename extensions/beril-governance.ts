@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type ClaimRow, parseClaimLedger, parseEvidence, tallyClaims } from "../lib/claim-ledger.ts";
+import { projectCompletions } from "../lib/project-completions.ts";
 import { requireReady } from "../lib/readiness.ts";
 import type { EvidenceView } from "../lib/science.ts";
 import { linesCard } from "../lib/ui/card.ts";
@@ -240,6 +241,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
 
   pi.registerCommand("synthesize", {
     description: "Synthesize results into REPORT.md for a project (delegates to the synthesize skill).",
+    getArgumentCompletions: projectCompletions,
     async handler(args: string, ctx: ExtensionCommandContext) {
       const project = args.trim();
       if (!project) {
@@ -256,6 +258,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
 
   pi.registerCommand("submit", {
     description: "Submit an approved project to the lakehouse (ORCID-gated, irreversible).",
+    getArgumentCompletions: projectCompletions,
     async handler(args: string, ctx: ExtensionCommandContext) {
       const project = args.trim();
       if (!project) {

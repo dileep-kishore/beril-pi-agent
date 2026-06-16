@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { Type } from "typebox";
 import { searchEuropePmc } from "../lib/europepmc.ts";
 import { type LitRecord, fetchAbstract, fetchArticle, searchPubmed } from "../lib/lit.ts";
+import { parallelMap } from "../lib/parallel-map.ts";
 import {
   abstractCard,
   articleCard,
@@ -18,6 +19,16 @@ import {
 
 /** Default model for query expansion when the session has none selected. */
 const DEFAULT_EXPANSION_MODEL = "claude-sonnet-4-5";
+
+/**
+ * Bounded worker counts for the two read-only literature fan-outs below. These
+ * are a small bounded socket count queued *above* the shared NCBI rate gate
+ * (`acquireSlot`) — NOT a wire-rate knob: the gate already paces the wire, so
+ * more workers only deepen the queue at the gate. Exported so tests can assert
+ * the bound holds.
+ */
+export const LIT_FETCH_CONCURRENCY = 6;
+export const LIT_VERIFY_CONCURRENCY = 6;
 
 /**
  * Injectable seam for {@link expandQueries}: lets tests substitute the model
@@ -327,11 +338,16 @@ export default function berilLiterature(pi: ExtensionAPI) {
     async execute(_id, params, signal, _onUpdate, ctx) {
       const max = params.max ?? 5;
       const records = await searchPubmed(params.hypothesis, max, signal);
-      const assessed: { record: LitRecord; abstract: string }[] = [];
-      for (const r of records) {
-        const abstract = r.pmid ? await fetchAbstract(r.pmid, signal).catch(() => "") : "";
-        assessed.push({ record: r, abstract });
-      }
+      // Fan the abstract fetches out with a bounded worker pool (above the shared
+      // NCBI gate); `settled[i]` aligns with `records[i]` by index, so iterate the
+      // same `records` array to keep the assessed corpus in input order.
+      const settled = await parallelMap(records, LIT_FETCH_CONCURRENCY, (r) =>
+        r.pmid ? fetchAbstract(r.pmid, signal).catch(() => "") : Promise.resolve(""),
+      );
+      const assessed = records.map((record, i) => ({
+        record,
+        abstract: settled[i].ok ? settled[i].value : "",
+      }));
       // The model assigns stance; on no model/auth, return NEI honestly.
       const stances = await assessStances(
         ctx as Pick<ExtensionCommandContext, "model" | "modelRegistry" | "signal">,
@@ -372,22 +388,18 @@ export default function berilLiterature(pi: ExtensionAPI) {
       const records = dedupe(batches.flat());
       // Verify-on-write: resolve each PMID at PubMed (paced through the shared gate)
       // and drop any that don't resolve — an unresolvable PMID is a probable
-      // fabrication and must not reach references.md.
-      const checks = await Promise.all(
-        records.map((r) => {
-          if (r.pmid) {
-            return resolveCitation(r.pmid, ctx.signal).catch(
-              (): CitationCheck => ({ pmid: r.pmid as string, ok: false, reason: "check errored" }),
-            );
-          }
-          // Europe-PMC-only records have a DOI but no PMID — verify the DOI resolves.
-          if (r.doi) {
-            return resolveDoi(r.doi, ctx.signal).catch(
-              (): CitationCheck => ({ pmid: "", ok: false, reason: "DOI check errored" }),
-            );
-          }
-          return Promise.resolve<CitationCheck>({ pmid: "", ok: true });
-        }),
+      // fabrication and must not reach references.md. Fan out with a bounded worker
+      // pool; `settled[i]` aligns with `records[i]` by index.
+      const settled = await parallelMap(records, LIT_VERIFY_CONCURRENCY, (r) => {
+        if (r.pmid) return resolveCitation(r.pmid, ctx.signal);
+        // Europe-PMC-only records have a DOI but no PMID — verify the DOI resolves.
+        if (r.doi) return resolveDoi(r.doi, ctx.signal);
+        return Promise.resolve<CitationCheck>({ pmid: "", ok: true });
+      });
+      const checks = records.map((r, i) =>
+        settled[i].ok
+          ? settled[i].value
+          : ({ pmid: r.pmid ?? "", ok: false, reason: "check errored" } as CitationCheck),
       );
       const verified = records.filter((_, i) => checks[i].ok);
       const dropped = checks.filter((c) => !c.ok);

@@ -7,7 +7,7 @@ description: Use when reviewing a BERDL analysis project or research plan and yo
 
 Independent, constructive assessment of a BERDL (BER Data Lakehouse) analysis project or research plan. The reviewer is a *separate* opinion from the author: surface strengths and concrete weaknesses, reference exact files/cells/queries, and never fabricate issues — only report what is verifiable from the files and live discovery. An AI-generated review is input to the author's judgment, not a definitive verdict.
 
-Execution is handled by the `/berdl-review <project> [--plan] [--model <id>]` command. It runs an isolated, read-only review subagent (Opus 4.8 by default, overridable with `--model`), then numbers the output file, embeds the report-hash footer, runs the TOCTOU/hash checks, and advances lifecycle status. This skill is the *judgment*: what a good review looks like, the rubrics, and how to act on the result.
+Execution is handled by the `/berdl-review <project> [--plan] [--model <id>]` command. It runs an isolated, read-only review subagent (Opus 4.8 by default, overridable with `--model`), then numbers the output file, embeds the report-hash footer, runs the TOCTOU/hash checks, and advances lifecycle status. This skill is the *judgment*: what a good review looks like, the rubrics, and how to act on the result. Use `/whereami` before reviewing to confirm the lifecycle state and `/next` after review to see whether submit or revision is next.
 
 ## When to use which review type
 

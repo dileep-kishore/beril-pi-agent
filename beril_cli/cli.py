@@ -104,7 +104,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # lifecycle
     lifecycle_parser = sub.add_parser("lifecycle", help="Command the project lifecycle state machine")
-    lifecycle_parser.add_argument("action", choices=["status", "set", "approve", "marker", "current"])
+    lifecycle_parser.add_argument(
+        "action", choices=["status", "set", "approve", "marker", "current", "session-state"]
+    )
     lifecycle_parser.add_argument(
         "project", nargs="?", default=None, help="Project directory name under projects/ (omit for 'current')"
     )
@@ -114,6 +116,12 @@ def main(argv: list[str] | None = None) -> int:
     lifecycle_parser.add_argument("--review", default=None)
     lifecycle_parser.add_argument("--review-hash", dest="review_hash", default=None)
     lifecycle_parser.add_argument("--kind", choices=["submitted", "failed"], default=None)
+    lifecycle_parser.add_argument(
+        "--set", dest="state_json", default=None, help="JSON object to store as research_state (for 'session-state')"
+    )
+    lifecycle_parser.add_argument(
+        "--get", dest="get_state", action="store_true", default=False, help="Emit research_state (for 'session-state')"
+    )
 
     # user
     user_parser = sub.add_parser(

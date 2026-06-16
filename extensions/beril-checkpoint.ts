@@ -1,7 +1,24 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { DEFAULT_CHECKPOINT_OPTIONS, checkpointCard } from "../lib/ui/checkpoint.ts";
+import {
+  type CheckpointOpt,
+  type CheckpointPick,
+  makeCheckpointOverlay,
+  normalizeOptions,
+} from "../lib/ui/checkpoint-overlay.ts";
+import { checkpointCard } from "../lib/ui/checkpoint.ts";
 import { callLine, errorCard, toolErrorText } from "../lib/ui/science-cards.ts";
+
+/**
+ * A typed checkpoint option: a short label, an optional one-line rationale, and an
+ * optional longer preview. Plain strings are accepted too (coerced to `{ label }`),
+ * so existing callers that pass `string[]` keep working.
+ */
+const CheckpointOption = Type.Object({
+  label: Type.String({ description: "Short choice label shown in the list." }),
+  rationale: Type.Optional(Type.String({ description: "One-line why-pick-this, shown dim under the label." })),
+  preview: Type.Optional(Type.String({ description: "Longer markdown preview, shown in the pane below the list." })),
+});
 
 /**
  * The science-checkpoint tool. Approval in this workbench is reserved for two
@@ -26,21 +43,54 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
         }),
       ),
       options: Type.Optional(
-        Type.Array(Type.String(), { description: "Choices to offer (default: approve / adjust / stop)." }),
+        Type.Array(CheckpointOption, {
+          description:
+            "Choices to offer (default: approve / adjust / stop). Use {label, rationale?, preview?}. Legacy string options are accepted via argument preparation.",
+        }),
+      ),
+      multi: Type.Optional(
+        Type.Boolean({
+          description: "Allow the scientist to select more than one option (space toggles, enter confirms).",
+        }),
       ),
     }),
-    async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
-      const options = params.options?.length ? params.options : DEFAULT_CHECKPOINT_OPTIONS;
-      let choice: string;
-      if (ctx.hasUI) {
-        const picked = await ctx.ui.select(params.title, options);
-        choice = picked ?? "(no choice — the scientist dismissed the prompt; wait for their direction)";
-      } else {
-        choice = `${options[0]} (auto: no interactive UI)`;
+    prepareArguments(args: unknown) {
+      const prepared = { ...(args as Record<string, unknown>) };
+      if (Array.isArray(prepared.options)) {
+        prepared.options = prepared.options.map((o) => (typeof o === "string" ? { label: o } : o));
       }
+      return prepared as { title: string; summary?: string; options?: CheckpointOpt[]; multi?: boolean };
+    },
+    async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
+      const opts = normalizeOptions(params.options);
+      const multi = params.multi === true;
+      let labels: string[];
+      if (ctx.mode === "tui") {
+        // Interactive TUI: the bespoke focusable overlay (rationale + preview, single/multi).
+        const pick = await ctx.ui.custom<CheckpointPick>(
+          makeCheckpointOverlay(opts, multi, params.title, params.summary),
+          { overlay: true, overlayOptions: { width: "70%", anchor: "center", maxHeight: "80%" } },
+        );
+        labels = pick.labels;
+      } else if (ctx.hasUI) {
+        // RPC and other UI-but-not-TUI surfaces have no `custom`; degrade to single-select.
+        const picked = await ctx.ui.select(
+          params.title,
+          opts.map((o) => o.label),
+        );
+        labels = picked ? [picked] : [];
+      } else {
+        // Headless: no one to ask — proceed with the first option and say so (unchanged contract).
+        labels = [`${opts[0].label} (auto: no interactive UI)`];
+      }
+      const choice = labels.join(", ") || "(no choice — the scientist dismissed the prompt; wait for their direction)";
+      // Record only a real human decision on the cross-session bus: skip both a
+      // dismissed prompt (labels === []) and a headless auto-pick (!hasUI) — neither
+      // is the scientist's direction, so neither should become the "last checkpoint".
+      if (ctx.hasUI && labels.length) pi.events.emit("beril:checkpoint", { title: params.title, choice });
       return {
         content: [{ type: "text", text: `Scientist chose: ${choice}` }],
-        details: { title: params.title, summary: params.summary, choice },
+        details: { title: params.title, summary: params.summary, choice, choices: labels },
       };
     },
     renderCall(args, theme) {
@@ -48,7 +98,10 @@ export default function berilCheckpoint(pi: ExtensionAPI) {
     },
     renderResult(result, _opts, theme, context) {
       if (context?.isError) return errorCard(theme, toolErrorText(result));
-      return checkpointCard(theme, result.details as { title: string; summary?: string; choice: string });
+      return checkpointCard(
+        theme,
+        result.details as { title: string; summary?: string; choice: string; choices?: string[] },
+      );
     },
   });
 }

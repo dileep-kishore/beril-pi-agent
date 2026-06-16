@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { berilExec } from "../lib/beril-exec.ts";
+import { projectCompletions } from "../lib/project-completions.ts";
 import { mergePanelReviews, runReviewPanel, runReviewSubagent } from "../lib/review-agent.ts";
 import { appendReportHashFooter, nextReviewPath, sha256File } from "../lib/review-finalize.ts";
 import { PLAN_REVIEW_RUBRIC, PROJECT_REVIEW_RUBRIC } from "../lib/review-rubric.ts";
@@ -47,6 +48,7 @@ function parseArgs(raw: string): ParsedArgs | undefined {
 export default function berilReview(pi: ExtensionAPI) {
   pi.registerCommand("berdl-review", {
     description: "Run an independent in-process review of a project (or its plan), then mark it reviewed.",
+    getArgumentCompletions: projectCompletions,
     async handler(args: string, ctx: ExtensionCommandContext) {
       const parsed = parseArgs(args);
       if (!parsed) {

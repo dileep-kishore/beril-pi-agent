@@ -10,6 +10,7 @@ import { currentStep, nextAction, sessionName } from "../lib/research-steps.ts";
 import { type FooterData, footerLines } from "../lib/ui/footer.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import { callLine, envCard, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
+import { applyToolEnd, applyToolStart, substepsForPhase } from "../lib/ui/substeps.ts";
 import { TIPS, type WelcomeState, pickTip, welcomePanel } from "../lib/ui/welcome.ts";
 import { type HudState, workflowHud } from "../lib/ui/workflow-hud.ts";
 
@@ -125,6 +126,8 @@ export default function berilEnv(pi: ExtensionAPI) {
     hud.project = project;
     hud.state = state;
     hud.submitted = false;
+    // A phase change resets the within-phase sub-step overlay to a fresh manifest.
+    hud.substeps = substepsForPhase(currentStep(state));
     renderHud();
     applySessionName();
     announcePhase(state);
@@ -156,6 +159,25 @@ export default function berilEnv(pi: ExtensionAPI) {
     const { total, supported, refuted } = data as ClaimsEvent;
     claims = { total, supported, refuted };
     pushFooterRender();
+  });
+
+  // Animate the within-phase sub-step overlay from observed tool runs (TUI only).
+  // `applyTool*` return the SAME reference when nothing changed; the referential-
+  // equality short-circuit makes a tool call that doesn't move a step a true no-op
+  // (no repaint), so the HUD only re-renders when the overlay actually advances.
+  pi.on("tool_execution_start", (event) => {
+    if (!uiCtx?.hasUI || !hud.substeps) return;
+    const next = applyToolStart(hud.substeps, event.toolName, event.args);
+    if (next === hud.substeps) return;
+    hud.substeps = next;
+    renderHud();
+  });
+  pi.on("tool_execution_end", (event) => {
+    if (!uiCtx?.hasUI || !hud.substeps) return;
+    const next = applyToolEnd(hud.substeps, event.toolName, event.isError);
+    if (next === hud.substeps) return;
+    hud.substeps = next;
+    renderHud();
   });
 
   /** Reflect a freshly-resolved env in the connection chip + HUD + footer. */
@@ -219,6 +241,7 @@ export default function berilEnv(pi: ExtensionAPI) {
       if (!cur.project) return;
       hud.project = cur.project;
       if (cur.status) hud.state = cur.status;
+      hud.substeps = substepsForPhase(cur.status ? currentStep(cur.status) : undefined);
       renderHud();
       applySessionName();
       claims = await readClaimTally(ctx.cwd, cur.project);
