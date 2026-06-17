@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
-import { capabilityCatalogMarkdown, matchCapability, runtimeSurfaceSummary } from "../lib/capabilities.ts";
+import {
+  CAPABILITIES,
+  capabilityCatalogMarkdown,
+  matchCapability,
+  runtimeSurfaceSummary,
+} from "../lib/capabilities.ts";
 
 test("capabilityCatalogMarkdown groups skills by scientist intent", () => {
   const md = capabilityCatalogMarkdown({ commandCount: 12, toolCount: 18 });
@@ -26,4 +33,14 @@ test("runtimeSurfaceSummary counts runtime commands and tools defensively", () =
     [{ name: "berdl_query" }, { name: "claim_state" }, { name: "science_memory" }],
   );
   assert.deepEqual(summary, { commandCount: 2, toolCount: 3 });
+});
+
+test("every advertised capability skill is installed", () => {
+  for (const cap of CAPABILITIES) {
+    assert.equal(
+      existsSync(join(process.cwd(), "skills", cap.skill, "SKILL.md")),
+      true,
+      `${cap.id} advertises missing skill ${cap.skill}`,
+    );
+  }
 });

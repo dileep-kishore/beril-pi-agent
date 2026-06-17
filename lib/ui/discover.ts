@@ -42,6 +42,7 @@ function isScoped(snap: DiscoverSnapshot): boolean {
 }
 
 function dbName(c: Collection): string {
+  if (c.name && c.id && c.name !== c.id) return `${c.name} (${c.id})`;
   return c.name || c.id || "(unnamed)";
 }
 
@@ -50,11 +51,21 @@ function fmtRows(n: number | null | undefined): string {
   return n < 1000 ? `${n} rows` : `${(n / 1000).toFixed(1)}k rows`;
 }
 
+function scopedCollection(snap: DiscoverSnapshot): Collection | undefined {
+  const database = snap.scope?.database;
+  if (!database) return undefined;
+  for (const tenant of snap.tenants ?? []) {
+    const found = (tenant.collections ?? []).find((c) => c.id === database || c.name === database);
+    if (found) return found;
+  }
+  return snap.tenants?.[0]?.collections?.[0];
+}
+
 /** A one-line title summarising the snapshot, for the card header. */
 export function discoverTitle(snap: DiscoverSnapshot): string {
   const tenants = snap.tenants ?? [];
   if (isScoped(snap)) {
-    const tables = tenants[0]?.collections?.[0]?.tables ?? [];
+    const tables = scopedCollection(snap)?.tables ?? [];
     return `Tables in ${snap.scope?.database} · ${tables.length}`;
   }
   const dbs = tenants.reduce((n, t) => n + (t.collections?.length ?? 0), 0);
@@ -74,7 +85,7 @@ export function discoverSummary(snap: DiscoverSnapshot): string {
   const head = discoverTitle(snap);
 
   if (isScoped(snap)) {
-    const tables = tenants[0]?.collections?.[0]?.tables ?? [];
+    const tables = scopedCollection(snap)?.tables ?? [];
     if (!tables.length) return `${head}\n(no tables)`;
     const rows = tables.map((t) => {
       const count = t.row_count != null ? ` (${fmtRows(t.row_count)})` : "";
@@ -97,7 +108,7 @@ export function discoverLines(theme: DiscoverTheme, snap: DiscoverSnapshot): str
   const tenants = snap.tenants ?? [];
 
   if (isScoped(snap)) {
-    const tables = tenants[0]?.collections?.[0]?.tables ?? [];
+    const tables = scopedCollection(snap)?.tables ?? [];
     if (!tables.length) return [theme.fg("muted", "(no tables)")];
     return tables.map((t) => {
       const name = theme.fg("text", t.name || "(unnamed)");
