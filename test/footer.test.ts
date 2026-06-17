@@ -7,6 +7,7 @@ import { type FooterData, type FooterTheme, footerLines } from "../lib/ui/footer
 const theme: FooterTheme = { fg: (_color, text) => text };
 
 const full: FooterData = {
+  brand: "BERIL",
   connection: "BERDL off-cluster",
   ready: true,
   cwd: "beril-pi-agent",
@@ -23,7 +24,8 @@ test("footer is a single chevron-grouped line carrying every segment", () => {
   const lines = footerLines(theme, full, 160);
   assert.equal(lines.length, 1, "one statusline");
   const line = lines[0];
-  assert.ok(line.includes("BERDL off-cluster ✓"), "connection + ok glyph");
+  assert.ok(line.includes("BERIL"), "product brand");
+  assert.ok(line.includes("BERDL off-cluster ✓"), "BERDL connection layer + ok glyph");
   assert.ok(line.includes("beril-pi-agent (main)"), "working dir + git branch");
   assert.ok(line.includes("◆ microbial-discovery"), "project");
   assert.ok(line.includes("▸ analyze"), "phase");

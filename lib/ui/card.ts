@@ -29,7 +29,7 @@ const stateAccent: Record<CardState, ThemeColor> = {
 };
 
 const MIN_WIDTH = 12;
-const RESET = "\x1b[0m";
+const RESET_FG = "\x1b[39m";
 
 /** Theme surface a card needs — a `Theme` satisfies it; tests pass a fake. */
 export type CardTheme = Pick<Theme, "fg" | "bold">;
@@ -125,7 +125,7 @@ export function frameCard(theme: CardTheme, opts: CardOptions, width: number): s
   }
 
   const bar = border("│");
-  const bodyLine = (line: string): string => `${bar} ${padTo(line, inner)}${RESET} ${bar}`;
+  const bodyLine = (line: string): string => `${bar} ${padTo(line, inner)}${RESET_FG} ${bar}`;
   const rows = body.map(bodyLine);
 
   for (const section of opts.sections ?? []) {

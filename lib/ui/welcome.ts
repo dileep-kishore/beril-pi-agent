@@ -1,4 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { Brand } from "./brand.ts";
 import { frameCard } from "./card.ts";
 import { GLYPH } from "./glyphs.ts";
 import { stepRail } from "./step-rail.ts";
@@ -15,6 +16,8 @@ import { stepRail } from "./step-rail.ts";
 export type WelcomeTheme = Theme;
 
 export interface WelcomeState {
+  /** Product/skin brand. BERDL remains the data connection layer. */
+  brand?: Brand;
   /** Compact connection label without a glyph, e.g. "BERDL off-cluster". */
   connection?: string;
   ready?: boolean;
@@ -58,11 +61,19 @@ export function welcomePanel(theme: WelcomeTheme, s: WelcomeState, width: number
           : theme.fg("warning", `  ${GLYPH.bullet}  ORCID —`)
       }`
     : theme.fg("muted", "run `beril setup` to set your identity");
+  const brand = s.brand;
   const start = `${theme.fg("accent", "/berdl-start")}${theme.fg("dim", `  ${GLYPH.bullet}  or ask a research question`)}`;
   const tip = theme.fg("dim", s.tip ?? pickTip(0));
 
   const body = [
     "",
+    row(
+      theme,
+      "Brand",
+      brand
+        ? `${theme.fg("accent", brand.name)} ${theme.fg("dim", `· ${brand.subtitle}`)}`
+        : theme.fg("accent", "BERIL"),
+    ),
     row(theme, "Connection", conn),
     row(theme, "Researcher", who),
     "",
@@ -72,5 +83,6 @@ export function welcomePanel(theme: WelcomeTheme, s: WelcomeState, width: number
     row(theme, "Tip", tip),
     "",
   ];
-  return frameCard(theme, { title: "beril · BERDL research co-scientist", body }, width);
+  const title = brand ? `${brand.name} · ${brand.subtitle}` : "BERIL · research co-scientist";
+  return frameCard(theme, { title, body }, width);
 }

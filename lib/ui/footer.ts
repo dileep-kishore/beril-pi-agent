@@ -24,6 +24,8 @@ import { GLYPH } from "./glyphs.ts";
 export type FooterTheme = Pick<Theme, "fg">;
 
 export interface FooterData {
+  /** Product/skin brand, e.g. BERIL or PHENIX. BERDL is only the connection layer. */
+  brand?: string;
   /** Compact connection label without a glyph, e.g. "BERDL off-cluster". */
   connection?: string;
   ready?: boolean;
@@ -85,6 +87,7 @@ export function footerLines(theme: FooterTheme, d: FooterData, width: number): s
   if (d.phase) where.push(theme.fg("accent", `${GLYPH.here} ${d.phase}`));
 
   const groups: { text: string; keep: boolean }[] = [];
+  if (d.brand) groups.push({ text: theme.fg("accent", d.brand), keep: true });
   if (d.connection) groups.push({ text: connectionChip(theme, d.connection, d.ready ?? false), keep: true });
   if (d.cwd) groups.push({ text: locationSegment(theme, d.cwd, d.branch), keep: false });
   if (where.length) groups.push({ text: where.join(" "), keep: true });

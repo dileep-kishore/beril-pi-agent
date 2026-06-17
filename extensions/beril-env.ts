@@ -7,6 +7,7 @@ import { berilExec } from "../lib/beril-exec.ts";
 import { type ClaimTally, parseClaimLedger, tallyClaims } from "../lib/claim-ledger.ts";
 import { type BerdlEnv, onEnvChange, setCachedEnv } from "../lib/readiness.ts";
 import { currentStep, nextAction, sessionName } from "../lib/research-steps.ts";
+import { type Brand, brandForTheme } from "../lib/ui/brand.ts";
 import { type FooterData, footerLines } from "../lib/ui/footer.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import { callLine, envCard, errorCard, partialLine, toolErrorText } from "../lib/ui/science-cards.ts";
@@ -61,6 +62,8 @@ export default function berilEnv(pi: ExtensionAPI) {
   // The TUI handle from the footer factory — lets async state changes repaint the
   // statusline (the footer reads `hud`/`uiCtx` live on each render).
   let tuiHandle: { requestRender(): void } | undefined;
+  // Product/skin brand for copy and statusline. BERDL remains the connection layer.
+  let brand: Brand = brandForTheme(process.env.BERIL_THEME);
   // Researcher identity for the welcome panel (best-effort; may be incomplete).
   let identity: { name?: string; orcid?: string } | undefined;
   // Whether the welcome header is currently shown (cleared on first input).
@@ -276,6 +279,7 @@ export default function berilEnv(pi: ExtensionAPI) {
           // getGitBranch() → "detached" on a pinned release; show only a real branch.
           const branch = footerData.getGitBranch();
           const data: FooterData = {
+            brand: brand.name,
             connection: hud.location,
             ready: hud.ready,
             cwd: uiCtx?.cwd ? basename(uiCtx.cwd) : undefined,
@@ -302,6 +306,7 @@ export default function berilEnv(pi: ExtensionAPI) {
       invalidate() {},
       render(width: number): string[] {
         const state: WelcomeState = {
+          brand,
           connection: hud.location,
           ready: hud.ready,
           researcher: identity?.name,
@@ -375,6 +380,7 @@ export default function berilEnv(pi: ExtensionAPI) {
 
   pi.on("session_start", async (event, ctx) => {
     uiCtx = ctx;
+    brand = brandForTheme(process.env.BERIL_THEME);
     await refreshStatus(ctx);
     identity = await fetchIdentity();
     // Seed the active project's stage + claim tally so the arc + claims show on a

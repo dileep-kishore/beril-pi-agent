@@ -96,3 +96,25 @@ def test_start_injects_continue_into_execvp(monkeypatch, tmp_path):
     monkeypatch.setattr(start.os, "execvp", lambda binary, argv: captured.setdefault("argv", argv))
     start.run_start(extra_args=["explore the data"])
     assert captured["argv"] == ["pi", "--continue", "explore the data"]
+
+
+def test_start_theme_flag_sets_theme_and_brand_env(monkeypatch, tmp_path):
+    _stub_launch(monkeypatch, tmp_path)
+    monkeypatch.setattr(start, "_checkout_release", lambda root, v: 0)
+    calls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(start, "_set_theme", lambda root, theme, *, force=False: calls.append((theme, force)))
+    monkeypatch.setattr(start.os, "execvp", lambda binary, argv: None)
+    start.run_start(extra_args=[], theme="phenix")
+    assert calls == [("phenix", True)]
+    assert start.os.environ["BERIL_THEME"] == "phenix"
+
+
+def test_start_theme_env_sets_theme_when_flag_absent(monkeypatch, tmp_path):
+    _stub_launch(monkeypatch, tmp_path)
+    monkeypatch.setattr(start, "_checkout_release", lambda root, v: 0)
+    monkeypatch.setenv("BERIL_THEME", "phenix")
+    calls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(start, "_set_theme", lambda root, theme, *, force=False: calls.append((theme, force)))
+    monkeypatch.setattr(start.os, "execvp", lambda binary, argv: None)
+    start.run_start(extra_args=[])
+    assert calls == [("phenix", True)]

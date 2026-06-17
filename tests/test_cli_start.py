@@ -310,6 +310,21 @@ def test_ensure_default_theme_respects_an_existing_choice(tmp_path: Path) -> Non
     assert json.loads(settings.read_text())["theme"] == "dark", "an explicit theme is never overridden"
 
 
+def test_set_theme_force_overwrites_existing_choice(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"theme": "dark", "packages": [".."]}))
+    start._set_theme(tmp_path, "phenix", force=True)
+    assert json.loads(settings.read_text()) == {"theme": "phenix", "packages": [".."]}
+
+
+def test_read_pi_theme_returns_existing_choice(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"theme": "phenix"}))
+    assert start._read_pi_theme(tmp_path) == "phenix"
+
+
 def test_ensure_default_theme_leaves_malformed_settings_untouched(tmp_path: Path) -> None:
     settings = tmp_path / ".pi" / "settings.json"
     settings.parent.mkdir(parents=True)

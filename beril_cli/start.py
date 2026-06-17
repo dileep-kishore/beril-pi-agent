@@ -57,6 +57,45 @@ def _sync_auth_token(env_path: Path) -> None:
         print("Refreshed KBASE_AUTH_TOKEN in .env")
 
 
+def _set_theme(repo_root: Path, theme: str, *, force: bool = False) -> None:
+    """Set Pi's active project theme in `.pi/settings.json`.
+
+    By default this provisions a first-launch default without clobbering a user
+    choice. With ``force=True`` (from `beril start --theme`), the user is making
+    an explicit new choice, so overwrite the theme key while preserving the rest
+    of the local settings file.
+    """
+    settings_path = repo_root / ".pi" / "settings.json"
+    try:
+        data = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        if not isinstance(data, dict):
+            return
+        if data.get("theme") == theme:
+            return
+        if data.get("theme") and not force:
+            return
+        data["theme"] = theme
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+        action = "Set" if force else "Set the default"
+        print(f"{action} theme to '{theme}' in .pi/settings.json")
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Warning: could not set the theme: {exc}", file=sys.stderr)
+
+
+def _read_pi_theme(repo_root: Path) -> str | None:
+    """Read the active project-local Pi theme, if present."""
+    settings_path = repo_root / ".pi" / "settings.json"
+    try:
+        data = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        if not isinstance(data, dict):
+            return None
+        theme = data.get("theme")
+        return theme if isinstance(theme, str) and theme.strip() else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _ensure_default_theme(repo_root: Path, theme: str = "beril") -> None:
     """Make the bundled `beril` theme the default look on first launch.
 
@@ -68,17 +107,7 @@ def _ensure_default_theme(repo_root: Path, theme: str = "beril") -> None:
     setting `theme` only when the user hasn't chosen one, so an explicit pick is
     never overridden. Best-effort: a malformed settings file is left untouched.
     """
-    settings_path = repo_root / ".pi" / "settings.json"
-    try:
-        data = json.loads(settings_path.read_text()) if settings_path.exists() else {}
-        if not isinstance(data, dict) or data.get("theme"):
-            return  # unreadable shape, or the user already chose a theme
-        data["theme"] = theme
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        settings_path.write_text(json.dumps(data, indent=2) + "\n")
-        print(f"Set the default theme to '{theme}' in .pi/settings.json")
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"Warning: could not set the default theme: {exc}", file=sys.stderr)
+    _set_theme(repo_root, theme, force=False)
 
 
 def _github_repo_slug(repo_root: Path) -> str | None:
@@ -279,6 +308,7 @@ def _pull_latest(repo_root: Path, branch: str) -> int:
 def run_start(
     extra_args: list[str] | None = None,
     version: str | None = None,
+    theme: str | None = None,
 ) -> int:
     """Launch the Pi coding agent from the repo root.
 
@@ -319,8 +349,16 @@ def run_start(
     # Refresh KBASE_AUTH_TOKEN in .env from live environment (tokens expire)
     _sync_auth_token(repo_root / ".env")
 
-    # Make the bundled beril theme the default look (only if no theme is set yet).
-    _ensure_default_theme(repo_root)
+    # Make the bundled beril theme the default look, unless the user explicitly
+    # selects another registered/built-in Pi theme. BERIL_THEME is also exported
+    # so the extensions can switch branding (e.g. PHENIX) at startup.
+    selected_theme = theme or _read_env_setting(repo_root, "BERIL_THEME", "")
+    if selected_theme:
+        _set_theme(repo_root, selected_theme, force=True)
+        os.environ["BERIL_THEME"] = selected_theme
+    else:
+        _ensure_default_theme(repo_root)
+        os.environ.setdefault("BERIL_THEME", _read_pi_theme(repo_root) or "beril")
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)
