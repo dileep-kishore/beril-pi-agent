@@ -4,9 +4,12 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { berilExec } from "../lib/beril-exec.ts";
 import { projectCompletions } from "../lib/project-completions.ts";
+import { summarizeRefutationChecks } from "../lib/refutation.ts";
 import { mergePanelReviews, runReviewPanel, runReviewSubagent } from "../lib/review-agent.ts";
 import { appendReportHashFooter, nextReviewPath, sha256File } from "../lib/review-finalize.ts";
-import { PLAN_REVIEW_RUBRIC, PROJECT_REVIEW_RUBRIC } from "../lib/review-rubric.ts";
+import { PLAN_REVIEW_RUBRIC, PROJECT_REVIEW_RUBRIC, REFUTATION_RUBRIC } from "../lib/review-rubric.ts";
+import { GLYPH } from "../lib/ui/glyphs.ts";
+import { redTeamCard } from "../lib/ui/science-cards.ts";
 
 /** Project lifecycle states that permit a (post-synthesis) project review. */
 const REVIEWABLE_STATES = new Set(["analysis", "reviewed", "complete"]);
@@ -18,6 +21,11 @@ interface ParsedArgs {
   project: string;
   plan: boolean;
   panel: boolean;
+  model?: string;
+}
+
+export interface RefuteArgs {
+  project: string;
   model?: string;
 }
 
@@ -38,6 +46,18 @@ function parseArgs(raw: string): ParsedArgs | undefined {
   return project ? { project, plan, panel, model } : undefined;
 }
 
+/** Parse `<project> [--model <id>]`. */
+export function parseRefuteArgs(raw: string): RefuteArgs | undefined {
+  const parts = raw.trim().split(/\s+/).filter(Boolean);
+  let project: string | undefined;
+  let model: string | undefined;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === "--model") model = parts[++i];
+    else if (!project) project = parts[i];
+  }
+  return project ? { project, model } : undefined;
+}
+
 /**
  * `/berdl-review <project> [--plan] [--model <id>]` — run an isolated, read-only
  * in-process review subagent (Opus 4.8, overridable) against the project, then
@@ -46,6 +66,60 @@ function parseArgs(raw: string): ParsedArgs | undefined {
  * advance the lifecycle to `reviewed`; plan reviews write the text verbatim.
  */
 export default function berilReview(pi: ExtensionAPI) {
+  pi.registerMessageRenderer?.<{ project: string; surviving: string[]; path: string }>(
+    "beril-refutation",
+    (message, _opts, theme) =>
+      redTeamCard(theme, {
+        project: message.details?.project ?? "project",
+        surviving: message.details?.surviving ?? [],
+        path: message.details?.path ?? "REFUTATION.md",
+      }),
+  );
+
+  pi.registerCommand("berdl-refute", {
+    description: "Actively try to refute a project's headline findings (red-team pass), then write REFUTATION_N.md.",
+    getArgumentCompletions: projectCompletions,
+    async handler(args: string, ctx: ExtensionCommandContext) {
+      const parsed = parseRefuteArgs(args);
+      if (!parsed) {
+        if (ctx.hasUI) ctx.ui.notify("Usage: /berdl-refute <project> [--model <id>]", "warning");
+        return;
+      }
+      if (!ctx.isIdle()) {
+        if (ctx.hasUI) ctx.ui.notify("Agent is busy — wait for the current turn to finish.", "warning");
+        return;
+      }
+      const projectDir = join(ctx.cwd, "projects", parsed.project);
+      if (!existsSync(join(projectDir, "REPORT.md"))) {
+        if (ctx.hasUI) ctx.ui.notify(`REPORT.md not found — run /synthesize first for "${parsed.project}".`, "error");
+        return;
+      }
+      const task = `Red-team the report for project "${parsed.project}" at ${projectDir} against the rubric. Try to refute its Key Findings. Output the complete refutation markdown.`;
+      const subagent = (ctx as { __reviewSubagent?: ReviewSubagent }).__reviewSubagent ?? runReviewSubagent;
+      const text = await subagent(ctx, { projectDir, rubric: REFUTATION_RUBRIC, task, modelOverride: parsed.model });
+      if (!text.trim()) {
+        if (ctx.hasUI) ctx.ui.notify("Refutation pass returned no output — nothing written.", "error");
+        return;
+      }
+      const path = nextReviewPath(projectDir, "REFUTATION");
+      await writeFile(path, text, "utf8");
+      const surviving = summarizeRefutationChecks(text);
+      pi.sendMessage(
+        {
+          customType: "beril-refutation",
+          content: `Red-team pass for ${parsed.project}: ${surviving.length} surviving check(s).`,
+          display: true,
+          details: { project: parsed.project, surviving, path },
+        },
+        { triggerTurn: false, deliverAs: "nextTurn" },
+      );
+      if (ctx.hasUI) ctx.ui.notify(`${GLYPH.refutes} Red-team pass written: ${path}`, "info");
+      pi.sendUserMessage(
+        `A refutation pass for "${parsed.project}" is at ${path}. Lift each surviving disconfirming check / contradiction into REPORT.md's Refutes slots and re-tag finding status (follow the synthesize skill).`,
+      );
+    },
+  });
+
   pi.registerCommand("berdl-review", {
     description: "Run an independent in-process review of a project (or its plan), then mark it reviewed.",
     getArgumentCompletions: projectCompletions,

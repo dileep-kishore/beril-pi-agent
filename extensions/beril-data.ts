@@ -2,6 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec, isConnectivityError } from "../lib/beril-exec.ts";
+import { discoverHint, queryHint } from "../lib/hints.ts";
 import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql } from "../lib/peek.ts";
 import { requireReady } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
@@ -37,6 +38,25 @@ function sqlPreview(query: string): string {
 }
 
 export default function berilData(pi: ExtensionAPI) {
+  // Add model-facing next-step hints without changing the structured `details`
+  // payload that cards, hashes, and downstream checks rely on.
+  pi.on("tool_result", (event, _ctx) => {
+    if (event.isError) return undefined;
+
+    let hint: string | undefined;
+    if (event.toolName === "berdl_query") {
+      const details = event.details as { returned_rows?: number; limit_applied?: number | null } | undefined;
+      hint = queryHint(details?.returned_rows ?? 0, details?.limit_applied ?? null);
+    } else if (event.toolName === "berdl_discover") {
+      hint = discoverHint(event.details);
+    } else {
+      return undefined;
+    }
+
+    if (!hint) return undefined;
+    return { content: [...event.content, { type: "text", text: hint }] };
+  });
+
   pi.registerTool({
     name: "berdl_query",
     label: "Query BERDL",

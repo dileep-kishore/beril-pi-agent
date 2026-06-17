@@ -11,6 +11,8 @@ import {
 
 test("capabilityCatalogMarkdown groups skills by scientist intent", () => {
   const md = capabilityCatalogMarkdown({ commandCount: 12, toolCount: 18 });
+  assert.match(md, /Start or Continue/);
+  assert.match(md, /Prompt: `berdl-start`/);
   assert.match(md, /Explore data/);
   assert.match(md, /\/research-plan <project>/);
   assert.match(md, /\/berdl-refute <project>/);
@@ -35,12 +37,22 @@ test("runtimeSurfaceSummary counts runtime commands and tools defensively", () =
   assert.deepEqual(summary, { commandCount: 2, toolCount: 3 });
 });
 
-test("every advertised capability skill is installed", () => {
+test("every advertised capability resource is installed", () => {
   for (const cap of CAPABILITIES) {
-    assert.equal(
-      existsSync(join(process.cwd(), "skills", cap.skill, "SKILL.md")),
-      true,
-      `${cap.id} advertises missing skill ${cap.skill}`,
-    );
+    assert.ok(cap.skill || cap.prompt, `${cap.id} should advertise a skill or prompt`);
+    if (cap.skill) {
+      assert.equal(
+        existsSync(join(process.cwd(), "skills", cap.skill, "SKILL.md")),
+        true,
+        `${cap.id} advertises missing skill ${cap.skill}`,
+      );
+    }
+    if (cap.prompt) {
+      assert.equal(
+        existsSync(join(process.cwd(), "prompts", `${cap.prompt}.md`)),
+        true,
+        `${cap.id} advertises missing prompt ${cap.prompt}`,
+      );
+    }
   }
 });

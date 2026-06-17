@@ -58,9 +58,10 @@ function cmdCtx(root: string, subagent: (ctx: unknown, req: unknown) => Promise<
   return { ctx, notes };
 }
 
-test("registers the berdl-review command", () => {
+test("registers the review command family", () => {
   const { commands } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
   assert.ok(commands["berdl-review"], "command berdl-review");
+  assert.ok(commands["berdl-refute"], "command berdl-refute");
 });
 
 test("project review writes REVIEW_1.md with a single footer and marks reviewed", async () => {

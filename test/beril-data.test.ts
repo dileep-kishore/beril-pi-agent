@@ -18,6 +18,7 @@ function harness(execImpl: any) {
     registerCommand: (name: string, opts: any) => (commands[name] = opts),
     sendUserMessage: (m: string) => messages.push(m),
     exec: execImpl,
+    on: () => {},
   };
   berilData(pi);
   return Object.assign(tools, { __commands: commands, __messages: messages });

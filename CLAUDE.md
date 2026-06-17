@@ -120,7 +120,8 @@ for new users and returning sessions.
   `/berdl-status`, `/berdl-welcome`) + the workflow HUD, custom footer, and
   first-launch welcome panel.
 - `beril-data` — `berdl_query` (bounded read-only SQL), `berdl_discover`,
-  `berdl_peek`, `berdl_feasibility`, `berdl_export` (destructive); `/berdl-preview`.
+  `berdl_peek`, `berdl_feasibility`, `berdl_export` (destructive);
+  `/berdl-preview`; advisory next-step hints on successful data results.
 - `beril-web` — read-only `web_read` (local fetch → readable-article extract
   behind an SSRF/private-IP + size + timeout guard) and `docs_lookup` (current
   library docs via Context7's no-key tier). Both free/keyless; never destructive.
@@ -138,9 +139,9 @@ for new users and returning sessions.
   `lifecycle_transition`, `claim_ledger`, `claim_state`, `evidence`,
   `beril_user`, `lakehouse_submit` (destructive); `/synthesize`, `/submit`.
 - `beril-review` — `/berdl-review` (independent read-only reviewer subagent;
-  advances `analysis → reviewed`, TOCTOU-guarded by report hash).
-- `beril-refute` — `/berdl-refute` (red-team subagent; writes `REFUTATION_N.md`,
-  changes no state, surfaces surviving disconfirming checks as a card).
+  advances `analysis → reviewed`, TOCTOU-guarded by report hash) and
+  `/berdl-refute` (red-team subagent; writes `REFUTATION_N.md`, changes no
+  state, surfaces surviving disconfirming checks as a card).
 - `beril-reroll` — `/bookmark-science`, `/back-to-plan`, and
   `/reroll-analysis-from` for returning to labelled plan/result seams.
 - `beril-ideas` — `science_memory`, `/science-memory`, and `/idea-tournament`
@@ -150,10 +151,8 @@ for new users and returning sessions.
 - `beril-safety` — the central destructive-action gate (`tool_call` hook).
 - `beril-conduct` — injects the always-on research-conduct contract into the
   system prompt every turn (`before_agent_start`).
-- `beril-display` — collapses routine tool output by default (TUI only).
-- `beril-hints` — appends advisory next-step hints to successful BERDL results
-  (patches `content` only, never `details`).
-
+- `beril-display` — collapses routine tool output by default (TUI only) and
+  gives bash a compact/redacted transcript renderer.
 **Safety & calibrated trust** are the two cross-cutting invariants:
 
 - Destructive tools (`berdl_export` overwrite, `lakehouse_submit`, bash

@@ -47,8 +47,8 @@ current scientific question.
 - `beril-env` — connection lifecycle (`berdl_env_check`, `/berdl-connect`,
   `/berdl-status`) and the workflow HUD widget + footer connection indicator.
 - `beril-data` — `berdl_query` (bounded read-only SQL), `berdl_discover`,
-  `berdl_peek` (one-shot table preview), `berdl_export` (destructive, gated),
-  each rendered as a card.
+  `berdl_peek` (one-shot table preview), `berdl_feasibility`, `berdl_export`
+  (destructive, gated), data-result hints, each rendered as a card.
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list`
   tools and `/analyze` (split into `--first-result` and `--continue`).
 - `beril-capabilities` — `/skills`, `/capabilities`, the capability palette,
@@ -65,9 +65,10 @@ current scientific question.
 - `beril-web` — read-only `web_read` (open web) and `docs_lookup` (current
   library docs); both keyless, and web/docs evidence stays low-tier.
 - `beril-checkpoint` — the `request_checkpoint` decision tool.
-- `beril-refute` — `/berdl-refute`, the adversarial red-team pass.
+- `beril-review` — `/berdl-review` and `/berdl-refute`, the independent
+  review family including the adversarial red-team pass.
 - `beril-conduct` / `beril-display` — the always-on research-conduct contract
-  and the de-emphasis defaults.
+  and display policy: collapsed routine tools plus quiet bash rendering.
 - `beril-safety` — the central destructive-action gate (`berdl_export`,
   `lakehouse_submit`, `mc rm`/`rm -rf`): confirms in interactive mode, **blocks**
   headless.

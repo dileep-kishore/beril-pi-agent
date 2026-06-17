@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import berilQuietTools, { redactBashDisplay } from "../extensions/beril-quiet-tools.ts";
+import berilDisplay, { redactBashDisplay } from "../extensions/beril-display.ts";
 
 const theme = {
   fg: (_c: string, s: string) => s,
@@ -10,8 +10,8 @@ const theme = {
 
 function harness() {
   const tools: Record<string, any> = {};
-  const pi: any = { registerTool: (t: any) => (tools[t.name] = t) };
-  berilQuietTools(pi);
+  const pi: any = { registerTool: (t: any) => (tools[t.name] = t), on: () => {} };
+  berilDisplay(pi);
   return { tools };
 }
 

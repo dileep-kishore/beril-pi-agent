@@ -3,8 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import berilRefute from "../extensions/beril-refute.ts";
-import { parseRefuteArgs } from "../extensions/beril-refute.ts";
+import berilReview, { parseRefuteArgs } from "../extensions/beril-review.ts";
 import { summarizeRefutationChecks } from "../lib/refutation.ts";
 
 test("parses project", () => {
@@ -46,10 +45,11 @@ test("/berdl-refute writes a pass and sends a red-team custom card", async () =>
     const sent: any[] = [];
     const pi: any = {
       registerCommand: (name: string, opts: any) => (commands[name] = opts),
+      registerMessageRenderer: () => {},
       sendMessage: (message: any, options: any) => sent.push({ message, options }),
       sendUserMessage: (message: string) => sent.push({ user: message }),
     };
-    berilRefute(pi);
+    berilReview(pi);
     const ctx: any = {
       cwd: root,
       hasUI: false,

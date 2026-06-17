@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import berilHints from "../extensions/beril-hints.ts";
+import berilData from "../extensions/beril-data.ts";
 
 function harness() {
   let handler: any;
@@ -8,8 +8,12 @@ function harness() {
     on: (evt: string, h: any) => {
       if (evt === "tool_result") handler = h;
     },
+    registerTool: () => {},
+    registerCommand: () => {},
+    sendUserMessage: () => {},
+    exec: async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }),
   };
-  berilHints(pi);
+  berilData(pi);
   return (event: any) => handler(event, { hasUI: false, mode: "json" });
 }
 

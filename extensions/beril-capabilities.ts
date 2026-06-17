@@ -65,12 +65,12 @@ export default function berilCapabilities(pi: ExtensionAPI) {
     if (!cap) return;
     const nudge = routeNudge(cap);
     return {
-      systemPrompt: `${event.systemPrompt}\n\n${nudge}\nUse the named BERIL skill/tool route if it fits the user's intent; ignore this hint if local context contradicts it.`,
+      systemPrompt: `${event.systemPrompt}\n\n${nudge}\nUse the named BERIL prompt, skill, or tool route if it fits the user's intent; ignore this hint if local context contradicts it.`,
       message: {
         customType: "beril-skill-nudge",
         content: nudge,
         display: true,
-        details: { nudge, capability: cap.id, command: cap.command, skill: cap.skill },
+        details: { nudge, capability: cap.id, command: cap.command, skill: cap.skill, prompt: cap.prompt },
       },
     };
   });

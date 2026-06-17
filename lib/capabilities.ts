@@ -3,7 +3,8 @@ export interface Capability {
   title: string;
   intent: string;
   command: string;
-  skill: string;
+  skill?: string;
+  prompt?: string;
   tools: string[];
   when: string;
   next: string;
@@ -20,11 +21,11 @@ export const CAPABILITIES: Capability[] = [
     id: "start",
     title: "Start or Continue",
     intent: "Orient to the current project and choose the next step.",
-    command: "/whereami",
-    skill: "berdl-start",
-    tools: ["berdl_env_check"],
+    command: "/berdl-start",
+    prompt: "berdl-start",
+    tools: ["berdl_env_check", "berdl_discover"],
     when: "New session, returning to old work, or lost context.",
-    next: "/next",
+    next: "/whereami or /next",
     aliases: [/start|continue|where am i|lost|status/i],
   },
   {
@@ -161,13 +162,16 @@ export function capabilityCatalogMarkdown(summary?: Partial<RuntimeSurfaceSummar
       : "";
   const lines = ["# BERIL Capabilities", "", runtime.trim(), ""].filter(Boolean);
   for (const cap of CAPABILITIES) {
+    const promptLine = cap.prompt ? [`- Prompt: \`${cap.prompt}\``] : [];
+    const skillLine = cap.skill ? [`- Skill: \`${cap.skill}\``] : [];
     lines.push(
       `## ${cap.title}`,
       "",
       cap.intent,
       "",
       `- Command: \`${cap.command}\``,
-      `- Skill: \`${cap.skill}\``,
+      ...promptLine,
+      ...skillLine,
       `- Tools: ${cap.tools.map((t) => `\`${t}\``).join(", ")}`,
       `- Use when: ${cap.when}`,
       `- Next: ${cap.next}`,
@@ -177,6 +181,12 @@ export function capabilityCatalogMarkdown(summary?: Partial<RuntimeSurfaceSummar
   return `${lines.join("\n")}\n`;
 }
 
+export function resourceLabel(cap: Capability): string {
+  if (cap.skill) return `Skill: ${cap.skill}`;
+  if (cap.prompt) return `Prompt: ${cap.prompt}`;
+  return "Runtime command";
+}
+
 export function routeNudge(cap: Capability): string {
-  return `Suggested BERIL route: ${cap.title} -> ${cap.command}. Skill: ${cap.skill}. Next: ${cap.next}.`;
+  return `Suggested BERIL route: ${cap.title} -> ${cap.command}. ${resourceLabel(cap)}. Next: ${cap.next}.`;
 }
