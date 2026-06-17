@@ -36,9 +36,16 @@ function statusCtx() {
   return { ctx: c, statuses };
 }
 
-test("registers the four governance tools", () => {
+test("registers the governance tools", () => {
   const { tools } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
-  for (const name of ["notebook_hash", "claim_state", "lifecycle_transition", "beril_user", "lakehouse_submit"]) {
+  for (const name of [
+    "notebook_hash",
+    "claim_state",
+    "review_preflight",
+    "lifecycle_transition",
+    "beril_user",
+    "lakehouse_submit",
+  ]) {
     assert.ok(tools[name], `tool ${name}`);
   }
 });
@@ -118,6 +125,45 @@ test("claim_state persists project-local claims.json when requested", async () =
     const saved = JSON.parse(await readFile(join(dir, "claims.json"), "utf8"));
     assert.equal(saved.rows[0].status, "supported");
     assert.ok(emitted.find((e) => e[0] === "beril:claims"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("review_preflight summarizes claims, hashes, refutes, review, and readiness", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-review-preflight-"));
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: supported\nConfidence: medium\nSupports: notebooks/01.ipynb — test\nRefutes: none found — searched controls\n",
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "No surviving disconfirming checks.\n", "utf8");
+    await writeFile(join(dir, "REVIEW_1.md"), "Review\n<!-- report_hash: sha256:abc -->\n", "utf8");
+    const { tools } = harness(async (_c: string, args: string[]) => {
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: "{}", stderr: "", code: 0, killed: false };
+    });
+    const res = await tools.review_preflight.execute("id", { project: "demo" }, undefined, undefined, {
+      hasUI: false,
+      mode: "json",
+      cwd: root,
+    });
+    assert.equal((res.details as any).project, "demo");
+    assert.equal((res.details as any).claims.supported, 1);
+    assert.equal((res.details as any).notebookHashes, 1);
+    assert.equal((res.details as any).redTeam, true);
+    assert.equal((res.details as any).review, true);
+    assert.equal((res.details as any).reviewReady, true);
+    assert.equal((res.details as any).submitReady, true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -205,6 +251,27 @@ test("/submit uploads and marks submitted when ORCID present", async () => {
     calls.find((a) => a[0] === "lifecycle" && a[1] === "marker" && a.includes("submitted")),
     "marked submitted",
   );
+});
+
+test("/submit blocks headless command mode before upload", async () => {
+  const calls: string[][] = [];
+  const { commands } = harness(async (_c: string, args: string[]) => {
+    calls.push(args);
+    if (args[0] === "user") {
+      return {
+        stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+        stderr: "",
+        code: 0,
+        killed: false,
+      };
+    }
+    return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+  });
+  await assert.rejects(
+    () => commands.submit.handler("demo", { hasUI: false, mode: "json", ui: {}, cwd: process.cwd() }),
+    /non-interactive/i,
+  );
+  assert.ok(!calls.find((a) => a[0] === "submit"), "must not upload in headless command mode");
 });
 
 test("lifecycle_transition sets the active-project footer key under hasUI", async () => {

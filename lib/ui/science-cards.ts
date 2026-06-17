@@ -670,6 +670,52 @@ export function claimStateCard(
   });
 }
 
+export interface ReviewPreflightView {
+  project: string;
+  status?: string;
+  report: boolean;
+  notebookHashes: number;
+  claims: ClaimStateSummary;
+  redTeam: boolean;
+  review: boolean;
+  reviewReady: boolean;
+  submitReady: boolean;
+  blockers: string[];
+  warnings: string[];
+}
+
+export function reviewPreflightCard(theme: Theme, v: ReviewPreflightView): Component {
+  const lines = [
+    `${theme.fg("muted", "Project       ")}${theme.fg("text", v.project)}`,
+    `${theme.fg("muted", "Lifecycle     ")}${theme.fg("text", v.status ?? "unknown")}`,
+    `${theme.fg("muted", "Report        ")}${v.report ? theme.fg("success", GLYPH.ok) : theme.fg("error", GLYPH.bad)}`,
+    `${theme.fg("muted", "Hashes        ")}${theme.fg(v.notebookHashes ? "text" : "warning", String(v.notebookHashes))}`,
+    `${theme.fg("muted", "Claims        ")}${theme.fg("text", String(v.claims.total))} ${theme.fg("dim", "total")}  ${roleStyle(theme, "supports")(`${v.claims.supported} supported`)}  ${roleStyle(theme, "refutes")(`${v.claims.refuted} refuted`)}`,
+    `${theme.fg("muted", "Unsupported   ")}${theme.fg(v.claims.unsupported ? "warning" : "text", String(v.claims.unsupported))}`,
+    `${theme.fg("muted", "Empty refutes ")}${theme.fg(v.claims.emptyRefutes ? "warning" : "text", String(v.claims.emptyRefutes))}`,
+    `${theme.fg("muted", "Red-team      ")}${v.redTeam ? theme.fg("success", GLYPH.ok) : theme.fg("warning", GLYPH.warn)}`,
+    `${theme.fg("muted", "Review        ")}${v.review ? theme.fg("success", GLYPH.ok) : theme.fg("warning", GLYPH.warn)}`,
+    `${theme.fg("muted", "Review ready  ")}${v.reviewReady ? theme.fg("success", "review ready") : theme.fg("warning", "not ready")}`,
+    `${theme.fg("muted", "Submit ready  ")}${v.submitReady ? theme.fg("success", "submit ready") : theme.fg("warning", "not ready")}`,
+  ];
+  if (v.blockers.length) {
+    lines.push("", theme.fg("error", "Blockers"));
+    for (const blocker of v.blockers) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", blocker)}`);
+  }
+  if (v.warnings.length) {
+    lines.push("", theme.fg("warning", "Warnings"));
+    for (const warning of v.warnings) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", warning)}`);
+  }
+  lines.push("", verifyLine(theme, "run claim_state, /berdl-refute, /berdl-review, then /submit when ready"));
+  return linesCard(theme, {
+    title: cardHeader(theme, { title: `Preflight ${GLYPH.bullet} ${v.project}` }),
+    accentStyle: domainStyle(theme, v.reviewReady ? "governance" : "destructive"),
+    state: v.reviewReady ? "settled" : "warning",
+    lines,
+    maxBodyLines: 32,
+  });
+}
+
 /**
  * The red-team pass as its own ⊖-framed card (deliberately NOT an `errorCard`): a
  * surviving-disconfirming-checks list over a refutes-coloured frame, plus a dim

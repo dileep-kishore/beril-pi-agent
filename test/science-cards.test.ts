@@ -15,6 +15,7 @@ import {
   peekMarkdown,
   queryCard,
   redTeamCard,
+  reviewPreflightCard,
   toolErrorText,
   verifyLine,
 } from "../lib/ui/science-cards.ts";
@@ -240,4 +241,25 @@ test("claimLedgerCard includes a concrete verification footer", () => {
     },
   ]).render(100);
   assert.match(lines.join("\n"), /Verify\s+open REPORT\.md/);
+});
+
+test("reviewPreflightCard summarizes review and submit readiness", () => {
+  const lines = reviewPreflightCard(theme, {
+    project: "demo",
+    status: "reviewed",
+    report: true,
+    notebookHashes: 2,
+    claims: { total: 1, supported: 1, refuted: 0, unsupported: 0, emptyRefutes: 0 },
+    redTeam: true,
+    review: true,
+    reviewReady: true,
+    submitReady: true,
+    blockers: [],
+    warnings: [],
+  }).render(80);
+  const text = lines.join("\n");
+  assert.match(text, /Preflight/);
+  assert.match(text, /review ready/);
+  assert.match(text, /submit ready/);
+  assert.match(text, /hashes\s+2/i);
 });

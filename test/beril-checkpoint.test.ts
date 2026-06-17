@@ -27,6 +27,64 @@ test("registers the request_checkpoint tool", () => {
   assert.ok(harness().tools.request_checkpoint);
 });
 
+test("registers the request_input tool", () => {
+  assert.ok(harness().tools.request_input);
+});
+
+test("request_input asks a single-line UI question", async () => {
+  const { tools } = harness();
+  const ctx = {
+    mode: "rpc",
+    hasUI: true,
+    ui: {
+      input: async (title: string, placeholder: string) => `${title} / ${placeholder}`,
+    },
+  };
+  const res = await tools.request_input.execute(
+    "id",
+    { title: "What should we optimize for?", placeholder: "novelty, speed, or data readiness" },
+    undefined,
+    undefined,
+    ctx,
+  );
+  assert.equal((res.details as any).answer, "What should we optimize for? / novelty, speed, or data readiness");
+  assert.match(res.content[0].text, /Scientist answered/);
+});
+
+test("request_input uses the editor for multiline clarification", async () => {
+  const { tools } = harness();
+  let inputCalled = false;
+  const ctx = {
+    mode: "tui",
+    hasUI: true,
+    ui: {
+      input: async () => {
+        inputCalled = true;
+        return "";
+      },
+      editor: async (title: string, prefill: string) => `${title}\n${prefill}`,
+    },
+  };
+  const res = await tools.request_input.execute(
+    "id",
+    { title: "Sketch the hypothesis", placeholder: "H1...", multiline: true },
+    undefined,
+    undefined,
+    ctx,
+  );
+  assert.equal(inputCalled, false);
+  assert.match((res.details as any).answer, /Sketch the hypothesis/);
+});
+
+test("request_input blocks rather than inventing an answer when headless", async () => {
+  const { tools } = harness();
+  const ctx = { mode: "print", hasUI: false, ui: {} };
+  const res = await tools.request_input.execute("id", { title: "Scope?" }, undefined, undefined, ctx);
+  assert.equal((res.details as any).answer, undefined);
+  assert.match((res.details as any).note, /no interactive UI/i);
+  assert.match(res.content[0].text, /No scientist answer/);
+});
+
 test("tui mode: returns the choice the overlay resolves and emits the bus event", async () => {
   const { tools, emitted } = harness();
   const ctx = {
