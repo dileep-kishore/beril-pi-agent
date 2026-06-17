@@ -17,23 +17,27 @@ from beril_cli.paths import find_repo_root
 
 GITHUB_API_TIMEOUT_SECONDS = 10
 
-# Session-control flags pi understands; if the user passes any of these we must NOT
-# also inject --continue (it would conflict with or override their explicit choice).
+# Session-control flags Pi understands; if the user passes any of these, the
+# launcher marks the session as explicit so extensions may safely restore context.
 _SESSION_FLAGS = frozenset(
     {"-c", "--continue", "-r", "--resume", "--session", "--session-id", "--fork", "--no-session"}
 )
 
 
+def _has_session_flag(extra_args: list[str]) -> bool:
+    return any(arg.split("=", 1)[0] in _SESSION_FLAGS for arg in extra_args)
+
+
 def _with_continue(extra_args: list[str]) -> list[str]:
-    """Prepend ``--continue`` so ``beril start`` resumes the researcher's most-recent
-    project thread, unless the user already chose a session (``--continue``/``--resume``/
-    ``--session``/``--fork``/...). Matches the token before any ``=`` so joined forms
-    like ``--session-id=proj`` are caught too. ``pi --continue`` on a fresh checkout
-    with no prior session degrades to a new session.
+    """Return Pi args without implicit resume.
+
+    Historically this prepended ``--continue``. That made every ``beril start``
+    resurrect the last research thread, which is surprising for new users and
+    makes fresh sessions show stale project state. Keep the helper for backward-
+    compatible tests/call sites, but make fresh launch the default; users can
+    still pass ``--continue`` / ``--resume`` / ``--session`` explicitly.
     """
-    if any(arg.split("=", 1)[0] in _SESSION_FLAGS for arg in extra_args):
-        return extra_args
-    return ["--continue", *extra_args]
+    return extra_args
 
 
 def _sync_auth_token(env_path: Path) -> None:
@@ -158,7 +162,7 @@ def _checkout_release(repo_root: Path, requested_version: str | None) -> int:
     )
     if fetch.returncode != 0:
         print(
-            f"Warning: git fetch --tags failed: {fetch.stderr.strip()}",
+            "Warning: could not refresh git tags; using local tag cache/current checkout.",
             file=sys.stderr,
         )
 
@@ -362,9 +366,9 @@ def run_start(
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)
-    # Replace the current process with the agent. Default to resuming the most-recent
-    # project thread (--continue) so the researcher's named session carries forward,
-    # unless they passed an explicit session flag.
+    os.environ["BERIL_START_SESSION_MODE"] = "explicit" if _has_session_flag(extra_args) else "fresh"
+    # Replace the current process with the agent. Fresh launch is the default;
+    # pass Pi's --continue/--resume/--session flags explicitly to restore a thread.
     os.execvp(binary, [agent, *_with_continue(extra_args)])
 
     # execvp doesn't return on success; this is only reached on failure

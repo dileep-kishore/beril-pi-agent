@@ -130,9 +130,10 @@ uv run beril start --theme phenix  # switch the project-local Pi theme/brand
 `beril start` refreshes your KBase token in `.env`, then execs **Pi** with this package and the
 bundled `beril` already on PATH (so the extensions resolve it — **no manual
 `source .venv/bin/activate`**), and hands off onboarding to the `beril-env` extension (run
-`/berdl-start` any time to re-orient). It **resumes your most-recent project session by default**
-(`--continue`); pass an explicit session flag (`--resume` / `--session …` / `--no-session`) to
-override, and sessions are named `<project> · <phase>` so the picker stays legible. beril is a
+`/berdl-start` any time to re-orient). It starts a **fresh Pi session by default** so stale
+project state does not leak into new work; pass an explicit Pi session flag (`--continue`,
+`--resume`, `--session …`, or `--no-session`) when you want to restore or control a thread.
+Resumed project sessions are named `<project> · <phase>` so the picker stays legible. beril is a
 **Pi workbench**: `beril start` always launches
 `pi` (a stale config can't redirect it). Other agents like Claude/Codex are still used *inside*
 skills and subagents — e.g. the `/berdl-review` Opus reviewer — but never as the launcher.

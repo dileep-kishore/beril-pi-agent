@@ -109,9 +109,26 @@ export default function berilEnv(pi: ExtensionAPI) {
     pushFooterRender();
   }
 
+  function shouldSeedActiveProject(reason?: string): boolean {
+    if (reason === "new") return false;
+    if (reason === "startup" && process.env.BERIL_START_SESSION_MODE === "fresh") return false;
+    return true;
+  }
+
+  function clearResearchHud(): void {
+    hud.project = undefined;
+    hud.state = undefined;
+    hud.submitted = false;
+    hud.substeps = undefined;
+    claims = undefined;
+    lastPhase = undefined;
+    renderHud();
+    pushFooterRender();
+  }
+
   /**
    * Name the Pi session after the active project + phase, so a resumed session
-   * (`beril start` defaults to `--continue`) reads as "<project> · <phase>" in the
+   * (explicit `--continue` / `--resume`) reads as "<project> · <phase>" in the
    * selector instead of a raw UUID. Idempotent via getSessionName(); no-op until a
    * project is known. setSessionName/getSessionName live on the ExtensionAPI (pi).
    */
@@ -383,9 +400,12 @@ export default function berilEnv(pi: ExtensionAPI) {
     brand = brandForTheme(process.env.BERIL_THEME);
     await refreshStatus(ctx);
     identity = await fetchIdentity();
-    // Seed the active project's stage + claim tally so the arc + claims show on a
-    // fresh restart, not just after the first in-session lifecycle transition.
-    if (ctx.hasUI) await seedActiveProject(ctx);
+    // Seed project state only when restoring a session. A fresh `beril start` or
+    // Pi `/new` must not display the last lifecycle project as if it were active.
+    if (ctx.hasUI) {
+      if (shouldSeedActiveProject(event.reason)) await seedActiveProject(ctx);
+      else clearResearchHud();
+    }
 
     // The custom header/footer are TUI-only (no-op in rpc/json/print).
     if (ctx.mode === "tui") {

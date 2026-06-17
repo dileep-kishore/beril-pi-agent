@@ -75,9 +75,9 @@ def test_default_channel_pins_release(monkeypatch, tmp_path):
     assert "pull" not in called
 
 
-def test_with_continue_prepends_by_default():
-    assert start._with_continue([]) == ["--continue"]
-    assert start._with_continue(["explore the data"]) == ["--continue", "explore the data"]
+def test_with_continue_does_not_resume_by_default():
+    assert start._with_continue([]) == []
+    assert start._with_continue(["explore the data"]) == ["explore the data"]
 
 
 def test_with_continue_respects_explicit_session_flags():
@@ -89,13 +89,24 @@ def test_with_continue_respects_explicit_session_flags():
     assert "--continue" not in start._with_continue(["--session-id=proj-x"])
 
 
-def test_start_injects_continue_into_execvp(monkeypatch, tmp_path):
+def test_start_launches_a_fresh_session_by_default(monkeypatch, tmp_path):
     _stub_launch(monkeypatch, tmp_path)
     monkeypatch.setattr(start, "_checkout_release", lambda root, v: 0)
     captured: dict = {}
     monkeypatch.setattr(start.os, "execvp", lambda binary, argv: captured.setdefault("argv", argv))
     start.run_start(extra_args=["explore the data"])
-    assert captured["argv"] == ["pi", "--continue", "explore the data"]
+    assert captured["argv"] == ["pi", "explore the data"]
+    assert start.os.environ["BERIL_START_SESSION_MODE"] == "fresh"
+
+
+def test_start_marks_explicit_session_mode(monkeypatch, tmp_path):
+    _stub_launch(monkeypatch, tmp_path)
+    monkeypatch.setattr(start, "_checkout_release", lambda root, v: 0)
+    captured: dict = {}
+    monkeypatch.setattr(start.os, "execvp", lambda binary, argv: captured.setdefault("argv", argv))
+    start.run_start(extra_args=["--continue"])
+    assert captured["argv"] == ["pi", "--continue"]
+    assert start.os.environ["BERIL_START_SESSION_MODE"] == "explicit"
 
 
 def test_start_theme_flag_sets_theme_and_brand_env(monkeypatch, tmp_path):

@@ -250,6 +250,16 @@ test("session_shutdown clears the active-project footer key", async () => {
   );
 });
 
+test("session_start clears the active-project footer key for /new sessions", async () => {
+  const { handlers } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
+  const { ctx: sctx, statuses } = statusCtx();
+  await handlers.session_start({ type: "session_start", reason: "new" }, sctx);
+  assert.deepEqual(
+    statuses.find((s) => s[0] === "beril-2-project"),
+    ["beril-2-project", undefined],
+  );
+});
+
 test("lifecycle_transition emits the RETURNED state on beril:lifecycle", async () => {
   // The state machine returns "analysis" even though the requested target was "reviewed".
   const { tools, emitted } = harness(async () => ({

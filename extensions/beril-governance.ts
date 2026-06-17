@@ -365,4 +365,11 @@ export default function berilGovernance(pi: ExtensionAPI) {
   pi.on("session_shutdown", (_event, ctx) => {
     if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, undefined);
   });
+
+  pi.on("session_start", (event, ctx) => {
+    const freshStart = event.reason === "startup" && process.env.BERIL_START_SESSION_MODE === "fresh";
+    if (event.reason !== "new" && !freshStart) return;
+    activeProject = undefined;
+    if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, undefined);
+  });
 }

@@ -19,7 +19,9 @@ function fakeBus() {
   };
 }
 
-function harness(execResult: any = READY) {
+type ExecFixture = any | ((args: string[]) => any | Promise<any>);
+
+function harness(execResult: ExecFixture = READY) {
   const tools: any = {};
   const commands: any = {};
   const handlers: any = {};
@@ -35,7 +37,10 @@ function harness(execResult: any = READY) {
     registerMessageRenderer: (t: string, r: any) => (renderers[t] = r),
     sendMessage: (m: any) => messages.push(m),
     on: (e: string, h: any) => (handlers[e] = h),
-    exec: async () => ({ stdout: JSON.stringify(execResult), stderr: "", code: 0, killed: false }),
+    exec: async (_cmd: string, args: string[]) => {
+      const payload = typeof execResult === "function" ? await execResult(args) : execResult;
+      return { stdout: JSON.stringify(payload), stderr: "", code: 0, killed: false };
+    },
     getSessionName: () => sessionNameValue,
     setSessionName: (n: string) => {
       sessionNameValue = n;
@@ -169,6 +174,35 @@ test("session_start greets with the welcome header on a fresh start", async () =
   const header = renderHeader();
   assert.match(header, /beril/, "branded title");
   assert.match(header, /explore/, "the research arc");
+});
+
+test("fresh beril start does not seed a previous lifecycle project", async () => {
+  const previous = process.env.BERIL_START_SESSION_MODE;
+  process.env.BERIL_START_SESSION_MODE = "fresh";
+  try {
+    const h = harness((args: string[]) =>
+      args[0] === "lifecycle" ? { project: "old_project", status: "analysis" } : READY,
+    );
+    berilEnv(h.pi);
+    const { ctx, widgets, renderFooter } = uiCtx(true);
+    await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+    assert.doesNotMatch(lastWidget(widgets), /old_project/);
+    assert.doesNotMatch(renderFooter(), /old_project/);
+  } finally {
+    if (previous === undefined) Reflect.deleteProperty(process.env, "BERIL_START_SESSION_MODE");
+    else process.env.BERIL_START_SESSION_MODE = previous;
+  }
+});
+
+test("/new sessions clear instead of seeding a previous lifecycle project", async () => {
+  const h = harness((args: string[]) =>
+    args[0] === "lifecycle" ? { project: "old_project", status: "analysis" } : READY,
+  );
+  berilEnv(h.pi);
+  const { ctx, widgets, renderFooter } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "new" }, ctx);
+  assert.doesNotMatch(lastWidget(widgets), /old_project/);
+  assert.doesNotMatch(renderFooter(), /old_project/);
 });
 
 test("a reload does not re-show the welcome header", async () => {

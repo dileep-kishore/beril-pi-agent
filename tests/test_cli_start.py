@@ -281,7 +281,24 @@ def test_checkout_release_warns_on_fetch_failure_but_continues(monkeypatch, tmp_
     rc = start._checkout_release(tmp_path, "v0.0.1")
     assert rc == 0
     err = capsys.readouterr().err
-    assert "git fetch --tags failed" in err
+    assert "could not refresh git tags" in err
+
+
+def test_checkout_release_fetch_warning_does_not_dump_raw_ssh_stderr(monkeypatch, tmp_path, capsys):
+    raw = "Connection closed by 10.1.11.80 port 22\nfatal: Could not read from remote repository."
+
+    def handler(argv):
+        if argv[:2] == ["git", "fetch"]:
+            return _completed(returncode=1, stderr=raw)
+        return _make_git_dispatcher(tags={"v0.0.1": "ABC"}, head_sha="OLD")(argv)
+
+    _patch_run(monkeypatch, handler)
+    rc = start._checkout_release(tmp_path, "v0.0.1")
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "could not refresh git tags" in err
+    assert "Connection closed" not in err
+    assert "fatal:" not in err
 
 
 # ── default theme provisioning ────────────────────────────
