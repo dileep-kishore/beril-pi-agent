@@ -16,7 +16,7 @@ test("queryHint is silent when no limit was applied", () => {
   assert.equal(queryHint(7, null), undefined);
 });
 
-test("discoverHint nudges querying a discovered table when one is present", () => {
+test("discoverHint nudges previewing tables and framing candidate questions", () => {
   const snapshot = {
     schema_version: 1,
     tenants: [
@@ -29,7 +29,10 @@ test("discoverHint nudges querying a discovered table when one is present", () =
   };
   const hint = discoverHint(snapshot);
   assert.equal(typeof hint, "string");
-  assert.ok((hint as string).length > 0);
+  assert.match(hint as string, /berdl_peek/);
+  assert.match(hint as string, /preview/i);
+  assert.match(hint as string, /candidate research questions/i);
+  assert.match(hint as string, /collections/i);
 });
 
 test("discoverHint is silent when nothing useful is present", () => {

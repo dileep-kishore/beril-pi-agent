@@ -9,6 +9,20 @@ Survey the research landscape — completed projects and their findings, in-prog
 
 State your assumptions and surface tradeoffs as you go. The goal is judgment, not just enumeration.
 
+## Tailoring to the User
+
+Before expensive landscape synthesis, ask only the missing high-information
+questions that would change the recommendation. Prefer 1–3 concise choices:
+
+1. Preferred scientific theme? (e.g., evolution, metabolism, ecology, gene function, AMR)
+2. Effort preference? (Low: 1–2 weeks / Medium: ~1 month / High: multi-month)
+3. Extend an existing project or open an entirely new direction?
+
+If the prompt already supplies a constraint, use it rather than re-asking. If a
+missing answer would not change the ranking, proceed and state the assumption. If
+the user says "just suggest something," proceed with no constraints and state
+that assumption.
+
 ## Landscape Synthesis
 
 Build a picture of the research space before recommending anything. Gather across these dimensions:
@@ -49,16 +63,6 @@ From the synthesized landscape, identify **2–3 candidate topics**. Score each 
 | Effort fit | Low | Is the scope appropriate for a focused project? |
 
 The three High-weight criteria (novelty, data readiness, impact) should dominate the decision; a topic that is novel and impactful but data-starved is not yet a good next project.
-
-## Tailoring to the User
-
-If the user has not specified a focus, ask briefly before finalizing:
-
-1. Any preferred scientific theme? (e.g., evolution, metabolism, ecology, gene function, AMR)
-2. Effort preference? (Low: 1–2 weeks / Medium: ~1 month / High: multi-month)
-3. Should the new topic extend an existing project or open an entirely new direction?
-
-If the user says "just suggest something," proceed with no constraints.
 
 ## Novelty Check Against the Literature
 

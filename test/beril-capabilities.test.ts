@@ -62,6 +62,9 @@ test("before_agent_start injects a visible route nudge and system hint", async (
     systemPrompt: "base",
   });
   assert.match(res.systemPrompt, /Suggested BERIL route/);
+  assert.match(res.systemPrompt, /clarify missing/i);
+  assert.match(res.systemPrompt, /intent\/data\/success criteria/i);
   assert.equal(res.message.customType, "beril-skill-nudge");
   assert.match(res.message.content, /literature/i);
+  assert.match(res.message.content, /clarify missing/i);
 });

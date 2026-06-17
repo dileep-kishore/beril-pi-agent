@@ -41,10 +41,13 @@ function harness(execMap: Record<string, unknown>) {
 test("recommendedCommand maps lifecycle state to deterministic commands", () => {
   assert.equal(recommendedCommand("analysis", "demo"), "/berdl-review demo");
   assert.equal(recommendedCommand("reviewed", "demo"), "/submit demo");
-  assert.match(recommendedCommand(undefined), /berdl-status/);
+  assert.equal(recommendedCommand(undefined), "/berdl-status");
+  assert.equal(recommendedCommand("exploration", "demo"), "/berdl-preview <table>");
 });
 
 test("recommendedActions gives concrete next commands per lifecycle phase", () => {
+  assert.equal(recommendedActions(undefined)[0], "frame the question");
+  assert.equal(recommendedActions("exploration", "demo")[0], "frame the question");
   assert.deepEqual(recommendedActions("active", "demo").slice(0, 2), [
     "/analyze demo --first-result",
     "/analyze demo --continue",

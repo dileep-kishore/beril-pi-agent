@@ -34,8 +34,14 @@ test("before any project, shows just a getting-started next hint", () => {
   const lines = workflowHud(theme, {});
   assert.equal(lines.length, 2);
   assert.match(lines[0], /Next:/);
+  assert.match(lines[0], /frame the question.*discover/i);
   assert.match(lines[1], /Actions:/);
   assert.doesNotMatch(lines[0], /▸/, "no current-step marker without a project state");
+});
+
+test("exploration next hint frames the question before querying or planning", () => {
+  const text = workflowHud(theme, { project: "demo", state: "exploration" }).join("\n");
+  assert.match(text, /Next:.*frame the question.*query.*plan/i);
 });
 
 test("renders an indented sub-step line between the rail and the next hint", () => {

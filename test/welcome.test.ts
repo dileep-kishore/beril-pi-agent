@@ -38,6 +38,12 @@ test("welcome panel carries the identity, connection, arc, and tip", () => {
   assert.ok(text.includes("hello tip"), "the tip");
 });
 
+test("welcome panel starts by inviting guided question framing", () => {
+  const text = welcomePanel(theme, { ...state, tip: undefined }, 80).join("\n");
+  assert.match(text, /frame the question/i);
+  assert.match(text, /guided/i);
+});
+
 test("pickTip wraps deterministically over the tip list", () => {
   assert.equal(pickTip(0), TIPS[0]);
   assert.equal(pickTip(TIPS.length), TIPS[0]);

@@ -21,7 +21,7 @@ export function recommendedCommand(state?: string, project?: string): string {
   const p = project ? ` ${project}` : " <project>";
   switch (state) {
     case "exploration":
-      return "use berdl_discover / berdl_peek / berdl_query, then /research-plan";
+      return "/berdl-preview <table>";
     case "proposed":
       return `/analyze${p} --first-result`;
     case "active":
@@ -33,7 +33,7 @@ export function recommendedCommand(state?: string, project?: string): string {
     case "complete":
       return "done — reopen intentionally before changing the project";
     default:
-      return "/berdl-status, then explore data or start a project";
+      return "/berdl-status";
   }
 }
 
@@ -41,7 +41,7 @@ export function recommendedActions(state?: string, project?: string): string[] {
   const p = project ? ` ${project}` : " <project>";
   switch (state) {
     case "exploration":
-      return ["/berdl-preview <table>", `/research-plan${p}`, "/literature-review <topic>"];
+      return ["frame the question", "/berdl-preview <table>", `/research-plan${p}`];
     case "proposed":
       return [`/analyze${p} --first-result`, `/berdl-review${p} --plan`, "/whereami"];
     case "active":
@@ -53,7 +53,7 @@ export function recommendedActions(state?: string, project?: string): string[] {
     case "complete":
       return ["/science-memory", "/idea-tournament <topic>", "/tree"];
     default:
-      return ["/berdl-status", "/skills", "/whereami"];
+      return ["frame the question", "/berdl-status", "/skills"];
   }
 }
 

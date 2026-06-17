@@ -81,7 +81,7 @@ export function sessionName(project: string, state?: string): string {
 export function nextAction(state: string): string {
   switch (state) {
     case "exploration":
-      return "explore the data, then draft a research plan once the question is clear";
+      return "frame the question, then query the data and draft a research plan";
     case "proposed":
       return "scaffold and run the analysis notebooks";
     case "active":
@@ -93,6 +93,6 @@ export function nextAction(state: string): string {
     case "complete":
       return "project complete — archived to the lakehouse";
     default:
-      return "check the connection (/berdl-status) and discover the data to begin";
+      return "frame the question, then check the connection (/berdl-status) and discover the data";
   }
 }

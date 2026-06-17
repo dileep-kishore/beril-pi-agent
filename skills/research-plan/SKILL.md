@@ -16,14 +16,16 @@ the plan comes first, then a check-in, then analysis.
 
 ## Clarify first (information-gain gated)
 
-Before feasibility, ask **2–3 grounded multiple-choice questions** — but **only
-when** resolving the ambiguity would change the query you run or the result you
-get. Good ones: the research question restated in 1–2 sentences (is this what
-you mean?); which tables/databases to use; what a successful answer looks like.
+Before feasibility, ask **1–3 grounded multiple-choice questions** — but **only
+when** resolving the ambiguity would change the query, data source, hypothesis,
+falsification test, or analysis you run. Good ones: the research question
+restated in 1–2 sentences (is this what you mean?); which tables/databases to
+use; what a successful answer looks like; which rival hypothesis matters most.
 Put the choices to the scientist with the `request_checkpoint` tool. If an
 ambiguity wouldn't change the analysis, **don't ask** — auto-resolve it and
 **state the assumption** in the plan's context block so it can be corrected
-cheaply later.
+cheaply later. Keep a critical stance: draft rival hypotheses and a possible
+falsifier early, then let the scientist steer the framing before analysis.
 
 ## Feasibility first (the most important step)
 

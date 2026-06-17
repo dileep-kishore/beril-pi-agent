@@ -188,5 +188,5 @@ export function resourceLabel(cap: Capability): string {
 }
 
 export function routeNudge(cap: Capability): string {
-  return `Suggested BERIL route: ${cap.title} -> ${cap.command}. ${resourceLabel(cap)}. Next: ${cap.next}.`;
+  return `Suggested BERIL route: ${cap.title} -> ${cap.command}. ${resourceLabel(cap)}. For vague prompts, clarify missing intent/data/success criteria before using the command. Next: ${cap.next}.`;
 }

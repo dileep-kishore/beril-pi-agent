@@ -6,6 +6,7 @@ import {
   CAPABILITIES,
   capabilityCatalogMarkdown,
   matchCapability,
+  routeNudge,
   runtimeSurfaceSummary,
 } from "../lib/capabilities.ts";
 
@@ -35,6 +36,16 @@ test("runtimeSurfaceSummary counts runtime commands and tools defensively", () =
     [{ name: "berdl_query" }, { name: "claim_state" }, { name: "science_memory" }],
   );
   assert.deepEqual(summary, { commandCount: 2, toolCount: 3 });
+});
+
+test("routeNudge asks for missing alignment before vague routes", () => {
+  const cap = matchCapability("Explore this data");
+  assert.ok(cap);
+  const nudge = routeNudge(cap);
+  assert.match(nudge, /Suggested BERIL route/);
+  assert.match(nudge, /clarify missing/i);
+  assert.match(nudge, /intent\/data\/success criteria/i);
+  assert.match(nudge, /vague/i);
 });
 
 test("every advertised capability resource is installed", () => {
