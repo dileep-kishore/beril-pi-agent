@@ -16,7 +16,7 @@ function showCatalog(pi: ExtensionAPI, ctx: ExtensionCommandContext): void {
       display: true,
       details: { markdown },
     },
-    { triggerTurn: false, deliverAs: "nextTurn" },
+    { triggerTurn: false },
   );
   if (ctx.hasUI) ctx.ui.notify("BERIL capabilities shown.", "info");
 }
@@ -54,7 +54,7 @@ export default function berilCapabilities(pi: ExtensionAPI) {
         const markdown = catalog(pi);
         pi.sendMessage(
           { customType: "beril-capabilities", content: markdown, display: true, details: { markdown } },
-          { triggerTurn: false, deliverAs: "nextTurn" },
+          { triggerTurn: false },
         );
       }
     },

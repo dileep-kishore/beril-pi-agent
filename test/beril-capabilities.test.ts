@@ -6,17 +6,19 @@ function harness() {
   const commands: Record<string, any> = {};
   const renderers: Record<string, any> = {};
   const handlers: Record<string, any> = {};
+  const shortcuts: Record<string, any> = {};
   const messages: any[] = [];
   const pi: any = {
     registerCommand: (name: string, opts: any) => (commands[name] = opts),
     registerMessageRenderer: (name: string, renderer: any) => (renderers[name] = renderer),
+    registerShortcut: (key: string, opts: any) => (shortcuts[key] = opts),
     on: (event: string, handler: any) => (handlers[event] = handler),
     sendMessage: (message: any, options: any) => messages.push({ message, options }),
     getCommands: () => [{ name: "skills" }, { name: "whereami" }],
     getAllTools: () => [{ name: "berdl_query" }, { name: "claim_state" }],
   };
   berilCapabilities(pi);
-  return { commands, renderers, handlers, messages };
+  return { commands, renderers, handlers, shortcuts, messages };
 }
 
 const theme = {
@@ -36,6 +38,15 @@ test("registers /skills and /capabilities", async () => {
   await h.commands.skills.handler("", { hasUI: true, ui: { notify: () => {} } });
   assert.equal(h.messages[0].message.customType, "beril-capabilities");
   assert.match(h.messages[0].message.content, /Explore data/);
+  assert.deepEqual(h.messages[0].options, { triggerTurn: false });
+});
+
+test("capability shortcut also displays immediately", () => {
+  const h = harness();
+  const shortcut = Object.values(h.shortcuts)[0] as any;
+  shortcut.handler({ hasUI: true });
+  assert.equal(h.messages[0].message.customType, "beril-capabilities");
+  assert.deepEqual(h.messages[0].options, { triggerTurn: false });
 });
 
 test("renders the capability catalog as a custom card", () => {
