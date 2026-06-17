@@ -1,6 +1,7 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, visibleWidth } from "@earendil-works/pi-tui";
 import type { ClaimRow } from "../claim-ledger.ts";
+import type { ClaimStateRow, ClaimStateSummary } from "../claim-state.ts";
 import type { LitRecord } from "../lit.ts";
 import type { ClaimStatus, ConfidenceTier, EvidencePointer, EvidenceView } from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
@@ -638,6 +639,34 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
     state: "settled",
     lines,
     maxBodyLines: 60,
+  });
+}
+
+export function claimStateCard(
+  theme: Theme,
+  rows: ClaimStateRow[],
+  summary: ClaimStateSummary,
+  persisted?: boolean,
+): Component {
+  const accentStyle = domainStyle(theme, "governance");
+  const lines = [
+    `${theme.fg("muted", "Claims     ")}${theme.fg("text", String(summary.total))}`,
+    `${roleStyle(theme, "supports")("Supported  ")}${theme.fg("text", String(summary.supported))}`,
+    `${roleStyle(theme, "refutes")("Refuted    ")}${theme.fg("text", String(summary.refuted))}`,
+    `${theme.fg("muted", "Unsupported")}${theme.fg(summary.unsupported ? "warning" : "text", String(summary.unsupported).padStart(2))}`,
+    `${theme.fg("muted", "Empty refutes")}${theme.fg(summary.emptyRefutes ? "warning" : "text", String(summary.emptyRefutes).padStart(1))}`,
+    `${theme.fg("muted", "Persisted  ")}${persisted ? theme.fg("success", "claims.json") : theme.fg("dim", "no")}`,
+    "",
+    ...rows.slice(0, 8).map((r) => `${statusTag(theme, r.status)}  ${theme.fg("text", r.claim)}`),
+    "",
+    verifyLine(theme, "open projects/<id>/claims.json, then inspect claim_ledger / evidence"),
+  ];
+  return linesCard(theme, {
+    title: cardHeader(theme, { title: `Claim state ${GLYPH.bullet} ${summary.total}` }),
+    accentStyle,
+    state: summary.unsupported || summary.emptyRefutes ? "warning" : "settled",
+    lines,
+    maxBodyLines: 24,
   });
 }
 

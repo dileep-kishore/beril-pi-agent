@@ -16,8 +16,11 @@ direction, not commands.
 
 **The research arc** (commands): `/berdl-start` (orient + data-forward
 feasibility) → `/literature-review <topic>` → `/research-plan <project>` →
-`/analyze <project>` (scaffold + run notebooks) → `/synthesize <project>` →
-`/berdl-review <project>` → `/submit <project>`.
+`/analyze <project> --first-result` (run one discriminating result) →
+`/analyze <project> --continue` → `/synthesize <project>` →
+`/berdl-refute <project>` → `/berdl-review <project>` → `/submit <project>`.
+Run `/skills` or `/capabilities` whenever you are unsure which route fits the
+current scientific question.
 
 **Visual workflow**
 - **Science cards.** Every tool result renders as a titled, framed card — a data
@@ -25,13 +28,20 @@ feasibility) → `/literature-review <topic>` → `/research-plan <project>` →
   the command itself reduced to a dimmed one-liner (`lib/ui`).
 - **Workflow HUD.** A persistent panel above the editor shows the active project,
   the connection, where you are in `explore → plan → analyze → review → submit`,
-  and the single most useful next action.
+  and concrete actions that are available from that step.
+- **Capability routing.** `/skills`, `/capabilities`, and the `Ctrl+Shift+K`
+  palette group skills, commands, and tools by scientific intent; plain-language
+  prompts also get a lightweight route nudge when there is an obvious BERIL path.
 - **Quiet plumbing.** Routine bash/file output is collapsed by default (expand on
   demand); the conduct contract tells the agent to lead with the artifact, not
   the command.
 - **Checkpoints.** At natural seams (after the plan, after the first result) the
   agent uses `request_checkpoint` to ask you to steer — approval is for *science
   direction* and *irreversible ops*, never routine commands.
+- **Reroll seams.** `/bookmark-science`, `/back-to-plan`, and
+  `/reroll-analysis-from <label>` label scientific branch points so a researcher
+  can return to a plan or first-result checkpoint instead of manually hunting the
+  session tree.
 
 **Extensions** (`extensions/`)
 - `beril-env` — connection lifecycle (`berdl_env_check`, `/berdl-connect`,
@@ -40,13 +50,18 @@ feasibility) → `/literature-review <topic>` → `/research-plan <project>` →
   `berdl_peek` (one-shot table preview), `berdl_export` (destructive, gated),
   each rendered as a card.
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list`
-  tools and `/analyze` (the plan → executed-notebooks link).
+  tools and `/analyze` (split into `--first-result` and `--continue`).
+- `beril-capabilities` — `/skills`, `/capabilities`, the capability palette,
+  and route nudges that map plain-language scientific intent to the right skill.
 - `beril-plan` — `/research-plan` and the `research_plan` plan-card tool.
 - `beril-governance` — lifecycle + reproducibility (`notebook_hash`,
-  `lifecycle_transition`, `beril_user`, `lakehouse_submit`) and
+  `claim_state`, `lifecycle_transition`, `beril_user`, `lakehouse_submit`) and
   `/synthesize` → `/berdl-review` → `/submit`.
 - `beril-literature` — literature tools (PubMed + Europe PMC, free/keyless) and
-  `/literature-review`.
+  `/literature-review`, with `--project <id>` for project-scoped references.
+- `beril-ideas` — `science_memory`, `/science-memory`, and `/idea-tournament`
+  for using approved discoveries as priors for better next studies.
+- `beril-reroll` — science bookmarks and session forks for plan/result rerolls.
 - `beril-web` — read-only `web_read` (open web) and `docs_lookup` (current
   library docs); both keyless, and web/docs evidence stays low-tier.
 - `beril-checkpoint` — the `request_checkpoint` decision tool.

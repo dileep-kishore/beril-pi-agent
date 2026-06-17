@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 
 from beril_cli import lifecycle_cmd
@@ -132,19 +133,56 @@ def test_set_demote_is_legal(monkeypatch, capsys, tmp_path):
     assert load_project(d)["status"] == "analysis"
 
 
+def test_set_active_to_analysis_requires_report_and_claims(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "active")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="analysis"))
+    assert rc == 2
+    assert "REPORT.md" in capsys.readouterr().err
+    assert load_project(d)["status"] == "active"
+
+
+def test_set_active_to_analysis_accepts_valid_report_and_claims(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "active")
+    (d / "REPORT.md").write_text("# Report\n\n## Key Findings\n\n### Finding 1\n")
+    (d / "claims.json").write_text(
+        json.dumps(
+            {
+                "project": "demo",
+                "rows": [
+                    {
+                        "claim_id": "h1",
+                        "claim": "Finding 1",
+                        "status": "supported",
+                        "confidence": "medium",
+                        "supports": [{"locator": "notebooks/01.ipynb"}],
+                        "refutes": [],
+                    }
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="analysis"))
+    assert rc == 0
+    assert load_project(d)["status"] == "analysis"
+
+
 # ── approve ──────────────────────────────────────────────
 
 
 def test_approve_writes_block_in_key_order(monkeypatch, capsys, tmp_path):
     d = _proj(tmp_path, "reviewed")
+    report_hash = _write_reviewed_report(d)
+    review_hash = _write_review(d, report_hash)
     monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
     rc = lifecycle_cmd.run_lifecycle(
         _ns(
             action="approve",
             orcid="0000-0001-2345-6789",
-            report_hash="sha256:" + "a" * 64,
+            report_hash=report_hash,
             review="projects/demo/REVIEW_1.md",
-            review_hash="sha256:" + "b" * 64,
+            review_hash=review_hash,
         )
     )
     assert rc == 0
@@ -154,6 +192,40 @@ def test_approve_writes_block_in_key_order(monkeypatch, capsys, tmp_path):
     assert approval["by"] == "0000-0001-2345-6789"
     assert approval["report_hash"].startswith("sha256:")
     assert approval["review"] == "projects/demo/REVIEW_1.md"
+
+
+def test_approve_rejects_stale_review_hash(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "reviewed")
+    report_hash = _write_reviewed_report(d)
+    _write_review(d, report_hash)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(
+        _ns(
+            action="approve",
+            orcid="0000-0001-2345-6789",
+            report_hash=report_hash,
+            review="projects/demo/REVIEW_1.md",
+            review_hash="sha256:" + "0" * 64,
+        )
+    )
+    assert rc == 2
+    assert "review_hash" in capsys.readouterr().err
+
+
+def _sha(path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_reviewed_report(project_dir) -> str:
+    report = project_dir / "REPORT.md"
+    report.write_text("# Report\n\n## Key Findings\n\n- supported\n")
+    return _sha(report)
+
+
+def _write_review(project_dir, report_hash: str) -> str:
+    review = project_dir / "REVIEW_1.md"
+    review.write_text(f"# Review\n\nLooks ready.\n\n<!-- report_hash: {report_hash} -->\n")
+    return _sha(review)
 
 
 # ── marker ───────────────────────────────────────────────

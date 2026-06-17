@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import berilWorkflow from "../extensions/beril-workflow.ts";
 import { resetReadinessCache, setCachedEnv } from "../lib/readiness.ts";
-import { buildWorkflowView, recommendedCommand } from "../lib/workflow.ts";
+import { buildWorkflowView, recommendedActions, recommendedCommand } from "../lib/workflow.ts";
 
 const fakeTheme = {
   fg: (_c: string, s: string) => s,
@@ -42,6 +42,15 @@ test("recommendedCommand maps lifecycle state to deterministic commands", () => 
   assert.equal(recommendedCommand("analysis", "demo"), "/berdl-review demo");
   assert.equal(recommendedCommand("reviewed", "demo"), "/submit demo");
   assert.match(recommendedCommand(undefined), /berdl-status/);
+});
+
+test("recommendedActions gives concrete next commands per lifecycle phase", () => {
+  assert.deepEqual(recommendedActions("active", "demo").slice(0, 2), [
+    "/analyze demo --first-result",
+    "/analyze demo --continue",
+  ]);
+  assert.ok(recommendedActions("analysis", "demo").includes("/berdl-refute demo"));
+  assert.ok(recommendedActions("reviewed", "demo").includes("/submit demo"));
 });
 
 test("buildWorkflowView combines lifecycle, research_state, and cached env", () => {

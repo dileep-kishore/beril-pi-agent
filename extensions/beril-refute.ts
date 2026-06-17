@@ -3,10 +3,12 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { projectCompletions } from "../lib/project-completions.ts";
+import { summarizeRefutationChecks } from "../lib/refutation.ts";
 import { runReviewSubagent } from "../lib/review-agent.ts";
 import { nextReviewPath } from "../lib/review-finalize.ts";
 import { REFUTATION_RUBRIC } from "../lib/review-rubric.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
+import { redTeamCard } from "../lib/ui/science-cards.ts";
 
 type ReviewSubagent = typeof runReviewSubagent;
 
@@ -33,6 +35,16 @@ export function parseRefuteArgs(raw: string): RefuteArgs | undefined {
  * findings, then write a numbered REFUTATION_N.md. Does NOT change lifecycle.
  */
 export default function berilRefute(pi: ExtensionAPI) {
+  pi.registerMessageRenderer?.<{ project: string; surviving: string[]; path: string }>(
+    "beril-refutation",
+    (message, _opts, theme) =>
+      redTeamCard(theme, {
+        project: message.details?.project ?? "project",
+        surviving: message.details?.surviving ?? [],
+        path: message.details?.path ?? "REFUTATION.md",
+      }),
+  );
+
   pi.registerCommand("berdl-refute", {
     description: "Actively try to refute a project's headline findings (red-team pass), then write REFUTATION_N.md.",
     getArgumentCompletions: projectCompletions,
@@ -60,6 +72,16 @@ export default function berilRefute(pi: ExtensionAPI) {
       }
       const path = nextReviewPath(projectDir, "REFUTATION");
       await writeFile(path, text, "utf8");
+      const surviving = summarizeRefutationChecks(text);
+      pi.sendMessage(
+        {
+          customType: "beril-refutation",
+          content: `Red-team pass for ${parsed.project}: ${surviving.length} surviving check(s).`,
+          display: true,
+          details: { project: parsed.project, surviving, path },
+        },
+        { triggerTurn: false, deliverAs: "nextTurn" },
+      );
       if (ctx.hasUI) ctx.ui.notify(`${GLYPH.refutes} Red-team pass written: ${path}`, "info");
       pi.sendUserMessage(
         `A refutation pass for "${parsed.project}" is at ${path}. Lift each surviving disconfirming check / contradiction into REPORT.md's Refutes slots and re-tag finding status (follow the synthesize skill).`,

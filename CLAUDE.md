@@ -109,8 +109,10 @@ uv run beril start                               # refresh token, pin release, e
 `exploration → proposed → active → analysis → reviewed → complete` (with legal
 demotes like `reviewed → analysis`), enforced by the `lifecycle_transition`
 tool / `beril lifecycle`. The commands woven through it:
-`/berdl-start → /literature-review → /research-plan → /analyze → /synthesize →
-/berdl-review → /submit`, plus `/berdl-refute` (adversarial red-team pass).
+`/berdl-start → /literature-review → /research-plan → /analyze --first-result →
+/analyze --continue → /synthesize → /berdl-refute → /berdl-review → /submit`.
+`/skills` and `/capabilities` expose the available routes by scientist intent
+for new users and returning sessions.
 
 **The extensions** (one concern each — see `extensions/` for the current set):
 
@@ -124,19 +126,25 @@ tool / `beril lifecycle`. The commands woven through it:
   library docs via Context7's no-key tier). Both free/keyless; never destructive.
   Web/docs evidence stays LOW tier (cannot lift a claim on its own).
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list` and
-  `/analyze` (links the plan to executed notebooks).
+  `/analyze` (split into a first-result checkpoint and a continuation pass).
+- `beril-capabilities` — `/skills`, `/capabilities`, the capability palette,
+  and conservative route nudges from plain-language scientific intent.
 - `beril-plan` — `research_plan` plan-card tool and `/research-plan`.
 - `beril-literature` — `lit_search` (dual-source: PubMed + Europe PMC, both
   keyless) / `lit_fetch` / `lit_abstract` / `lit_stance` and `/literature-review`
-  (in-process model calls for query expansion + stance, verify-on-write of PMIDs
-  and DOIs to drop fabrications).
+  (project-scoped references, in-process model calls for query expansion +
+  stance, verify-on-write of PMIDs and DOIs to drop fabrications).
 - `beril-governance` — lifecycle + reproducibility + identity: `notebook_hash`,
-  `lifecycle_transition`, `claim_ledger`, `evidence`, `beril_user`,
-  `lakehouse_submit` (destructive); `/synthesize`, `/submit`.
+  `lifecycle_transition`, `claim_ledger`, `claim_state`, `evidence`,
+  `beril_user`, `lakehouse_submit` (destructive); `/synthesize`, `/submit`.
 - `beril-review` — `/berdl-review` (independent read-only reviewer subagent;
   advances `analysis → reviewed`, TOCTOU-guarded by report hash).
 - `beril-refute` — `/berdl-refute` (red-team subagent; writes `REFUTATION_N.md`,
-  changes no state).
+  changes no state, surfaces surviving disconfirming checks as a card).
+- `beril-reroll` — `/bookmark-science`, `/back-to-plan`, and
+  `/reroll-analysis-from` for returning to labelled plan/result seams.
+- `beril-ideas` — `science_memory`, `/science-memory`, and `/idea-tournament`
+  for proposal generation from approved discoveries and performance notes.
 - `beril-checkpoint` — `request_checkpoint` (pause at seams for science
   direction; auto-approves headless).
 - `beril-safety` — the central destructive-action gate (`tool_call` hook).

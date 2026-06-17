@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import berilGov from "../extensions/beril-governance.ts";
 
@@ -35,7 +38,7 @@ function statusCtx() {
 
 test("registers the four governance tools", () => {
   const { tools } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
-  for (const name of ["notebook_hash", "lifecycle_transition", "beril_user", "lakehouse_submit"]) {
+  for (const name of ["notebook_hash", "claim_state", "lifecycle_transition", "beril_user", "lakehouse_submit"]) {
     assert.ok(tools[name], `tool ${name}`);
   }
 });
@@ -92,6 +95,54 @@ test("lakehouse_submit throws on partial (exit 2)", async () => {
 test("registers /synthesize /submit commands", () => {
   const { commands } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
   for (const name of ["synthesize", "submit"]) assert.ok(commands[name], `command ${name}`);
+});
+
+test("claim_state persists project-local claims.json when requested", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-claim-state-"));
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: supported\nConfidence: medium\nSupports: notebooks/01.ipynb — test\nRefutes: none found — searched controls\n",
+      "utf8",
+    );
+    const { tools, emitted } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
+    const res = await tools.claim_state.execute("id", { project: "demo", persist: true }, undefined, undefined, {
+      hasUI: false,
+      mode: "json",
+      cwd: root,
+    });
+    assert.equal((res.details as any).persisted, true);
+    const saved = JSON.parse(await readFile(join(dir, "claims.json"), "utf8"));
+    assert.equal(saved.rows[0].status, "supported");
+    assert.ok(emitted.find((e) => e[0] === "beril:claims"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("/synthesize prompt requires claim_state and refutation checks before lifecycle transition", async () => {
+  const sent: string[] = [];
+  const { commands } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
+  const { ctx: cctx } = cmdCtx();
+  const pi = { sendUserMessage: (m: string) => sent.push(m) };
+  // Re-register with a sendUserMessage spy while preserving the normal harness shape.
+  const commands2: any = {};
+  berilGov({
+    ...pi,
+    registerTool: () => {},
+    registerCommand: (n: string, o: any) => (commands2[n] = o),
+    on: () => {},
+    exec: async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }),
+    events: { emit: () => {}, on: () => () => {} },
+  } as any);
+  assert.ok(commands.synthesize);
+  await commands2.synthesize.handler("demo", cctx);
+  assert.match(sent[0], /claim_state/);
+  assert.match(sent[0], /berdl-refute/);
+  assert.match(sent[0], /lifecycle_transition/);
 });
 
 function cmdCtx() {

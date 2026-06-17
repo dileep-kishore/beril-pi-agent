@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { complete, getModel } from "@earendil-works/pi-ai";
@@ -245,6 +246,24 @@ function formatReferences(topic: string, records: LitRecord[]): string {
   return `${lines.join("\n")}\n`;
 }
 
+export interface LiteratureReviewArgs {
+  project?: string;
+  topic: string;
+}
+
+export function parseLiteratureReviewArgs(raw: string): LiteratureReviewArgs | undefined {
+  const parts = raw.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return undefined;
+  let project: string | undefined;
+  const topic: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === "--project") project = parts[++i];
+    else topic.push(parts[i]);
+  }
+  const t = topic.join(" ").trim();
+  return t ? { project, topic: t } : undefined;
+}
+
 export default function berilLiterature(pi: ExtensionAPI) {
   pi.registerTool({
     name: "lit_search",
@@ -378,11 +397,17 @@ export default function berilLiterature(pi: ExtensionAPI) {
   pi.registerCommand("literature-review", {
     description: "Search the literature for a topic across focused queries and write references.md.",
     async handler(args: string, ctx: ExtensionCommandContext) {
-      const topic = args.trim();
-      if (!topic) {
-        if (ctx.hasUI) ctx.ui.notify("Usage: /literature-review <topic>", "warning");
+      const parsed = parseLiteratureReviewArgs(args);
+      if (!parsed) {
+        if (ctx.hasUI) ctx.ui.notify("Usage: /literature-review [--project <id>] <topic>", "warning");
         return;
       }
+      const topic = parsed.topic;
+      const projectDir = parsed.project ? join(ctx.cwd, "projects", parsed.project) : undefined;
+      const targetPath =
+        projectDir && existsSync(projectDir) ? join(projectDir, "references.md") : join(ctx.cwd, "references.md");
+      const displayPath =
+        projectDir && existsSync(projectDir) ? `projects/${parsed.project}/references.md` : "references.md";
       const queries = await expandQueries(ctx, topic, (ctx as { __completer?: Completer }).__completer);
       const batches = await Promise.all(queries.map((q) => searchPubmed(q, 20, ctx.signal).catch(() => [])));
       const records = dedupe(batches.flat());
@@ -403,14 +428,13 @@ export default function berilLiterature(pi: ExtensionAPI) {
       );
       const verified = records.filter((_, i) => checks[i].ok);
       const dropped = checks.filter((c) => !c.ok);
-      const path = join(ctx.cwd, "references.md");
-      await writeFile(path, formatReferences(topic, verified), "utf8");
-      if (ctx.hasUI) ctx.ui.notify(`Wrote ${verified.length} references to references.md`, "info");
+      await writeFile(targetPath, formatReferences(topic, verified), "utf8");
+      if (ctx.hasUI) ctx.ui.notify(`Wrote ${verified.length} references to ${displayPath}`, "info");
       const droppedNote = dropped.length
         ? ` Dropped ${dropped.length} unresolved/flagged PMID(s) (probable fabrication): ${dropped.map((c) => c.pmid).join(", ")}.`
         : "";
       pi.sendUserMessage(
-        `references.md now lists ${verified.length} citations for "${topic}" (from queries: ${queries.join("; ")}).${droppedNote} Follow the literature-review skill to read and synthesize them.`,
+        `${displayPath} now lists ${verified.length} citations for "${topic}" (from queries: ${queries.join("; ")}).${droppedNote} Follow the literature-review skill to read and synthesize them.`,
       );
     },
   });

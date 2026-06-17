@@ -9,6 +9,7 @@ export interface WorkflowView {
   phase?: string;
   next: string;
   command: string;
+  actions: string[];
   claims?: { total: number; supported: number; refuted: number };
   lastCheckpoint?: string;
   env?: Pick<BerdlEnv, "location" | "ready">;
@@ -22,9 +23,9 @@ export function recommendedCommand(state?: string, project?: string): string {
     case "exploration":
       return "use berdl_discover / berdl_peek / berdl_query, then /research-plan";
     case "proposed":
-      return `/analyze${p}`;
+      return `/analyze${p} --first-result`;
     case "active":
-      return `/analyze${p}`;
+      return `/analyze${p} --first-result`;
     case "analysis":
       return `/berdl-review${p}`;
     case "reviewed":
@@ -33,6 +34,26 @@ export function recommendedCommand(state?: string, project?: string): string {
       return "done — reopen intentionally before changing the project";
     default:
       return "/berdl-status, then explore data or start a project";
+  }
+}
+
+export function recommendedActions(state?: string, project?: string): string[] {
+  const p = project ? ` ${project}` : " <project>";
+  switch (state) {
+    case "exploration":
+      return ["/berdl-preview <table>", `/research-plan${p}`, "/literature-review <topic>"];
+    case "proposed":
+      return [`/analyze${p} --first-result`, `/berdl-review${p} --plan`, "/whereami"];
+    case "active":
+      return [`/analyze${p} --first-result`, `/analyze${p} --continue`, "/whereami"];
+    case "analysis":
+      return [`/berdl-refute${p}`, `/berdl-review${p}`, `/synthesize${p}`];
+    case "reviewed":
+      return [`/submit${p}`, `/berdl-review${p} --panel`, `/reroll-analysis-from${p ? " first-result" : " <label>"}`];
+    case "complete":
+      return ["/science-memory", "/idea-tournament <topic>", "/tree"];
+    default:
+      return ["/berdl-status", "/skills", "/whereami"];
   }
 }
 
@@ -50,6 +71,7 @@ export function buildWorkflowView(
     phase: status ? currentStep(status) : undefined,
     next: nextAction(status ?? ""),
     command: recommendedCommand(status, project),
+    actions: recommendedActions(status, project),
     claims: researchState?.claims,
     lastCheckpoint: researchState?.lastCheckpoint,
     env: env ? { location: env.location, ready: env.ready } : undefined,
