@@ -310,6 +310,28 @@ def test_ensure_default_theme_creates_settings_when_absent(tmp_path: Path) -> No
     assert data["theme"] == "beril"
 
 
+def test_ensure_quiet_startup_creates_settings_when_absent(tmp_path: Path) -> None:
+    start._ensure_quiet_startup(tmp_path)
+    data = json.loads((tmp_path / ".pi" / "settings.json").read_text())
+    assert data["quietStartup"] is True
+
+
+def test_ensure_quiet_startup_adds_to_existing_without_clobbering(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"packages": [".."], "theme": "beril"}))
+    start._ensure_quiet_startup(tmp_path)
+    assert json.loads(settings.read_text()) == {"packages": [".."], "theme": "beril", "quietStartup": True}
+
+
+def test_ensure_quiet_startup_respects_an_existing_choice(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"quietStartup": False}))
+    start._ensure_quiet_startup(tmp_path)
+    assert json.loads(settings.read_text())["quietStartup"] is False
+
+
 def test_ensure_default_theme_adds_to_existing_without_clobbering(tmp_path: Path) -> None:
     settings = tmp_path / ".pi" / "settings.json"
     settings.parent.mkdir(parents=True)

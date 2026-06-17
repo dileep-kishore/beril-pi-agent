@@ -133,7 +133,9 @@ bundled `beril` already on PATH (so the extensions resolve it — **no manual
 `/berdl-start` any time to re-orient). It starts a **fresh Pi session by default** so stale
 project state does not leak into new work; pass an explicit Pi session flag (`--continue`,
 `--resume`, `--session …`, or `--no-session`) when you want to restore or control a thread.
-Resumed project sessions are named `<project> · <phase>` so the picker stays legible. beril is a
+`beril start` also enables Pi's quiet startup for this project so the generic
+context/skills/extensions inventory stays hidden and the BERIL science/workflow welcome is the
+first surface. Resumed project sessions are named `<project> · <phase>` so the picker stays legible. beril is a
 **Pi workbench**: `beril start` always launches
 `pi` (a stale config can't redirect it). Other agents like Claude/Codex are still used *inside*
 skills and subagents — e.g. the `/berdl-review` Opus reviewer — but never as the launcher.

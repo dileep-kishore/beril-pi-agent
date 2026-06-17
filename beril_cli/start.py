@@ -87,6 +87,28 @@ def _set_theme(repo_root: Path, theme: str, *, force: bool = False) -> None:
         print(f"Warning: could not set the theme: {exc}", file=sys.stderr)
 
 
+def _ensure_quiet_startup(repo_root: Path) -> None:
+    """Hide Pi's generic startup resource listing for the BERIL workbench.
+
+    BERIL installs its own science/workflow welcome panel from `beril-env`.
+    `quietStartup` removes Pi's built-in context/skills/extensions inventory so
+    the first visible surface is the BERIL-focused orientation. Respect an
+    explicit user value if one already exists.
+    """
+    settings_path = repo_root / ".pi" / "settings.json"
+    try:
+        data = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        if not isinstance(data, dict):
+            return
+        if "quietStartup" in data:
+            return
+        data["quietStartup"] = True
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Warning: could not set quiet startup: {exc}", file=sys.stderr)
+
+
 def _read_pi_theme(repo_root: Path) -> str | None:
     """Read the active project-local Pi theme, if present."""
     settings_path = repo_root / ".pi" / "settings.json"
@@ -363,6 +385,7 @@ def run_start(
     else:
         _ensure_default_theme(repo_root)
         os.environ.setdefault("BERIL_THEME", _read_pi_theme(repo_root) or "beril")
+    _ensure_quiet_startup(repo_root)
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)
