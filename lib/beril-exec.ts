@@ -18,6 +18,34 @@ export class BerilError extends Error {
   }
 }
 
+export type BerilErrorKind = "connectivity" | "permission" | "auth" | "usage" | "query" | "unknown";
+
+function errText(err: unknown): string {
+  const stderr = err instanceof BerilError ? err.stderr : "";
+  const msg = err instanceof Error ? err.message : String(err);
+  return `${msg} ${stderr}`;
+}
+
+export function classifyBerilError(err: unknown): BerilErrorKind {
+  if (err instanceof BerilError && err.isUsage) return "usage";
+  const text = errText(err);
+  if (/unreachable|RETRIES_EXCEEDED|UNAVAILABLE/i.test(text)) return "connectivity";
+  if (
+    /KBASE_AUTH_TOKEN|missing token|token is required|expired token|invalid token|authentication required/i.test(text)
+  ) {
+    return "auth";
+  }
+  if (
+    /AccessControlException|Token denied|AccessDenied|Access denied|not authorized|unauthorized|403\s+Forbidden|permission denied|NoAuthWithAWSException/i.test(
+      text,
+    )
+  ) {
+    return "permission";
+  }
+  if (/TABLE_OR_VIEW_NOT_FOUND|PARSE_SYNTAX_ERROR|AnalysisException|Syntax error/i.test(text)) return "query";
+  return "unknown";
+}
+
 /**
  * Whether a thrown error is a *transport* failure (the BERDL Spark Connect
  * endpoint never answered) rather than a genuine SQL/analysis error.
@@ -31,9 +59,20 @@ export class BerilError extends Error {
  * `RETRIES_EXCEEDED`, so we match all three.
  */
 export function isConnectivityError(err: unknown): boolean {
-  const stderr = err instanceof BerilError ? err.stderr : "";
-  const msg = err instanceof Error ? err.message : String(err);
-  return /unreachable|RETRIES_EXCEEDED|UNAVAILABLE/i.test(`${msg} ${stderr}`);
+  return classifyBerilError(err) === "connectivity";
+}
+
+export function isPermissionError(err: unknown): boolean {
+  const kind = classifyBerilError(err);
+  return kind === "permission" || kind === "auth";
+}
+
+export function permissionGuidance(err: unknown): string {
+  const kind = classifyBerilError(err);
+  if (kind === "auth") {
+    return "BERDL authentication is missing or expired. Stop here and refresh credentials with `uv run beril setup` or inspect `/berdl-status` before retrying.";
+  }
+  return "BERDL authorization blocked this request. Stop here: the current user does not appear to have permission for one or more requested resources. Request access or choose a table you can read before retrying.";
 }
 
 export interface BerilExecOptions {

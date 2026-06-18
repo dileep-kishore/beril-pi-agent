@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import berilData from "../extensions/beril-data.ts";
-import { isConnectivityError } from "../lib/beril-exec.ts";
+import { isConnectivityError, isPermissionError } from "../lib/beril-exec.ts";
 import { isDestructive } from "../lib/destructive.ts";
 import { resetReadinessCache } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
@@ -158,6 +158,13 @@ test("isConnectivityError flags transport outages but not SQL/analysis errors", 
   assert.ok(!isConnectivityError(new Error("[PARSE_SYNTAX_ERROR] Syntax error at or near 'SELCT'")));
 });
 
+test("isPermissionError flags BERDL authorization failures", () => {
+  assert.ok(isPermissionError(new Error("Query failed: AccessControlException: access denied to tenant table")));
+  assert.ok(isPermissionError(new Error("Token denied for resource kbase.ke_pangenome.genome")));
+  assert.ok(isPermissionError(new Error("403 Forbidden: not authorized")));
+  assert.ok(!isPermissionError(new Error("[TABLE_OR_VIEW_NOT_FOUND] The table `db`.`t` cannot be found")));
+});
+
 test("berdl_feasibility surfaces a Spark-unreachable outage as an error, never as 'absent'", async () => {
   // When the schema probe fails because Spark Connect is down, the tool must NOT
   // claim the column is absent (a false 'not-answerable' verdict). It must abort
@@ -181,6 +188,48 @@ test("berdl_feasibility surfaces a Spark-unreachable outage as an error, never a
         ctx,
       ),
     /unreachable/,
+  );
+});
+
+test("berdl_feasibility surfaces authorization failures as stop conditions", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return {
+      stdout: "",
+      stderr: "Query failed: AccessControlException: access denied to table db.t.",
+      code: 1,
+      killed: false,
+    };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    /access denied|permission|authorization/i,
+  );
+});
+
+test("berdl_query sanitizes authorization failures", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return {
+      stdout: "",
+      stderr:
+        "Traceback...\nAccessControlException: org.apache.hadoop.fs.s3a.auth.NoAuthWithAWSException\nsecret stack",
+      code: 1,
+      killed: false,
+    };
+  });
+  await assert.rejects(
+    () => tools.berdl_query.execute("id", { query: "SELECT * FROM db.t", limit: 100 }, undefined, undefined, ctx),
+    (err: any) =>
+      /permission|authorization|access/i.test(err.message) &&
+      !/NoAuthWithAWSException|Traceback|secret stack/.test(err.message),
   );
 });
 
