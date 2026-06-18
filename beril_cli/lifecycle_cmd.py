@@ -25,10 +25,48 @@ from beril_cli.paths import find_repo_root
 _MARKER_FILES = {"submitted": "SUBMITTED.md", "failed": "SUBMISSION_FAILED.md"}
 _AUTHOR_FIELDS = ("name", "affiliation", "orcid")
 _HASH_PREFIX = "sha256:"
+_PROVENANCE_FILE = "provenance.json"
+_TRACE_FILE = "TRACE.jsonl"
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _read_json(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_provenance(project_dir: Path, payload: dict) -> None:
+    (project_dir / _PROVENANCE_FILE).write_text(
+        json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n"
+    )
+
+
+def _research_state(project_dir: Path, proj: dict) -> dict:
+    provenance = _read_json(project_dir / _PROVENANCE_FILE)
+    state = provenance.get("research_state")
+    if isinstance(state, dict):
+        return state
+    legacy = proj.get("research_state")
+    return legacy if isinstance(legacy, dict) else {}
+
+
+def _append_trace(project_dir: Path, event: str, payload: dict | None = None) -> None:
+    row = {
+        "at": _now(),
+        "project": project_dir.name,
+        "event": event,
+        **(payload or {}),
+    }
+    with (project_dir / _TRACE_FILE).open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, sort_keys=True, default=str) + "\n")
 
 
 def _authors_from_config() -> list[dict[str, str]]:
@@ -142,7 +180,11 @@ def _find_current_project(projects_dir: Path) -> dict[str, str] | None:
         if status == "complete":
             continue  # finished — not the active working project
         project_id = str(proj.get("project_id", child.name))
-        mtime = yaml_path.stat().st_mtime
+        mtimes = [yaml_path.stat().st_mtime]
+        for artifact in (child / _PROVENANCE_FILE, child / _TRACE_FILE):
+            if artifact.is_file():
+                mtimes.append(artifact.stat().st_mtime)
+        mtime = max(mtimes)
         if best is None or mtime > best[0]:
             best = (mtime, project_id, status)
     return None if best is None else {"project": best[1], "status": best[2]}
@@ -175,13 +217,12 @@ def run_lifecycle(args: argparse.Namespace) -> int:
 
         if args.action == "session-state":
             # Persist / read the small, tool-derived research-state snapshot the
-            # TS memory extension flushes before a context compaction. It is a
-            # non-authoritative annotation block — `save_project` appends it AFTER
-            # the canonical `_KEY_ORDER` keys (incl. any pre-existing `approval`),
-            # so it round-trips losslessly without disturbing lifecycle state.
+            # TS memory extension flushes before context compaction. Keep the CLI
+            # contract stable, but store the annotation in provenance.json so
+            # beril.yaml remains canonical lifecycle state.
             proj = load_project(project_dir)  # no beril.yaml -> LifecycleError -> rc 2
             if args.get_state:
-                json.dump(proj.get("research_state", {}), sys.stdout, default=str)
+                json.dump(_research_state(project_dir, proj), sys.stdout, default=str)
                 sys.stdout.write("\n")
                 return 0
             if args.state_json is None:
@@ -196,8 +237,16 @@ def run_lifecycle(args: argparse.Namespace) -> int:
                 print("--set must be a JSON object.", file=sys.stderr)
                 return 2
             block["updated_at"] = _now()  # server-stamped, not client-trusted
-            proj["research_state"] = block
-            save_project(project_dir, proj)
+            provenance = _read_json(project_dir / _PROVENANCE_FILE)
+            provenance.update(
+                {
+                    "project": args.project,
+                    "updated_at": block["updated_at"],
+                    "research_state": block,
+                }
+            )
+            _write_provenance(project_dir, provenance)
+            _append_trace(project_dir, "provenance.updated", {"research_state": block})
             json.dump({"research_state": block}, sys.stdout, default=str)
             sys.stdout.write("\n")
             return 0
@@ -216,6 +265,7 @@ def run_lifecycle(args: argparse.Namespace) -> int:
             if load_project(project_dir).get("status") == "active" and args.state == "analysis":
                 _validate_analysis_gate(project_dir)
             new_status = set_status(project_dir, args.state)
+            _append_trace(project_dir, "lifecycle.set", {"status": new_status})
             json.dump({"status": new_status}, sys.stdout)
             sys.stdout.write("\n")
             return 0
@@ -236,6 +286,7 @@ def run_lifecycle(args: argparse.Namespace) -> int:
                 proj.setdefault("previous_approvals", []).append(proj["approval"])
             proj["approval"] = approval
             save_project(project_dir, proj)
+            _append_trace(project_dir, "lifecycle.approve", {"approval": approval})
             json.dump({"approval": approval}, sys.stdout, default=str)
             sys.stdout.write("\n")
             return 0
@@ -252,6 +303,7 @@ def run_lifecycle(args: argparse.Namespace) -> int:
                 f"# {filename.removesuffix('.md').replace('_', ' ').title()}\n\n"
                 f"Written by `beril lifecycle marker` at {_now()}.\n"
             )
+            _append_trace(project_dir, "lifecycle.marker", {"marker": filename})
             json.dump({"marker": filename}, sys.stdout)
             sys.stdout.write("\n")
             return 0

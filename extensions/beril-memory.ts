@@ -9,8 +9,8 @@ import { type ResearchStateSnapshot, buildSnapshot, formatReinjection } from "..
  * Cross-session research-state memory.
  *
  * A long arc loses its thread when Pi compacts the conversation. This extension
- * flushes a small, tool-derived snapshot to `beril.yaml` (via the Python CLI —
- * TS never writes YAML) at `session_before_compact`, and re-injects it as
+ * flushes a small, tool-derived snapshot to `provenance.json` (via the Python
+ * CLI) at `session_before_compact`, and re-injects it as
  * clearly-labelled *background* context on the first turn after compaction so
  * the agent never re-asks "which project are we on?". The block carries only
  * counts + identifiers, never claim text or a verdict, so an unverified claim
@@ -77,8 +77,8 @@ export default function berilMemory(pi: ExtensionAPI) {
         claims,
         lastCheckpoint,
       });
-      // The Python CLI owns beril.yaml; it server-stamps `updated_at` and appends
-      // `research_state` after the canonical keys. TS never touches YAML.
+      // The Python CLI owns provenance.json; it server-stamps `updated_at`.
+      // TS preserves the existing CLI contract and never writes lifecycle YAML.
       await berilExec(pi, ["lifecycle", "session-state", cur.project, "--set", JSON.stringify(snap)]);
     } catch {
       // best-effort: a missing/unreadable project must never block compaction
@@ -95,7 +95,7 @@ export default function berilMemory(pi: ExtensionAPI) {
   // On the first post-compaction turn, append the formatted block to the system
   // prompt (NOT a transcript message, which would read as a fresh finding). Pi
   // chains this with the conduct append. Short-circuit BEFORE any berilExec so a
-  // normal turn pays zero cost; read the snapshot back from `beril.yaml` (the
+  // normal turn pays zero cost; read the snapshot back from `provenance.json` (the
   // store is the source of truth — a compaction can fire in a resumed session
   // that never flushed).
   pi.on("before_agent_start", async (event, ctx) => {
