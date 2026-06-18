@@ -227,30 +227,133 @@ test("/submit aborts before upload when ORCID missing", async () => {
 });
 
 test("/submit uploads and marks submitted when ORCID present", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-submit-ready-"));
   const calls: string[][] = [];
-  const { commands } = harness(async (_c: string, args: string[]) => {
-    calls.push(args);
-    if (args[0] === "user") {
-      return {
-        stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
-        stderr: "",
-        code: 0,
-        killed: false,
-      };
-    }
-    return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
-  });
-  const { ctx: cctx } = cmdCtx();
-  await commands.submit.handler("demo", cctx);
-  // Exact arg shape — `beril submit <project>` is positional (contract with the Python CLI).
-  assert.deepEqual(
-    calls.find((a) => a[0] === "submit"),
-    ["submit", "demo"],
-  );
-  assert.ok(
-    calls.find((a) => a[0] === "lifecycle" && a[1] === "marker" && a.includes("submitted")),
-    "marked submitted",
-  );
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: supported\nConfidence: medium\nSupports: notebooks/01.ipynb — test\nRefutes: none found — searched controls\n",
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "No surviving disconfirming checks.\n", "utf8");
+    await writeFile(join(dir, "REVIEW_1.md"), "Review\n", "utf8");
+    const { commands } = harness(async (_c: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "user") {
+        return {
+          stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+          stderr: "",
+          code: 0,
+          killed: false,
+        };
+      }
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+    });
+    const { ctx: cctx } = cmdCtx();
+    cctx.cwd = root;
+    await commands.submit.handler("demo", cctx);
+    // Exact arg shape — `beril submit <project>` is positional (contract with the Python CLI).
+    assert.deepEqual(
+      calls.find((a) => a[0] === "submit"),
+      ["submit", "demo"],
+    );
+    assert.ok(
+      calls.find((a) => a[0] === "lifecycle" && a[1] === "marker" && a.includes("submitted")),
+      "marked submitted",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("/submit blocks when review_preflight is not submit ready", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-submit-blocked-"));
+  const calls: string[][] = [];
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    const { commands } = harness(async (_c: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "user") {
+        return {
+          stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+          stderr: "",
+          code: 0,
+          killed: false,
+        };
+      }
+      if (args[0] === "hash") return { stdout: JSON.stringify({}), stderr: "", code: 0, killed: false };
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "analysis" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+    });
+    let confirmed = false;
+    const { ctx: cctx, notes } = cmdCtx();
+    cctx.cwd = root;
+    cctx.ui.confirm = async () => {
+      confirmed = true;
+      return true;
+    };
+    await commands.submit.handler("demo", cctx);
+    assert.equal(confirmed, false, "must not ask for destructive approval before preflight passes");
+    assert.ok(!calls.find((a) => a[0] === "submit"), "must not upload when preflight blocks");
+    assert.match(notes.join(" "), /preflight/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("/submit blocks when review_preflight has blockers even if a review exists", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-submit-unsupported-"));
+  const calls: string[][] = [];
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: unsupported\nConfidence: low\nSupports:\nRefutes:\n",
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "Needs more checks.\n", "utf8");
+    await writeFile(join(dir, "REVIEW_1.md"), "Review\n", "utf8");
+    const { commands } = harness(async (_c: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "user") {
+        return {
+          stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+          stderr: "",
+          code: 0,
+          killed: false,
+        };
+      }
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+    });
+    const { ctx: cctx, notes } = cmdCtx();
+    cctx.cwd = root;
+    await commands.submit.handler("demo", cctx);
+    assert.ok(!calls.find((a) => a[0] === "submit"), "must not upload with unsupported claims");
+    assert.match(notes.join(" "), /unsupported/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("/submit blocks headless command mode before upload", async () => {
@@ -359,26 +462,48 @@ test("lifecycle_transition emits nothing when the transition throws", async () =
 });
 
 test("/submit success emits beril:submitted, not beril:lifecycle", async () => {
-  const { commands, emitted } = harness(async (_c: string, args: string[]) => {
-    if (args[0] === "user") {
-      return {
-        stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
-        stderr: "",
-        code: 0,
-        killed: false,
-      };
-    }
-    return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
-  });
-  const { ctx: cctx } = cmdCtx();
-  await commands.submit.handler("demo", cctx);
-  assert.deepEqual(
-    emitted.find((e) => e[0] === "beril:submitted"),
-    ["beril:submitted", { project: "demo" }],
-  );
-  assert.equal(
-    emitted.find((e) => e[0] === "beril:lifecycle"),
-    undefined,
-    "submit must not claim a lifecycle transition",
-  );
+  const root = await mkdtemp(join(tmpdir(), "beril-submit-event-"));
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: supported\nConfidence: medium\nSupports: notebooks/01.ipynb — test\nRefutes: none found — searched controls\n",
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "No surviving disconfirming checks.\n", "utf8");
+    await writeFile(join(dir, "REVIEW_1.md"), "Review\n", "utf8");
+    const { commands, emitted } = harness(async (_c: string, args: string[]) => {
+      if (args[0] === "user") {
+        return {
+          stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+          stderr: "",
+          code: 0,
+          killed: false,
+        };
+      }
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+    });
+    const { ctx: cctx } = cmdCtx();
+    cctx.cwd = root;
+    await commands.submit.handler("demo", cctx);
+    assert.deepEqual(
+      emitted.find((e) => e[0] === "beril:submitted"),
+      ["beril:submitted", { project: "demo" }],
+    );
+    assert.equal(
+      emitted.find((e) => e[0] === "beril:lifecycle"),
+      undefined,
+      "submit must not claim a lifecycle transition",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -8,6 +8,7 @@ import { type ClaimRow, parseClaimLedger, parseEvidence, tallyClaims } from "../
 import { type ClaimState, buildClaimState, claimStateSummary, serializeClaimState } from "../lib/claim-state.ts";
 import { projectCompletions } from "../lib/project-completions.ts";
 import { requireReady } from "../lib/readiness.ts";
+import { collectReviewPreflight, submitReadinessProblems } from "../lib/review-preflight.ts";
 import type { EvidenceView } from "../lib/science.ts";
 import { linesCard } from "../lib/ui/card.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
@@ -48,26 +49,6 @@ interface Identity {
   name: string;
   affiliation: string;
   orcid: string;
-}
-
-function numberedArtifactExists(files: string[], prefix: "REVIEW" | "REFUTATION"): boolean {
-  const re = new RegExp(`^${prefix}_\\d+\\.md$`);
-  return files.some((file) => re.test(file));
-}
-
-function preflightBlockers(input: {
-  report: boolean;
-  unsupported: number;
-  missingRefuteSearch: number;
-  redTeam: boolean;
-}): string[] {
-  const blockers: string[] = [];
-  if (!input.report) blockers.push("REPORT.md is missing");
-  if (input.unsupported) blockers.push(`${input.unsupported} claim(s) are unsupported`);
-  if (input.missingRefuteSearch)
-    blockers.push(`${input.missingRefuteSearch} claim(s) have no refuting evidence search note`);
-  if (!input.redTeam) blockers.push("No REFUTATION_N.md red-team pass found");
-  return blockers;
 }
 
 /**
@@ -199,48 +180,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
       project: Type.String({ description: "Project id (directory under projects/)." }),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
-      const dir = join(ctx.cwd, "projects", params.project);
-      const read = async (name: string) => readFile(join(dir, name), "utf8").catch(() => "");
-      const [planMd, reportMd, files] = await Promise.all([
-        read("RESEARCH_PLAN.md"),
-        read("REPORT.md"),
-        readdir(dir).catch(() => [] as string[]),
-      ]);
-      const state = buildClaimState({ project: params.project, planMd, reportMd });
-      const claims = claimStateSummary(state.rows);
-      const hashes = await berilExec<Record<string, string>>(pi, ["hash", params.project]).catch(() => ({}));
-      const lifecycle: { status?: string } = await berilExec<{ status?: string }>(pi, [
-        "lifecycle",
-        "status",
-        params.project,
-      ]).catch(() => ({}));
-      const redTeam = numberedArtifactExists(files, "REFUTATION");
-      const review = numberedArtifactExists(files, "REVIEW");
-      const missingRefuteSearch = state.rows.filter(
-        (row) => !row.refutes.length && !row.refutesSearched?.trim(),
-      ).length;
-      const blockers = preflightBlockers({
-        report: Boolean(reportMd.trim()),
-        unsupported: claims.unsupported,
-        missingRefuteSearch,
-        redTeam,
-      });
-      const warnings: string[] = [];
-      if (!Object.keys(hashes).length) warnings.push("No notebook hashes returned");
-      if (!review) warnings.push("No REVIEW_N.md found yet; submit is not ready");
-      const view = {
-        project: params.project,
-        status: lifecycle.status,
-        report: Boolean(reportMd.trim()),
-        notebookHashes: Object.keys(hashes).length,
-        claims,
-        redTeam,
-        review,
-        reviewReady: blockers.length === 0,
-        submitReady: blockers.length === 0 && review,
-        blockers,
-        warnings,
-      };
+      const view = await collectReviewPreflight(pi, ctx.cwd, params.project);
       const text = `${params.project}: ${view.reviewReady ? "review ready" : "review not ready"}; ${view.submitReady ? "submit ready" : "submit not ready"}.`;
       return { content: [{ type: "text", text }], details: view };
     },
@@ -423,6 +363,12 @@ export default function berilGovernance(pi: ExtensionAPI) {
         throw new Error(
           `/submit ${project} blocked in non-interactive mode; irreversible submission requires UI approval.`,
         );
+      }
+      const preflight = await collectReviewPreflight(pi, ctx.cwd, project);
+      if (!preflight.submitReady) {
+        const problems = submitReadinessProblems(preflight);
+        ctx.ui.notify(`Submission blocked by review preflight: ${problems.join("; ")}`, "error");
+        return;
       }
       // Destructive: confirm in-session (the safety gate covers the model-tool path, not this command path).
       const ok = await ctx.ui.confirm(

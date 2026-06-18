@@ -3,6 +3,7 @@ import { type Component, Text, visibleWidth } from "@earendil-works/pi-tui";
 import type { ClaimRow } from "../claim-ledger.ts";
 import type { ClaimStateRow, ClaimStateSummary } from "../claim-state.ts";
 import type { LitRecord } from "../lit.ts";
+import type { ReviewPreflightView } from "../review-preflight.ts";
 import type { ClaimStatus, ConfidenceTier, EvidencePointer, EvidenceView } from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
@@ -670,20 +671,6 @@ export function claimStateCard(
   });
 }
 
-export interface ReviewPreflightView {
-  project: string;
-  status?: string;
-  report: boolean;
-  notebookHashes: number;
-  claims: ClaimStateSummary;
-  redTeam: boolean;
-  review: boolean;
-  reviewReady: boolean;
-  submitReady: boolean;
-  blockers: string[];
-  warnings: string[];
-}
-
 export function reviewPreflightCard(theme: Theme, v: ReviewPreflightView): Component {
   const lines = [
     `${theme.fg("muted", "Project       ")}${theme.fg("text", v.project)}`,
@@ -709,8 +696,8 @@ export function reviewPreflightCard(theme: Theme, v: ReviewPreflightView): Compo
   lines.push("", verifyLine(theme, "run claim_state, /berdl-refute, /berdl-review, then /submit when ready"));
   return linesCard(theme, {
     title: cardHeader(theme, { title: `Preflight ${GLYPH.bullet} ${v.project}` }),
-    accentStyle: domainStyle(theme, v.reviewReady ? "governance" : "destructive"),
-    state: v.reviewReady ? "settled" : "warning",
+    accentStyle: domainStyle(theme, v.submitReady ? "governance" : "destructive"),
+    state: v.submitReady ? "settled" : "warning",
     lines,
     maxBodyLines: 32,
   });
