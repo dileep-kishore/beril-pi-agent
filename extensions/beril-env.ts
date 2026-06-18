@@ -153,6 +153,16 @@ export default function berilEnv(pi: ExtensionAPI) {
     announcePhase(state);
   });
 
+  pi.registerMessageRenderer<{ env?: BerdlEnv }>("beril-env-status", (message, _opts, theme) => {
+    const env = message.details?.env ?? {
+      location: "unknown",
+      ready: false,
+      checks: {},
+      next_steps: ["Run /berdl-start for connection guidance, or inspect `beril env --json` for the raw error."],
+    };
+    return envCard(theme, env);
+  });
+
   // The pinned phase banner — a tinted one-liner in the transcript on the custom-
   // message band. The leading glyph + phase word carry the accent (aqua), the same
   // "current/active" colour the statusline and step rail use, so the banner reads
@@ -217,9 +227,8 @@ export default function berilEnv(pi: ExtensionAPI) {
   // instead of staying stuck on "BERDL ?".
   const unsubscribeEnv = onEnvChange(applyEnvToHud);
 
-  /** Re-run the readiness check, update the connection chip + HUD + footer. Returns the env (UI only). */
+  /** Re-run the readiness check, update the connection chip + HUD + footer. Returns the env. */
   async function refreshStatus(ctx: ExtensionContext): Promise<BerdlEnv | undefined> {
-    if (!ctx.hasUI) return undefined;
     try {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
       setCachedEnv(env); // fires onEnvChange → applyEnvToHud (chip + HUD + footer)
@@ -228,10 +237,29 @@ export default function berilEnv(pi: ExtensionAPI) {
       hud.connection = "BERDL status unknown";
       hud.location = "BERDL ?";
       hud.ready = false;
-      ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("error", "BERDL status unknown"));
+      if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("error", "BERDL status unknown"));
       renderHud();
       return undefined;
     }
+  }
+
+  function showEnvStatus(env: BerdlEnv | undefined): void {
+    const fallback: BerdlEnv = {
+      location: "unknown",
+      ready: false,
+      checks: {},
+      next_steps: ["Run /berdl-start for connection guidance, or inspect `beril env --json` for the raw error."],
+    };
+    const shown = env ?? fallback;
+    pi.sendMessage(
+      {
+        customType: "beril-env-status",
+        content: `BERDL ${shown.location}: ${shown.ready ? "ready" : "not ready"}`,
+        display: true,
+        details: { env: shown },
+      },
+      { triggerTurn: false },
+    );
   }
 
   /** Parse a project's plan + report into a claim tally (best-effort; undefined when empty/unreadable). */
@@ -363,6 +391,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     description: "Check the BERDL connection and (re)start pproxy if the SSH tunnels are up.",
     async handler(_args: string, ctx: ExtensionContext) {
       const env = await refreshStatus(ctx);
+      showEnvStatus(env);
       if (ctx.hasUI) {
         ctx.ui.notify(
           env?.ready ? "BERDL ready." : "BERDL not ready — see next steps.",
@@ -373,9 +402,10 @@ export default function berilEnv(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("berdl-status", {
-    description: "Refresh the BERDL connection status indicator.",
+    description: "Refresh and show the BERDL connection status.",
     async handler(_args: string, ctx: ExtensionContext) {
-      await refreshStatus(ctx);
+      const env = await refreshStatus(ctx);
+      showEnvStatus(env);
     },
   });
 
