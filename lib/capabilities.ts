@@ -1,6 +1,7 @@
 export interface Capability {
   id: string;
   title: string;
+  lane: "explore" | "study" | "check";
   intent: string;
   command: string;
   skill?: string;
@@ -16,10 +17,15 @@ export interface RuntimeSurfaceSummary {
   toolCount: number;
 }
 
+export interface CapabilityCatalogOptions {
+  mode?: "guide" | "all";
+}
+
 export const CAPABILITIES: Capability[] = [
   {
     id: "start",
     title: "Start or Continue",
+    lane: "explore",
     intent: "Orient to the current project and choose the next step.",
     command: "/berdl-start",
     prompt: "berdl-start",
@@ -31,6 +37,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "discover",
     title: "Explore data",
+    lane: "explore",
     intent: "Find BERDL tables, inspect schema/sample rows, and test answerability.",
     command: "/berdl-preview <table>",
     skill: "berdl-discover",
@@ -42,6 +49,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "plan",
     title: "Plan study",
+    lane: "study",
     intent: "Turn an answerable question into hypotheses and falsifying analyses.",
     command: "/research-plan <project>",
     skill: "research-plan",
@@ -53,6 +61,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "analyze",
     title: "Run first result",
+    lane: "study",
     intent: "Run the first discriminating notebook, inspect it, then continue.",
     command: "/analyze <project> --first-result",
     skill: "analysis-notebooks",
@@ -64,6 +73,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "paper",
     title: "Plan paper",
+    lane: "study",
     intent: "Separate the publication narrative from the mechanical research plan before synthesis.",
     command: "/paper-plan <project>",
     skill: "paper-plan",
@@ -75,6 +85,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "literature",
     title: "Find literature",
+    lane: "explore",
     intent: "Build project-scoped references and classify papers as support/refute/NEI.",
     command: "/literature-review <topic>",
     skill: "literature-review",
@@ -86,6 +97,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "synthesize",
     title: "Synthesize claims",
+    lane: "study",
     intent: "Draft REPORT.md from executed artifacts while preserving support/refute state.",
     command: "/synthesize <project>",
     skill: "synthesize",
@@ -97,6 +109,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "refute",
     title: "Refute findings",
+    lane: "check",
     intent: "Actively seek disconfirming checks before review or submission.",
     command: "/berdl-refute <project>",
     skill: "berdl-review",
@@ -108,6 +121,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "review",
     title: "Review report",
+    lane: "check",
     intent: "Run independent read-only review or a multi-specialist panel.",
     command: "/berdl-review <project>",
     skill: "berdl-review",
@@ -119,6 +133,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "submit",
     title: "Submit",
+    lane: "check",
     intent: "Approve and archive a reviewed project under the responsible ORCID.",
     command: "/submit <project>",
     skill: "submit",
@@ -130,6 +145,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "memory",
     title: "Mine approved memory",
+    lane: "explore",
     intent: "Use reviewed discoveries and performance notes to seed better ideas.",
     command: "/idea-tournament <topic>",
     skill: "suggest-research",
@@ -146,6 +162,14 @@ export function runtimeSurfaceSummary(
 ): RuntimeSurfaceSummary {
   return { commandCount: commands.length, toolCount: tools.length };
 }
+
+const LANE_LABELS: Record<Capability["lane"], string> = {
+  explore: "Explore and branch",
+  study: "Build the study",
+  check: "Check and archive",
+};
+
+const LANE_ORDER: Capability["lane"][] = ["explore", "study", "check"];
 
 export function matchCapability(text: string): Capability | undefined {
   const clean = text.trim();
@@ -167,28 +191,54 @@ export function matchCapability(text: string): Capability | undefined {
   return best?.cap;
 }
 
-export function capabilityCatalogMarkdown(summary?: Partial<RuntimeSurfaceSummary>): string {
+export function capabilityCatalogMarkdown(
+  summary?: Partial<RuntimeSurfaceSummary>,
+  options: CapabilityCatalogOptions = {},
+): string {
   const runtime =
     summary?.commandCount != null || summary?.toolCount != null
       ? `Runtime surface: ${summary.commandCount ?? 0} commands, ${summary.toolCount ?? 0} tools.\n\n`
       : "";
-  const lines = ["# BERIL Capabilities", "", runtime.trim(), ""].filter(Boolean);
-  for (const cap of CAPABILITIES) {
-    const promptLine = cap.prompt ? [`- Prompt: \`${cap.prompt}\``] : [];
-    const skillLine = cap.skill ? [`- Skill: \`${cap.skill}\``] : [];
-    lines.push(
-      `## ${cap.title}`,
+  if (options.mode !== "all") {
+    const lines = [
+      "# BERIL Guide",
       "",
-      cap.intent,
+      "The study arc is a map, not a lock. Follow the suggested move when it helps, or branch into data, literature, ideas, or audit work at any time.",
       "",
-      `- Command: \`${cap.command}\``,
-      ...promptLine,
-      ...skillLine,
-      `- Tools: ${cap.tools.map((t) => `\`${t}\``).join(", ")}`,
-      `- Use when: ${cap.when}`,
-      `- Next: ${cap.next}`,
+      runtime.trim(),
+      runtime ? "Full expert inventory: `/capabilities --all`." : "Full expert inventory: `/capabilities --all`.",
       "",
-    );
+    ].filter(Boolean);
+    for (const lane of LANE_ORDER) {
+      lines.push(`## ${LANE_LABELS[lane]}`, "");
+      for (const cap of CAPABILITIES.filter((c) => c.lane === lane)) {
+        lines.push(`- **${cap.title}** — ${cap.intent} Command: \`${cap.command}\``);
+      }
+      lines.push("");
+    }
+    return `${lines.join("\n")}\n`;
+  }
+
+  const lines = ["# BERIL Capability Inventory", "", runtime.trim(), ""].filter(Boolean);
+  for (const lane of LANE_ORDER) {
+    lines.push(`## ${LANE_LABELS[lane]}`, "");
+    for (const cap of CAPABILITIES.filter((c) => c.lane === lane)) {
+      const promptLine = cap.prompt ? [`- Prompt: \`${cap.prompt}\``] : [];
+      const skillLine = cap.skill ? [`- Skill: \`${cap.skill}\``] : [];
+      lines.push(
+        `### ${cap.title}`,
+        "",
+        cap.intent,
+        "",
+        `- Command: \`${cap.command}\``,
+        ...promptLine,
+        ...skillLine,
+        `- Tools: ${cap.tools.map((t) => `\`${t}\``).join(", ")}`,
+        `- Use when: ${cap.when}`,
+        `- Suggested next: ${cap.next}`,
+        "",
+      );
+    }
   }
   return `${lines.join("\n")}\n`;
 }
@@ -200,5 +250,5 @@ export function resourceLabel(cap: Capability): string {
 }
 
 export function routeNudge(cap: Capability): string {
-  return `Suggested BERIL route: ${cap.title} -> ${cap.command}. ${resourceLabel(cap)}. For vague prompts, clarify missing intent/data/success criteria before using the command. Next: ${cap.next}.`;
+  return `Possible BERIL route: ${cap.title} -> ${cap.command}. ${resourceLabel(cap)}. Use it only if it fits, or keep exploring data, literature, or alternatives. Suggested next if you take it: ${cap.next}.`;
 }

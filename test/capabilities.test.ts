@@ -12,12 +12,26 @@ import {
 
 test("capabilityCatalogMarkdown groups skills by scientist intent", () => {
   const md = capabilityCatalogMarkdown({ commandCount: 12, toolCount: 18 });
+  assert.match(md, /BERIL Guide/);
+  assert.match(md, /map, not a lock/i);
+  assert.match(md, /Explore and branch/);
+  assert.match(md, /Build the study/);
+  assert.match(md, /Check and archive/);
   assert.match(md, /Start or Continue/);
-  assert.match(md, /Prompt: `berdl-start`/);
   assert.match(md, /Explore data/);
   assert.match(md, /\/research-plan <project>/);
   assert.match(md, /\/paper-plan <project>/);
   assert.match(md, /\/berdl-refute <project>/);
+  assert.doesNotMatch(md, /Tools:/, "default catalog should not expose implementation tools");
+  assert.doesNotMatch(md, /Prompt: `berdl-start`/, "default catalog should hide package internals");
+  assert.match(md, /\/capabilities --all/);
+});
+
+test("capabilityCatalogMarkdown all mode shows the full expert inventory", () => {
+  const md = capabilityCatalogMarkdown({ commandCount: 12, toolCount: 18 }, { mode: "all" });
+  assert.match(md, /BERIL Capability Inventory/);
+  assert.match(md, /Prompt: `berdl-start`/);
+  assert.match(md, /Tools: `berdl_discover`/);
   assert.match(md, /12 commands/);
   assert.match(md, /18 tools/);
 });
@@ -44,10 +58,9 @@ test("routeNudge asks for missing alignment before vague routes", () => {
   const cap = matchCapability("Explore this data");
   assert.ok(cap);
   const nudge = routeNudge(cap);
-  assert.match(nudge, /Suggested BERIL route/);
-  assert.match(nudge, /clarify missing/i);
-  assert.match(nudge, /intent\/data\/success criteria/i);
-  assert.match(nudge, /vague/i);
+  assert.match(nudge, /Possible BERIL route/);
+  assert.match(nudge, /or keep exploring/i);
+  assert.match(nudge, /Use it only if it fits/i);
 });
 
 test("every advertised capability resource is installed", () => {

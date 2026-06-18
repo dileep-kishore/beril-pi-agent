@@ -67,7 +67,7 @@ export default function berilWorkflow(pi: ExtensionAPI) {
     const view = await collectView();
     const content =
       focus === "next"
-        ? `Next: ${view.command}`
+        ? `Suggested: ${view.command}`
         : view.project
           ? `Current project: ${view.project} (${view.status ?? "unknown"})`
           : "No active BERIL project found.";
@@ -87,18 +87,18 @@ export default function berilWorkflow(pi: ExtensionAPI) {
         { triggerTurn: false, deliverAs: "nextTurn" },
       );
     }
-    if (ctx.hasUI) ctx.ui.notify(focus === "next" ? `Next: ${view.command}` : content, "info");
+    if (ctx.hasUI) ctx.ui.notify(focus === "next" ? `Suggested: ${view.command}` : content, "info");
   }
 
   pi.registerCommand("whereami", {
-    description: "Show the active BERIL project, lifecycle phase, cached connection, and next action.",
+    description: "Show the active BERIL project, lifecycle phase, cached connection, and suggested actions.",
     async handler(_args: string, ctx: ExtensionCommandContext) {
       await show("whereami", ctx);
     },
   });
 
   pi.registerCommand("next", {
-    description: "Show the deterministic next BERIL workflow command for the active project.",
+    description: "Show the suggested BERIL workflow command for the active project.",
     async handler(_args: string, ctx: ExtensionCommandContext) {
       await show("next", ctx);
     },

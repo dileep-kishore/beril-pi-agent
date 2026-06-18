@@ -37,8 +37,18 @@ test("registers /skills and /capabilities", async () => {
   assert.ok(h.commands.capabilities);
   await h.commands.skills.handler("", { hasUI: true, ui: { notify: () => {} } });
   assert.equal(h.messages[0].message.customType, "beril-capabilities");
+  assert.match(h.messages[0].message.content, /BERIL Guide/);
   assert.match(h.messages[0].message.content, /Explore data/);
+  assert.doesNotMatch(h.messages[0].message.content, /Tools:/);
   assert.deepEqual(h.messages[0].options, { triggerTurn: false });
+});
+
+test("/capabilities --all shows the expert inventory", async () => {
+  const h = harness();
+  await h.commands.capabilities.handler("--all", { hasUI: true, ui: { notify: () => {} } });
+  assert.equal(h.messages[0].message.customType, "beril-capabilities");
+  assert.match(h.messages[0].message.content, /BERIL Capability Inventory/);
+  assert.match(h.messages[0].message.content, /Tools:/);
 });
 
 test("capability shortcut also displays immediately", () => {
@@ -61,10 +71,9 @@ test("before_agent_start injects a visible route nudge and system hint", async (
     prompt: "Can we find literature that refutes this?",
     systemPrompt: "base",
   });
-  assert.match(res.systemPrompt, /Suggested BERIL route/);
-  assert.match(res.systemPrompt, /clarify missing/i);
-  assert.match(res.systemPrompt, /intent\/data\/success criteria/i);
+  assert.match(res.systemPrompt, /Possible BERIL route/);
+  assert.match(res.systemPrompt, /or keep exploring/i);
   assert.equal(res.message.customType, "beril-skill-nudge");
   assert.match(res.message.content, /literature/i);
-  assert.match(res.message.content, /clarify missing/i);
+  assert.match(res.message.content, /Use it only if it fits/i);
 });

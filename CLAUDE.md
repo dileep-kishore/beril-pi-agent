@@ -114,8 +114,9 @@ tool / `beril lifecycle`. The commands woven through it:
 `/berdl-start → /literature-review → /research-plan → /analyze --first-result →
 /analyze --continue → /paper-plan → /synthesize → /berdl-refute →
 /berdl-review → /submit`.
-`/skills` and `/capabilities` expose the available routes by scientist intent
-for new users and returning sessions.
+Treat this as a map, not a lock: users can branch into data, literature, ideas,
+or audit work when useful. `/skills` exposes a compact route guide by scientist
+intent; `/capabilities --all` shows the full command/skill/tool inventory.
 
 **The extensions** (one concern each — see `extensions/` for the current set):
 
@@ -132,8 +133,9 @@ for new users and returning sessions.
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list` and
   `/analyze` (split into a first-result checkpoint and a resume-aware
   continuation pass).
-- `beril-capabilities` — `/skills`, `/capabilities`, the capability palette,
-  and conservative route nudges from plain-language scientific intent.
+- `beril-capabilities` — `/skills`, `/capabilities`, `/capabilities --all`, the
+  capability palette, and conservative route nudges from plain-language
+  scientific intent.
 - `beril-plan` — `planning_preflight`, `research_plan` plan-card tool, and
   `/research-plan`.
 - `beril-paper` — `paper_plan` narrative-plan card and `/paper-plan`, separating

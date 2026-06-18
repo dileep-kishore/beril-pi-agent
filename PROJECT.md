@@ -29,5 +29,7 @@ Projects move `exploration → proposed → active → analysis → reviewed →
 (→ `active`); `/paper-plan` separates the publication narrative from the
 mechanical research plan; then `/synthesize → /berdl-review → /submit` carries
 reproducibility hashing and an ORCID-gated approval before the irreversible
-lakehouse upload. A persistent workflow HUD shows the current step and what's
-next.
+lakehouse upload. This is a map, not a lock: users can branch into data,
+literature, ideas, or audit work whenever useful. A persistent workflow HUD shows
+the current step, a suggested move, available actions, and an exploration escape
+hatch.

@@ -11,18 +11,19 @@ const theme = {
   getColorMode: () => "truecolor",
 } as unknown as Theme;
 
-test("shows the step rail with the current step and the next action", () => {
+test("shows the step rail with the current step and suggested actions", () => {
   const lines = workflowHud(theme, { project: "demo", state: "active" });
   const text = lines.join("\n");
   // active → the analyze step is current.
   assert.match(text, /▸ analyze/);
   assert.match(text, /✓ explore.*✓ plan/, "rail lists earlier steps as done");
-  assert.match(text, /Next: finish the notebooks/);
+  assert.match(text, /Suggested: finish the notebooks/);
   // connection + project now live in the statusline, not the HUD.
   assert.doesNotMatch(text, /◆/, "no project chip in the HUD");
   assert.doesNotMatch(text, /BERDL/, "no connection label in the HUD");
-  assert.match(text, /Actions:/);
+  assert.match(text, /Available:/);
   assert.match(text, /\/analyze demo --first-result/);
+  assert.match(text, /Explore anytime:/);
 });
 
 test("marks a submitted project on the rail", () => {
@@ -32,39 +33,45 @@ test("marks a submitted project on the rail", () => {
 
 test("before any project, shows just a getting-started next hint", () => {
   const lines = workflowHud(theme, {});
-  assert.equal(lines.length, 2);
-  assert.match(lines[0], /Next:/);
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /Suggested:/);
   assert.match(lines[0], /frame the question.*discover/i);
-  assert.match(lines[1], /Actions:/);
+  assert.match(lines[1], /Available:/);
+  assert.match(lines[2], /Explore anytime:/);
   assert.doesNotMatch(lines[0], /▸/, "no current-step marker without a project state");
 });
 
 test("exploration next hint frames the question before querying or planning", () => {
   const text = workflowHud(theme, { project: "demo", state: "exploration" }).join("\n");
-  assert.match(text, /Next:.*frame the question.*query.*plan/i);
+  assert.match(text, /Suggested:.*frame the question.*query.*plan/i);
 });
 
 test("renders an indented sub-step line between the rail and the next hint", () => {
   const substeps = applyToolStart(substepsForPhase("analyze"), "notebook_run", {});
   const lines = workflowHud(theme, { project: "demo", state: "active", substeps });
-  // rail, sub-step line, next hint, actions — four lines.
-  assert.equal(lines.length, 4);
+  // rail, sub-step line, suggested hint, available actions, exploration escape hatch — five lines.
+  assert.equal(lines.length, 5);
   // The sub-step line is the rendered rail, two-space indented, and marks `run` active.
   assert.equal(lines[1], `  ${substepRail(theme, substeps)}`, "the sub-step line is two-space indented");
   assert.ok(lines[1].includes(`${glyph("here")} run`), "run is active on the sub-step line");
-  assert.match(lines[2], /Next:/, "the next hint still comes before actions");
-  assert.match(lines[3], /Actions:/);
+  assert.match(lines[2], /Suggested:/, "the suggested hint still comes before actions");
+  assert.match(lines[3], /Available:/);
+  assert.match(lines[4], /Explore anytime:/);
 });
 
 test("renders no sub-step line when substeps is undefined (regression: 3-test contract)", () => {
   // Existing-contract states with substeps undefined must keep their exact line counts.
-  assert.equal(workflowHud(theme, {}).length, 2, "no project → next + actions");
-  assert.equal(workflowHud(theme, { project: "demo", state: "active" }).length, 3, "project → rail + next + actions");
+  assert.equal(workflowHud(theme, {}).length, 3, "no project → suggested + available + explore");
+  assert.equal(
+    workflowHud(theme, { project: "demo", state: "active" }).length,
+    4,
+    "project → rail + suggested + available + explore",
+  );
   // An empty (no-manifest) overlay also adds no line.
   const empty = substepsForPhase("review");
   assert.equal(
     workflowHud(theme, { project: "demo", state: "reviewed", substeps: empty }).length,
-    3,
-    "empty overlay adds no line beyond actions",
+    4,
+    "empty overlay adds no line beyond available actions",
   );
 });

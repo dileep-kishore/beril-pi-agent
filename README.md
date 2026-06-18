@@ -20,8 +20,10 @@ feasibility) → `/literature-review <topic>` → `/research-plan <project>` →
 `/analyze <project> --continue` → `/paper-plan <project>` →
 `/synthesize <project>` →
 `/berdl-refute <project>` → `/berdl-review <project>` → `/submit <project>`.
-Run `/skills` or `/capabilities` whenever you are unsure which route fits the
-current scientific question.
+The arc is a map, not a lock: you can branch into data, literature, ideas, or
+audit work whenever that is the better scientific move. Run `/skills` for a
+compact guide to common moves, or `/capabilities --all` for the full expert
+inventory of commands, skills, and tools.
 
 **Visual workflow**
 - **Science cards.** Every tool result renders as a titled, framed card — a data
@@ -29,10 +31,13 @@ current scientific question.
   the command itself reduced to a dimmed one-liner (`lib/ui`).
 - **Workflow HUD.** A persistent panel above the editor shows the active project,
   the connection, where you are in `explore → plan → analyze → review → submit`,
-  and concrete actions that are available from that step.
+  a suggested move, available actions, and an explicit "explore anytime" escape
+  hatch.
 - **Capability routing.** `/skills`, `/capabilities`, and the `Ctrl+Shift+K`
-  palette group skills, commands, and tools by scientific intent; plain-language
-  prompts also get a lightweight route nudge when there is an obvious BERIL path.
+  palette show a compact guide grouped by scientific intent; `/capabilities
+  --all` exposes the full command/skill/tool inventory. Plain-language prompts
+  get a lightweight route nudge when there is an obvious BERIL path, but it is
+  advisory rather than a workflow gate.
 - **Quiet plumbing.** Routine bash/file output is collapsed by default (expand on
   demand); the conduct contract tells the agent to lead with the artifact, not
   the command.
@@ -58,8 +63,9 @@ current scientific question.
   tools and `/analyze` (split into `--first-result` and `--continue`).
 - `beril-audit` — `project_provenance`, `project_trace`, `/provenance`, and
   `/trace` for inspectable project provenance and session traces.
-- `beril-capabilities` — `/skills`, `/capabilities`, the capability palette,
-  and route nudges that map plain-language scientific intent to the right skill.
+- `beril-capabilities` — `/skills`, `/capabilities`, `/capabilities --all`,
+  the capability palette, and soft route nudges that map plain-language
+  scientific intent to a likely skill without forcing the route.
 - `beril-plan` — `/research-plan`, `planning_preflight`, and the
   `research_plan` plan-card tool.
 - `beril-paper` — `/paper-plan` and the `paper_plan` narrative-plan card.

@@ -258,16 +258,16 @@ test("session_shutdown clears the chip, the widget, the footer, and the header",
   assert.equal(headerCalls.at(-1), undefined, "header cleared");
 });
 
-test("beril:lifecycle puts the step rail in the HUD and the project in the footer", async () => {
+test("beril:lifecycle puts the advisory rail in the HUD and the project in the footer", async () => {
   const h = harness();
   berilEnv(h.pi);
   const { ctx, widgets, renderFooter } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   h.events.emit("beril:lifecycle", { project: "demo", state: "analysis" });
   const hud = lastWidget(widgets);
-  // analysis points the scientist at the review step, with a 'Next' hint.
+  // analysis points the scientist at the review step, with an advisory hint.
   assert.match(hud, /▸ review/, "marks the current step in the HUD");
-  assert.match(hud, /Next:.*review the report/, "shows the next action");
+  assert.match(hud, /Suggested:.*review the report/, "shows the suggested action");
   assert.doesNotMatch(hud, /◆ demo/, "project no longer duplicated in the HUD");
   assert.match(renderFooter(), /◆ demo/, "project shows in the footer");
 });

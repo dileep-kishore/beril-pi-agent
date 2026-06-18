@@ -11,13 +11,15 @@ You are starting a BERIL Research Observatory session in the Pi workbench.
 
 3. **Show what data is reachable.** If connected, call `berdl_discover` and give the researcher a short, scannable list of the top accessible collections (name + what each covers) — BERIL's edge over a general-purpose agent is this data, so make it visible up front rather than waiting to be asked. Offer to preview any table with `berdl_peek` / `/berdl-preview <db.table>` (schema + a few sample rows) so they can see real contents before committing to a question.
 
-4. Briefly orient the researcher on what this workbench can do:
-   - **Data:** `berdl_discover` (find databases/tables), `berdl_peek` / `/berdl-preview <db.table>` (preview a table's schema + sample rows), `berdl_query` (bounded read-only SQL), `berdl_export` (write results to MinIO — guarded).
-   - **Research loop:** `/research-plan <project>` (records `planning_preflight`) → `/analyze <project> --first-result` → `/analyze <project> --continue` (resume-aware) → `/paper-plan <project>` → `/synthesize <project>` → `/berdl-refute <project>` → `/berdl-review <project>` → `/submit <project>` (ORCID-gated, reproducibility-hashed).
-   - **Literature:** `/literature-review <topic>` (PubMed + Europe PMC, keyless).
-   - **Web & docs:** `web_read <url>` (read a public page) and `docs_lookup <library>` (current API docs) — read-only, citable, low-tier sources; prefer these over raw bash/curl.
-   - Audit: `/provenance <project>` and `/trace <project>` show `provenance.json` / `TRACE.jsonl`.
-   - Connection: `/berdl-connect`, `/berdl-status`.
+4. Briefly orient the researcher on what this workbench can do. Present the study
+   arc as a **map, not a lock**: it is often useful to move
+   `/research-plan → /analyze → /paper-plan → /synthesize → /berdl-review → /submit`,
+   but the researcher can branch into data exploration, literature, ideas, or
+   audit work whenever that is the better scientific move.
+   - **Explore and branch:** `/berdl-preview <db.table>`, bounded `berdl_query`, `/literature-review <topic>`, `/idea-tournament <topic>`.
+   - **Build the study:** `/research-plan <project>`, `/analyze <project> --first-result`, `/analyze <project> --continue`, `/paper-plan <project>`, `/synthesize <project>`.
+   - **Check and archive:** `/berdl-refute <project>`, `/berdl-review <project>`, `/submit <project>`, `/provenance <project>`, `/trace <project>`.
+   - **Find options:** `/skills` shows the compact guide; `/capabilities --all` shows the full command/skill/tool inventory.
 
 5. **Check feasibility before committing.** When the user names a research question, first confirm it is actually answerable with the available data — use `berdl_discover` / `berdl_peek` to check that the needed tables exist and carry enough non-null rows. If the data is missing or too sparse, say so plainly and suggest the closest answerable question rather than proceeding into an analysis that cannot succeed.
 

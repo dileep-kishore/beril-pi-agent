@@ -74,7 +74,7 @@ export function sessionName(project: string, state?: string): string {
 }
 
 /**
- * The single most useful next action for a lifecycle state, phrased for a
+ * The single most useful suggested action for a lifecycle state, phrased for a
  * scientist. Kept independent of exact slash-command names where a step has no
  * single command, so the hint stays accurate as the surface grows.
  */
