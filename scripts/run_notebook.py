@@ -28,11 +28,23 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import nbformat
 from nbclient import NotebookClient
 from nbclient.exceptions import CellExecutionError
+
+
+def stamp_execution(nb, *, ok: bool, error: str | None = None) -> None:
+    beril = nb.metadata.setdefault("beril", {})
+    execution = {
+        "ok": ok,
+        "executed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if error:
+        execution["error"] = error.splitlines()[0]
+    beril["execution"] = execution
 
 
 def main() -> int:
@@ -67,13 +79,17 @@ def main() -> int:
     try:
         client.execute()
     except CellExecutionError as exc:
+        stamp_execution(nb, ok=False, error=str(exc))
         nbformat.write(nb, path)  # persist partial outputs for debugging
         sys.stderr.write(f"{exc}\n")
         return 1
     except Exception as exc:  # noqa: BLE001 — surface any execution error concisely
+        stamp_execution(nb, ok=False, error=f"{type(exc).__name__}: {exc}")
+        nbformat.write(nb, path)
         sys.stderr.write(f"{type(exc).__name__}: {exc}\n")
         return 1
 
+    stamp_execution(nb, ok=True)
     nbformat.write(nb, path)
     return 0
 

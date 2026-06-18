@@ -373,6 +373,21 @@ def test_language_info_version_not_preserved(tmp_path):
     assert hash_notebook(a) == hash_notebook(b)
 
 
+def test_beril_execution_metadata_not_preserved(tmp_path):
+    nb_a = _make_notebook([_code_cell("x")])
+    nb_b = _make_notebook(
+        [_code_cell("x")],
+        metadata={
+            "kernelspec": {"name": "python3", "display_name": "Python 3"},
+            "language_info": {"name": "python", "mimetype": "text/x-python"},
+            "beril": {"execution": {"ok": True, "executed_at": "2026-06-18T00:00:00Z"}},
+        },
+    )
+    a = _write(tmp_path / "a.ipynb", nb_a)
+    b = _write(tmp_path / "b.ipynb", nb_b)
+    assert hash_notebook(a) == hash_notebook(b)
+
+
 def test_cell_id_not_preserved(tmp_path):
     cell_a = _code_cell("y = 2", id="aaaa-bbbb")
     cell_b = _code_cell("y = 2", id="zzzz-yyyy")

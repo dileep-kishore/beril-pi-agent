@@ -45,9 +45,9 @@ export function recommendedActions(state?: string, project?: string): string[] {
     case "proposed":
       return [`/analyze${p} --first-result`, `/berdl-review${p} --plan`, "/whereami"];
     case "active":
-      return [`/analyze${p} --first-result`, `/analyze${p} --continue`, "/whereami"];
+      return [`/analyze${p} --first-result`, `/analyze${p} --continue`, `/paper-plan${p}`, "/whereami"];
     case "analysis":
-      return [`/berdl-refute${p}`, `/berdl-review${p}`, `/synthesize${p}`];
+      return [`/berdl-refute${p}`, `/berdl-review${p}`, `/paper-plan${p}`, `/synthesize${p}`];
     case "reviewed":
       return [`/submit${p}`, `/berdl-review${p} --panel`, `/reroll-analysis-from${p ? " first-result" : " <label>"}`];
     case "complete":

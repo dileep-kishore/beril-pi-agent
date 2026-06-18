@@ -42,7 +42,7 @@ function analyzePrompt(project: string, mode: AnalyzeMode): string {
     return `Follow the analysis-notebooks skill for project "${project}", but only run the first discriminating notebook in this turn. Use notebook_scaffold if needed, call notebook_list to identify the first numbered notebook, move "${project}" to "active" with lifecycle_transition, then call notebook_run with the single notebook parameter for that first discriminating notebook. Show the first result or figure, then call request_checkpoint before any additional execution.`;
   }
   if (mode === "continue") {
-    return `Continue after the first-result checkpoint for project "${project}". Use notebook_list to inspect remaining notebooks and saved outputs, run the remaining notebooks with notebook_run, and stop if a notebook failure changes the scientific interpretation. When all required notebooks have saved outputs, run /synthesize ${project}.`;
+    return `Continue after the first-result checkpoint for project "${project}". Use notebook_list to inspect remaining notebooks and saved outputs, then call notebook_run with resume: true so prior successful BERIL executions are skipped and failed/unstamped notebooks rerun. Stop if a notebook failure changes the scientific interpretation. When all required notebooks have saved outputs, run /paper-plan ${project} before /synthesize ${project}.`;
   }
   return `Follow the analysis-notebooks skill for project "${project}". Start with the first-result workflow: use notebook_scaffold if needed, notebook_list to choose the first numbered notebook, lifecycle_transition to move "${project}" to "active", run exactly that first discriminating notebook with notebook_run, show the result, and call request_checkpoint. Only after the scientist approves should you continue with /analyze ${project} --continue.`;
 }
@@ -114,32 +114,51 @@ export default function berilAnalysis(pi: ExtensionAPI) {
     name: "notebook_run",
     label: "Run analysis notebooks",
     description:
-      "Execute a project's analysis notebooks (or one named notebook), saving outputs in place. Long-running; reads the lakehouse via the project's Spark session. Use after scaffolding, then /synthesize to interpret the results.",
+      "Execute a project's analysis notebooks (or one named notebook), saving outputs in place. Long-running; reads the lakehouse via the project's Spark session. Use after scaffolding, then /paper-plan and /synthesize to interpret the results.",
     parameters: Type.Object({
       project: Type.String({ description: "Project id." }),
       notebook: Type.Optional(
         Type.String({ description: "A single notebook path/name under notebooks/ (default: all)." }),
+      ),
+      resume: Type.Optional(
+        Type.Boolean({
+          description:
+            "Skip notebooks with prior successful BERIL execution metadata; rerun failed/unstamped notebooks.",
+          default: false,
+        }),
       ),
     }),
     async execute(_id, params, signal, onUpdate) {
       onUpdate?.({ content: [{ type: "text", text: "Executing notebooks (this can take a while)…" }], details: {} });
       const args = ["notebook", "run", params.project];
       if (params.notebook) args.push(params.notebook);
+      if (params.resume) args.push("--resume");
       // Exit 1 = some cells failed but a JSON report is still emitted; exit 2 =
       // usage/env error (no jupyter). Read stdout directly so a partial failure
       // surfaces per-notebook rather than collapsing into a thrown error.
       const res = await pi.exec("beril", args, { timeout: RUN_TIMEOUT_MS, signal });
       if (res.code === 2) throw new Error(`notebook run: ${res.stderr || res.stdout}`);
-      let payload: { project: string; executed: NotebookRun[]; ok: boolean };
+      let payload: {
+        project: string;
+        executed: NotebookRun[];
+        skipped?: { notebook: string; reason: string }[];
+        ok: boolean;
+      };
       try {
-        payload = JSON.parse(res.stdout) as { project: string; executed: NotebookRun[]; ok: boolean };
+        payload = JSON.parse(res.stdout) as {
+          project: string;
+          executed: NotebookRun[];
+          skipped?: { notebook: string; reason: string }[];
+          ok: boolean;
+        };
       } catch {
         throw new Error(`notebook run: unexpected output: ${res.stdout.slice(0, 200)}${res.stderr}`);
       }
       const failed = payload.executed.filter((e) => !e.ok).length;
+      const skipped = payload.skipped?.length ?? 0;
       const text = payload.ok
-        ? `Executed ${payload.executed.length} notebook(s); all cells ran.`
-        : `Executed ${payload.executed.length} notebook(s); ${failed} failed — see errors.`;
+        ? `Executed ${payload.executed.length} notebook(s); skipped ${skipped}; all cells ran.`
+        : `Executed ${payload.executed.length} notebook(s); skipped ${skipped}; ${failed} failed — see errors.`;
       return { content: [{ type: "text", text }], details: payload };
     },
     renderCall(args, theme) {

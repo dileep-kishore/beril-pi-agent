@@ -85,7 +85,7 @@ export function nextAction(state: string): string {
     case "proposed":
       return "scaffold and run the analysis notebooks";
     case "active":
-      return "finish the notebooks, then /synthesize the report";
+      return "finish the notebooks, draft /paper-plan, then /synthesize the report";
     case "analysis":
       return "review the report (/berdl-review), then /submit";
     case "reviewed":

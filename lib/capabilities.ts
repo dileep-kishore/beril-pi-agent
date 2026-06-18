@@ -62,6 +62,17 @@ export const CAPABILITIES: Capability[] = [
     aliases: [/analy[sz]e|notebook|first result|run result|figure/i],
   },
   {
+    id: "paper",
+    title: "Plan paper",
+    intent: "Separate the publication narrative from the mechanical research plan before synthesis.",
+    command: "/paper-plan <project>",
+    skill: "paper-plan",
+    tools: ["paper_plan", "claim_state", "evidence", "request_checkpoint"],
+    when: "Executed notebooks exist and you need to decide what story the evidence can honestly support.",
+    next: "/synthesize <project>",
+    aliases: [/paper plan|paper story|publication story|narrative|story/i],
+  },
+  {
     id: "literature",
     title: "Find literature",
     intent: "Build project-scoped references and classify papers as support/refute/NEI.",
@@ -140,6 +151,7 @@ export function matchCapability(text: string): Capability | undefined {
   const clean = text.trim();
   if (!clean || clean.startsWith("/")) return undefined;
   const routeOrder: Array<[RegExp, string]> = [
+    [/\b(paper plan|paper story|publication story|narrative|story)\b/i, "paper"],
     [/\b(refute|red.?team|stress test|disconfirm|skeptic)\b/i, "refute"],
     [/\b(papers?|literature|citation|pubmed|novel|contradict)\b/i, "literature"],
     [/\b(submit|approve|archive|publish|lakehouse)\b/i, "submit"],

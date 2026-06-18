@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RESEARCH_STEPS, currentStep, sessionName, stepBreadcrumb } from "../lib/research-steps.ts";
+import { RESEARCH_STEPS, currentStep, nextAction, sessionName, stepBreadcrumb } from "../lib/research-steps.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 
 test("breadcrumb marks the current step per lifecycle state", () => {
@@ -39,4 +39,9 @@ test("sessionName combines project + phase, or just project for unknown state", 
   assert.equal(sessionName("aquila", "complete"), `aquila ${GLYPH.bullet} complete`);
   assert.equal(sessionName("aquila", "nonsense"), "aquila");
   assert.equal(sessionName("aquila"), "aquila");
+});
+
+test("active next action points through paper planning before synthesis", () => {
+  assert.match(nextAction("active"), /paper-plan/);
+  assert.match(nextAction("active"), /synthesize/);
 });

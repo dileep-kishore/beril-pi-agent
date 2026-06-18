@@ -127,6 +127,43 @@ def _setup_source() -> str:
     )
 
 
+def _util_import_source() -> str:
+    return "from util import cache_path, load_json, save_json"
+
+
+def _util_source() -> str:
+    return '''"""Small cache helpers for BERIL analysis notebooks."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+NOTEBOOK_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = NOTEBOOK_DIR.parent
+CACHE_DIR = PROJECT_DIR / "data" / "cache"
+
+
+def cache_path(name: str) -> Path:
+    """Return a path under data/cache/, creating the directory if needed."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / name
+
+
+def save_json(name: str, value) -> Path:
+    """Save a JSON-serializable value under data/cache/."""
+    path = cache_path(name)
+    path.write_text(json.dumps(value, indent=2, default=str))
+    return path
+
+
+def load_json(name: str):
+    """Load a JSON value from data/cache/."""
+    return json.loads(cache_path(name).read_text())
+'''
+
+
 def _build_notebook(number: int, title: str, goal: str):
     """Return an nbformat v4 notebook node with title + setup + skeleton cells."""
     import nbformat
@@ -139,6 +176,7 @@ def _build_notebook(number: int, title: str, goal: str):
     cells = [
         new_markdown_cell(header),
         new_code_cell(_setup_source()),
+        new_code_cell(_util_import_source()),
         new_markdown_cell("## Query"),
         new_code_cell(
             "# TODO: query the lakehouse for the data this notebook needs.\n"
@@ -184,6 +222,15 @@ def _scaffold(root: Path, project: str) -> int:
 
     notebooks_dir = project_dir / "notebooks"
     notebooks_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "data" / "cache").mkdir(parents=True, exist_ok=True)
+    util_path = notebooks_dir / "util.py"
+    support_created: list[str] = []
+    support_skipped: list[str] = []
+    if util_path.exists():
+        support_skipped.append("notebooks/util.py")
+    else:
+        util_path.write_text(_util_source())
+        support_created.append("notebooks/util.py")
 
     created: list[str] = []
     skipped: list[str] = []
@@ -199,7 +246,16 @@ def _scaffold(root: Path, project: str) -> int:
             nbformat.write(nb, f)
         created.append(rel)
 
-    json.dump({"project": project, "created": created, "skipped": skipped}, sys.stdout)
+    json.dump(
+        {
+            "project": project,
+            "created": created,
+            "skipped": skipped,
+            "support_created": support_created,
+            "support_skipped": support_skipped,
+        },
+        sys.stdout,
+    )
     sys.stdout.write("\n")
     return 0
 
@@ -234,11 +290,23 @@ def _rel(path: Path, project_dir: Path) -> str:
         return path.name
 
 
+def _execution_metadata(path: Path) -> dict:
+    try:
+        nb = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    meta = nb.get("metadata", {}) or {}
+    beril = meta.get("beril", {}) if isinstance(meta, dict) else {}
+    execution = beril.get("execution", {}) if isinstance(beril, dict) else {}
+    return execution if isinstance(execution, dict) else {}
+
+
 def _run(
     root: Path,
     project: str,
     notebook: str | None,
     timeout: int,
+    resume: bool = False,
     extra_with: list[str] | None = None,
 ) -> int:
     project_dir = root / "projects" / project
@@ -266,7 +334,11 @@ def _run(
     with_flags = NOTEBOOK_WITH if extra_with is None else extra_with
 
     executed: list[dict] = []
+    skipped: list[dict] = []
     for path in targets:
+        if resume and _execution_metadata(path).get("ok") is True:
+            skipped.append({"notebook": _rel(path, project_dir), "reason": "already successful"})
+            continue
         if on_cluster:
             argv = [cluster_python, str(runner), str(path), "--timeout", str(timeout)]
         else:
@@ -288,7 +360,7 @@ def _run(
         executed.append({"notebook": _rel(path, project_dir), "ok": ok, "error": error})
 
     all_ok = all(e["ok"] for e in executed)
-    json.dump({"project": project, "executed": executed, "ok": all_ok}, sys.stdout)
+    json.dump({"project": project, "executed": executed, "skipped": skipped, "ok": all_ok}, sys.stdout)
     sys.stdout.write("\n")
     return 0 if all_ok else 1
 
@@ -313,11 +385,14 @@ def _list(root: Path, project: str) -> int:
                 c.get("cell_type") == "code" and (c.get("outputs") or [])
                 for c in cells
             )
+            execution = (((nb.get("metadata", {}) or {}).get("beril", {}) or {}).get("execution", {}) or {})
             results.append(
                 {
                     "path": _rel(path, project_dir),
                     "cells": len(cells),
                     "has_outputs": has_outputs,
+                    "execution_ok": execution.get("ok") if isinstance(execution, dict) else None,
+                    "executed_at": execution.get("executed_at") if isinstance(execution, dict) else None,
                 }
             )
 
@@ -342,7 +417,7 @@ def run_notebook(args: argparse.Namespace) -> int:
         # Test seam: an injected `_with_override` (e.g. []) swaps the heavy
         # `--with` deps for a light/empty set so a trivial notebook runs fast.
         extra_with = getattr(args, "_with_override", None)
-        return _run(root, args.project, args.notebook, args.timeout, extra_with)
+        return _run(root, args.project, args.notebook, args.timeout, args.resume, extra_with)
 
     json.dump({"error": f"unknown action: {args.action}"}, sys.stderr)
     sys.stderr.write("\n")

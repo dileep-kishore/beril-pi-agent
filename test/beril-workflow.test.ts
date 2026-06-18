@@ -55,7 +55,9 @@ test("recommendedActions gives concrete next commands per lifecycle phase", () =
     "/analyze demo --first-result",
     "/analyze demo --continue",
   ]);
+  assert.ok(recommendedActions("active", "demo").includes("/paper-plan demo"));
   assert.ok(recommendedActions("analysis", "demo").includes("/berdl-refute demo"));
+  assert.ok(recommendedActions("analysis", "demo").includes("/paper-plan demo"));
   assert.ok(recommendedActions("reviewed", "demo").includes("/submit demo"));
 });
 

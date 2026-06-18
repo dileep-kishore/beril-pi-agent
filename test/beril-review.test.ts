@@ -162,6 +162,7 @@ test("project review with missing REPORT.md notifies and writes nothing", async 
     await commands["berdl-review"].handler("demo", ctx);
 
     assert.equal(subagentCalled, false, "must not run the reviewer without REPORT.md");
+    assert.match(notes.join(" "), /paper-plan/i);
     assert.match(notes.join(" "), /synthesize/i);
     const entries = await readdir(dir);
     assert.ok(!entries.some((e) => e.startsWith("REVIEW")), "no review file written");

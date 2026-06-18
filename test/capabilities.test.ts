@@ -16,6 +16,7 @@ test("capabilityCatalogMarkdown groups skills by scientist intent", () => {
   assert.match(md, /Prompt: `berdl-start`/);
   assert.match(md, /Explore data/);
   assert.match(md, /\/research-plan <project>/);
+  assert.match(md, /\/paper-plan <project>/);
   assert.match(md, /\/berdl-refute <project>/);
   assert.match(md, /12 commands/);
   assert.match(md, /18 tools/);
@@ -28,6 +29,7 @@ test("matchCapability maps plain-language science tasks to the right route", () 
   );
   assert.equal(matchCapability("Stress test and refute these findings")?.command, "/berdl-refute <project>");
   assert.equal(matchCapability("I want to archive this reviewed project")?.command, "/submit <project>");
+  assert.equal(matchCapability("Help me shape the paper story")?.command, "/paper-plan <project>");
 });
 
 test("runtimeSurfaceSummary counts runtime commands and tools defensively", () => {
