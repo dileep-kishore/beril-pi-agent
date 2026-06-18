@@ -7,7 +7,7 @@ description: Use when turning a research question and explored data into a writt
 
 ## Pi-native workflow surface
 
-Use `/whereami` to orient the scientist before drafting and `/next` after the checkpoint if the next command is unclear. Keep deterministic mechanics in tools/commands: this skill supplies the scientific judgment for feasibility, hypotheses, and plan quality; `/research-plan <project>` starts the drafting flow, `research_plan` renders the artifact, `lifecycle_transition` moves state, and `request_checkpoint` records the decision seam.
+Use `/whereami` to orient the scientist before drafting and `/next` after the checkpoint if the next command is unclear. Keep deterministic mechanics in tools/commands: this skill supplies the scientific judgment for feasibility, hypotheses, and plan quality; `/research-plan <project>` starts the drafting flow, `planning_preflight` records the checked question/data/assumptions, `research_plan` renders the artifact, `lifecycle_transition` moves state, and `request_checkpoint` records the decision seam.
 
 The research plan is the **contract** for what the analysis will do. It is
 written once the question is clear and the data has been explored, and it moves
@@ -38,7 +38,10 @@ wastes everyone's time. This is BERIL's differentiator: the plan is grounded in
 real, accessible data, not assumed schemas. Use the `berdl_feasibility` tool with
 the candidate tables and their key columns; a `not-answerable` verdict means stop
 and reshape the question — name the limiting table and propose the closest
-answerable question before drafting the plan.
+answerable question before drafting the plan. After feasibility and before
+writing `RESEARCH_PLAN.md`, call `planning_preflight` with the final question,
+verdict, candidate tables, assumptions, and recommendation so the reviewable
+pre-plan artifact exists outside the chat transcript.
 
 ## What a strong plan contains
 
@@ -108,9 +111,11 @@ Frame 2–3 rivals the available BERDL data could *distinguish* — not strawmen
 
 ## After drafting
 
-1. Call the `research_plan` tool to show the plan as a formatted card.
-2. Move the project to `proposed` with `lifecycle_transition`.
-3. **Check in** — the plan is a decision point, not a step to rush past. Ask the
+1. Confirm `PLANNING_PREFLIGHT.json` exists and matches the question you actually
+   planned.
+2. Call the `research_plan` tool to show the plan as a formatted card.
+3. Move the project to `proposed` with `lifecycle_transition`.
+4. **Check in** — the plan is a decision point, not a step to rush past. Ask the
    scientist whether to: approve and start the analysis (`/analyze`), get an
    independent plan review first (`/berdl-review <project> --plan`), or iterate.
    Surface the one or two assumptions you are least sure of so they can correct

@@ -28,6 +28,7 @@ This is the decision record for where each BERIL capability lives.
 | Schema introspection / relationship reading | skill `berdl-discover` | judgment; tools do the fetch |
 | Notebook design (structure, Spark/local, figures) | skill `analysis-notebooks` | judgment; execution is in the extension |
 | Plan structure + feasibility | skill `research-plan` | judgment + template |
+| Paper narrative planning | skill `paper-plan` | judgment; separates story assembly from analysis |
 | Result interpretation, REPORT.md authoring | skill `synthesize` | judgment |
 | Review rubrics, fix guidance | skill `berdl-review` + `lib/review-rubric.ts` | judgment (rubric text) |
 | Submission readiness / approval semantics | skill `submit` | judgment |
@@ -36,9 +37,12 @@ This is the decision record for where each BERIL capability lives.
 | Gotcha capture protocol | skill `pitfall-capture` | judgment |
 | MinIO credentials / `mc` usage | skill `berdl-minio` | judgment; `mc rm` routed through the gate |
 | Bounded SQL / discover / peek / export | tools in `beril-data` | execution + rendering + readiness |
-| Notebook scaffold / run / list | tools in `beril-analysis` + `beril notebook` CLI | execution + rendering |
+| Notebook scaffold / run / list | tools in `beril-analysis` + `beril notebook` CLI | execution + rendering + resume metadata |
+| Planning preflight | tool `planning_preflight` in `beril-plan` | deterministic checkpoint artifact before `RESEARCH_PLAN.md` |
 | Plan display | tool `research_plan` in `beril-plan` | rendering a file as a card |
+| Paper-plan display | tool `paper_plan` in `beril-paper` | rendering `PAPER_PLAN.md` as a card |
 | Lifecycle / hash / identity / submit | tools in `beril-governance` + `beril lifecycle/hash/user/submit` | state + irreversibility |
+| Provenance / session trace | tools in `beril-audit` + project `provenance.json` / `TRACE.jsonl` | inspectable audit artifacts, not lifecycle authority |
 | Literature search/fetch | tools in `beril-literature` + `lib/lit.ts` | execution (was the PubMed MCP) |
 | Connection + workflow HUD | `beril-env` | UI/state |
 | Tool de-emphasis defaults | `beril-display` | UI policy |
@@ -56,7 +60,7 @@ an MCP server.
 
 These exist in the original BERIL repo (`main @ 940c3b0e`) but are **not** in the
 Pi port. They sit outside the three core researcher journeys (explore data →
-literature/ideate → plan → analyze → report → review) and depend on
+literature/ideate → plan → analyze → paper-plan → report → review) and depend on
 infrastructure the workbench does not own, so all are **deferred** — with a
 recommended home for when they are picked up:
 

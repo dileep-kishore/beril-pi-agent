@@ -32,8 +32,11 @@ flow; the tools are `notebook_scaffold`, `notebook_run`, and `notebook_list`.
   for CLI/local runs use the explicit `get_spark_session()` pattern. State which
   environment a notebook targets and keep the import pattern consistent with it.
 - **Spark vs local**: do heavy joins/scans in Spark, but cache intermediate
-  results (e.g. to `data/*.csv`) so downstream notebooks can run locally and
-  cheaply. Avoid `toPandas()` on large intermediates; filter first.
+  results so downstream notebooks can run locally and cheaply. The scaffold
+  creates `notebooks/util.py` and `data/cache/`; use `cache_path()`,
+  `save_json()`, and `load_json()` for small structured cache artifacts. Put
+  expensive extracted tables under `data/` or `data/cache/`, figures under
+  `figures/`, and avoid `toPandas()` on large intermediates; filter first.
 - **Respect the data guards**: prefer bounded queries and the patterns from the
   berdl-query skill; check large tables (`gene`, `genome_ani`, …) have filter
   strategies before scanning them.
@@ -63,8 +66,11 @@ Notebooks must be **committed with their outputs saved** — a notebook with onl
 source and empty `outputs` arrays is not acceptable, because the report, review,
 and approval all attest to the executed results. `notebook_run` executes in place
 and saves outputs; use `notebook_list` to confirm every notebook has outputs
-before `/synthesize`. If you edit a notebook after it was reviewed/approved,
-the prior approval is stale — re-run, re-synthesize, and re-review.
+before `/paper-plan` and `/synthesize`. `notebook_run` also stamps BERIL
+execution metadata; use resume mode for continuation so prior successful BERIL
+executions are skipped while failed or unstamped notebooks rerun. If you edit a
+notebook after it was reviewed/approved, the prior approval is stale — re-run,
+re-synthesize, and re-review.
 
 ## Figures
 
@@ -86,7 +92,9 @@ infeasible question — far cheaper than after five notebooks.
 2. Move the project to `active` (`lifecycle_transition`).
 3. Fill in / run `notebook_run`; check in after the first result.
 4. `notebook_list` to confirm outputs are saved across all notebooks.
-5. `/synthesize` to interpret the executed results into REPORT.md.
+5. `/paper-plan` to choose the evidence-backed narrative from the executed
+   results.
+6. `/synthesize` to interpret that narrative into REPORT.md.
 
 When a query fails, results look wrong, or a table surprises you, capture it via
 the pitfall-capture skill so the next project benefits.

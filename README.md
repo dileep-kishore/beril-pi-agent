@@ -10,14 +10,15 @@ BERIL's scientific judgment (query patterns, research protocols, rubrics, biolog
 
 A research co-scientist where the **science is the foreground**. It carries you
 through the whole arc — **explore the data → review the literature → write a
-research plan → generate + run analysis notebooks → synthesize a report → review
-→ submit** — keeping the science legible and reserving your attention for
+research plan → generate + run analysis notebooks → plan the paper narrative →
+synthesize a report → review → submit** — keeping the science legible and reserving your attention for
 direction, not commands.
 
 **The research arc** (commands): `/berdl-start` (orient + data-forward
 feasibility) → `/literature-review <topic>` → `/research-plan <project>` →
 `/analyze <project> --first-result` (run one discriminating result) →
-`/analyze <project> --continue` → `/synthesize <project>` →
+`/analyze <project> --continue` → `/paper-plan <project>` →
+`/synthesize <project>` →
 `/berdl-refute <project>` → `/berdl-review <project>` → `/submit <project>`.
 Run `/skills` or `/capabilities` whenever you are unsure which route fits the
 current scientific question.
@@ -38,6 +39,10 @@ current scientific question.
 - **Checkpoints.** At natural seams (after the plan, after the first result) the
   agent uses `request_checkpoint` to ask you to steer — approval is for *science
   direction* and *irreversible ops*, never routine commands.
+- **Audit artifacts.** Each project keeps lifecycle/approval authority in
+  `beril.yaml`, runtime/session provenance in `provenance.json`, and local
+  trace rows in `TRACE.jsonl`; inspect them with `/provenance <project>` and
+  `/trace <project>`.
 - **Reroll seams.** `/bookmark-science`, `/back-to-plan`, and
   `/reroll-analysis-from <label>` label scientific branch points so a researcher
   can return to a plan or first-result checkpoint instead of manually hunting the
@@ -51,9 +56,13 @@ current scientific question.
   (destructive, gated), data-result hints, each rendered as a card.
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list`
   tools and `/analyze` (split into `--first-result` and `--continue`).
+- `beril-audit` — `project_provenance`, `project_trace`, `/provenance`, and
+  `/trace` for inspectable project provenance and session traces.
 - `beril-capabilities` — `/skills`, `/capabilities`, the capability palette,
   and route nudges that map plain-language scientific intent to the right skill.
-- `beril-plan` — `/research-plan` and the `research_plan` plan-card tool.
+- `beril-plan` — `/research-plan`, `planning_preflight`, and the
+  `research_plan` plan-card tool.
+- `beril-paper` — `/paper-plan` and the `paper_plan` narrative-plan card.
 - `beril-governance` — lifecycle + reproducibility (`notebook_hash`,
   `claim_state`, `lifecycle_transition`, `beril_user`, `lakehouse_submit`) and
   `/synthesize` → `/berdl-review` → `/submit`.
@@ -74,7 +83,7 @@ current scientific question.
   headless.
 
 **Skills** (`skills/`) — Pi-optimized scientific judgment: `berdl-query`,
-`berdl-discover`, `research-plan`, `analysis-notebooks`, `synthesize`,
+`berdl-discover`, `research-plan`, `analysis-notebooks`, `paper-plan`, `synthesize`,
 `berdl-review`, `submit`, `literature-review`, `suggest-research`,
 `pitfall-capture`, `berdl-minio`. Invoke as `/skill:<name>` or let the model use
 them.
@@ -166,6 +175,11 @@ notebooks declare their dependencies inline (PEP 723) and run under `uv run`, so
 `uv` builds and caches their environments on first use. There is **no manual venv
 to create or activate** — no `.venv-berdl`, no bootstrap step. The first Spark
 query just takes a little longer while `uv` builds the PySpark env once.
+
+Analysis notebook scaffolds also create `notebooks/util.py` and `data/cache/`.
+`notebook_run` stamps BERIL execution metadata into notebooks, and
+`/analyze <project> --continue` uses resume-aware execution so already
+successful notebooks are skipped while failed or unstamped notebooks rerun.
 
 ## Model provider
 

@@ -13,9 +13,10 @@ You are starting a BERIL Research Observatory session in the Pi workbench.
 
 4. Briefly orient the researcher on what this workbench can do:
    - **Data:** `berdl_discover` (find databases/tables), `berdl_peek` / `/berdl-preview <db.table>` (preview a table's schema + sample rows), `berdl_query` (bounded read-only SQL), `berdl_export` (write results to MinIO — guarded).
-   - **Research loop:** `/synthesize <project>` → `/berdl-review <project>` → `/submit <project>` (ORCID-gated, reproducibility-hashed).
+   - **Research loop:** `/research-plan <project>` (records `planning_preflight`) → `/analyze <project> --first-result` → `/analyze <project> --continue` (resume-aware) → `/paper-plan <project>` → `/synthesize <project>` → `/berdl-refute <project>` → `/berdl-review <project>` → `/submit <project>` (ORCID-gated, reproducibility-hashed).
    - **Literature:** `/literature-review <topic>` (PubMed + Europe PMC, keyless).
    - **Web & docs:** `web_read <url>` (read a public page) and `docs_lookup <library>` (current API docs) — read-only, citable, low-tier sources; prefer these over raw bash/curl.
+   - Audit: `/provenance <project>` and `/trace <project>` show `provenance.json` / `TRACE.jsonl`.
    - Connection: `/berdl-connect`, `/berdl-status`.
 
 5. **Check feasibility before committing.** When the user names a research question, first confirm it is actually answerable with the available data — use `berdl_discover` / `berdl_peek` to check that the needed tables exist and carry enough non-null rows. If the data is missing or too sparse, say so plainly and suggest the closest answerable question rather than proceeding into an analysis that cannot succeed.
