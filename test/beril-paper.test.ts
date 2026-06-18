@@ -46,6 +46,20 @@ test("paper_plan reads PAPER_PLAN.md and renders a card", async () => {
   assert.ok(lines[0].includes("Paper plan · demo"));
 });
 
+test("paper_plan renderResult guards the failure case", () => {
+  const { tools } = harness();
+  const lines = tools.paper_plan
+    .renderResult(
+      { content: [{ type: "text", text: "boom" }], details: {} },
+      { expanded: false, isPartial: false },
+      theme,
+      { isError: true },
+    )
+    .render(60);
+  assert.ok(lines.some((l: string) => l.includes("Error")));
+  assert.ok(lines.some((l: string) => l.includes("boom")));
+});
+
 test("/paper-plan prompts for skill-guided PAPER_PLAN.md and checkpoint", async () => {
   const { commands, messages } = harness();
   await commands["paper-plan"].handler("demo", { hasUI: false });
@@ -54,4 +68,8 @@ test("/paper-plan prompts for skill-guided PAPER_PLAN.md and checkpoint", async 
   assert.match(messages[0], /PAPER_PLAN\.md/);
   assert.match(messages[0], /request_checkpoint/);
   assert.match(messages[0], /\/synthesize demo/);
+  // PAPER_PLAN.md does not change lifecycle by itself — the prompt must not
+  // instruct a lifecycle mutation (synthesis/review own that transition).
+  assert.doesNotMatch(messages[0], /lifecycle_transition|lifecycle/i);
+  assert.doesNotMatch(messages[0], /move .* to (proposed|active|reviewed|complete)/i);
 });

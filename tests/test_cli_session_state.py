@@ -95,6 +95,46 @@ def test_get_emits_stored_block(monkeypatch, capsys, tmp_path):
     assert load_project(d)  # untouched by a read
 
 
+def test_get_prefers_provenance_over_legacy_yaml(monkeypatch, capsys, tmp_path):
+    # Seed BOTH a legacy beril.yaml block and a provenance.json block: provenance wins.
+    d = _proj(
+        tmp_path,
+        extra=(
+            "research_state:\n"
+            "  project: demo\n"
+            "  step: legacy\n"
+        ),
+    )
+    (d / "provenance.json").write_text(
+        json.dumps({"research_state": {"project": "demo", "step": "from-provenance"}})
+    )
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(get_state=True))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out == {"project": "demo", "step": "from-provenance"}
+
+
+def test_set_redacts_secret_named_fields(monkeypatch, capsys, tmp_path):
+    # A --set block carrying secret-named keys must be redacted everywhere it lands:
+    # the emitted JSON, provenance.json, and TRACE.jsonl. Defense-in-depth.
+    d = _proj(tmp_path)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    block = {"project": "demo", "phase": "analysis", "token": "abc", "password": "hunter2"}
+    rc = lifecycle_cmd.run_lifecycle(_ns(state_json=json.dumps(block)))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["research_state"]["token"] == "[redacted]"
+    assert out["research_state"]["password"] == "[redacted]"
+    assert out["research_state"]["phase"] == "analysis"
+    provenance = json.loads((d / "provenance.json").read_text())
+    assert provenance["research_state"]["token"] == "[redacted]"
+    assert provenance["research_state"]["password"] == "[redacted]"
+    trace = (d / "TRACE.jsonl").read_text()
+    assert "abc" not in trace and "hunter2" not in trace
+    assert "[redacted]" in trace
+
+
 def test_get_falls_back_to_legacy_yaml_research_state(monkeypatch, capsys, tmp_path):
     _proj(
         tmp_path,

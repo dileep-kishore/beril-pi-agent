@@ -41,3 +41,19 @@ def test_connectivity_guidance_stays_distinct():
 def test_query_errors_keep_original_summary():
     msg = run_sql.sanitized_query_error(RuntimeError("[TABLE_OR_VIEW_NOT_FOUND] db.t missing"), on_cluster=False)
     assert "TABLE_OR_VIEW_NOT_FOUND" in msg
+
+
+def test_sanitized_wording_is_pinned_for_the_ts_classifier():
+    # CONTRACT: the TS error classifier (lib/beril-exec.ts) matches this exact
+    # sanitized prose to round-trip permission/auth denials. If this wording
+    # drifts, classifyBerilError stops recognizing it and a real denial mis-reads
+    # as an ABSENT table — so this pins the strings both layers depend on.
+    perm = run_sql.sanitized_query_error(
+        RuntimeError("AccessControlException: org.apache.hadoop.fs.s3a.auth.NoAuthWithAWSException"),
+        on_cluster=False,
+    )
+    assert "authorization blocked" in perm
+    assert "does not appear to have permission" in perm
+
+    auth = run_sql.sanitized_query_error(RuntimeError("KBASE_AUTH_TOKEN is required."), on_cluster=False)
+    assert "authentication is missing or expired" in auth

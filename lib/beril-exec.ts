@@ -31,12 +31,14 @@ export function classifyBerilError(err: unknown): BerilErrorKind {
   const text = errText(err);
   if (/unreachable|RETRIES_EXCEEDED|UNAVAILABLE/i.test(text)) return "connectivity";
   if (
-    /KBASE_AUTH_TOKEN|missing token|token is required|expired token|invalid token|authentication required/i.test(text)
+    /KBASE_AUTH_TOKEN|missing token|token is required|expired token|invalid token|authentication required|authentication is missing or expired/i.test(
+      text,
+    )
   ) {
     return "auth";
   }
   if (
-    /AccessControlException|Token denied|AccessDenied|Access denied|not authorized|unauthorized|403\s+Forbidden|permission denied|NoAuthWithAWSException/i.test(
+    /AccessControlException|Token denied|AccessDenied|Access denied|not authorized|unauthorized|403\s+Forbidden|permission denied|NoAuthWithAWSException|authorization blocked|do(?:es)? not appear to have permission/i.test(
       text,
     )
   ) {

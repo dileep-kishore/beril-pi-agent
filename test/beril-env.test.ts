@@ -309,6 +309,9 @@ test("a lifecycle phase change pins a banner — once per phase, not per event",
   assert.equal(h.messages.length, 1, "one banner for the analysis→review phase");
   assert.equal(h.messages[0].customType, "beril-phase");
   assert.match(h.messages[0].content, /review/);
+  // The banner uses the advisory "Suggested:" verb, matching the HUD/footer/whereami.
+  assert.match(h.messages[0].content, /Suggested:/, "banner uses the advisory Suggested: verb");
+  assert.doesNotMatch(h.messages[0].content, /Next:/, "banner no longer hard-asserts Next:");
   h.events.emit("beril:lifecycle", { project: "demo", state: "reviewed" }); // → submit phase
   assert.equal(h.messages.length, 2, "a new banner when the phase actually changes");
 });

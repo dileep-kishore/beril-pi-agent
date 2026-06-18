@@ -26,6 +26,16 @@ function harness(execImpl: any) {
 const ctx: any = { hasUI: false, mode: "json" };
 const ready = { ready: true, location: "off-cluster", checks: {}, next_steps: [] };
 
+// The verbatim sanitized stderr scripts/run_sql.py emits for a real authz/auth
+// denial — prose that contains NONE of the raw permission markers. A real
+// permission denial used to round-trip as "unknown", so berdl_feasibility
+// recorded the table as ABSENT (a false "not-answerable" verdict). These are the
+// regression fixtures for that HIGH bug.
+const SANITIZED_PERMISSION =
+  "Query failed: BERDL authorization blocked this request. Stop here: the current user does not appear to have permission for one or more requested resources. Request access or choose a readable table before retrying.";
+const SANITIZED_AUTH =
+  "Query failed: BERDL authentication is missing or expired. Stop here and refresh KBASE_AUTH_TOKEN with `uv run beril setup` (`beril setup` inside an activated environment), then inspect `/berdl-status` before retrying.";
+
 test("registers berdl_query + berdl_discover + berdl_peek + berdl_export", () => {
   const tools = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
   assert.ok(tools.berdl_query && tools.berdl_discover && tools.berdl_peek && tools.berdl_export);
@@ -211,6 +221,67 @@ test("berdl_feasibility surfaces authorization failures as stop conditions", asy
         ctx,
       ),
     /access denied|permission|authorization/i,
+  );
+});
+
+test("berdl_feasibility aborts on the VERBATIM sanitized PERMISSION stderr (never 'absent')", async () => {
+  // The HIGH-bug regression: run_sql.py rewrites the denial into prose with none
+  // of the raw markers. Before the classifier learned that phrasing, this fell
+  // through to checked.push({ exists: false }) and rendered the table as MISSING.
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_PERMISSION, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    (err: any) => /[Rr]equest access|authorization|permission/.test(err.message) && !/exists|MISSING/.test(err.message),
+  );
+});
+
+test("berdl_feasibility aborts on the VERBATIM sanitized AUTH stderr (auth-subclass stop)", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_AUTH, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    (err: any) => /credentials|beril setup|authentication/i.test(err.message) && !/MISSING/.test(err.message),
+  );
+});
+
+test("berdl_query throws the permission guidance for the VERBATIM sanitized PERMISSION stderr", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_PERMISSION, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () => tools.berdl_query.execute("id", { query: "SELECT * FROM db.t", limit: 100 }, undefined, undefined, ctx),
+    /[Rr]equest access/,
+  );
+});
+
+test("berdl_query throws the auth guidance for the VERBATIM sanitized AUTH stderr", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_AUTH, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () => tools.berdl_query.execute("id", { query: "SELECT * FROM db.t", limit: 100 }, undefined, undefined, ctx),
+    /refresh credentials|beril setup/,
   );
 });
 

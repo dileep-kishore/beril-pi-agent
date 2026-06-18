@@ -80,7 +80,7 @@ export const CAPABILITIES: Capability[] = [
     tools: ["paper_plan", "claim_state", "evidence", "request_checkpoint"],
     when: "Executed notebooks exist and you need to decide what story the evidence can honestly support.",
     next: "/synthesize <project>",
-    aliases: [/paper plan|paper story|publication story|narrative|story/i],
+    aliases: [/paper plan|paper story|publication story|publication narrative/i],
   },
   {
     id: "literature",
@@ -175,7 +175,7 @@ export function matchCapability(text: string): Capability | undefined {
   const clean = text.trim();
   if (!clean || clean.startsWith("/")) return undefined;
   const routeOrder: Array<[RegExp, string]> = [
-    [/\b(paper plan|paper story|publication story|narrative|story)\b/i, "paper"],
+    [/\b(paper plan|paper story|publication story|publication narrative)\b/i, "paper"],
     [/\b(refute|red.?team|stress test|disconfirm|skeptic)\b/i, "refute"],
     [/\b(papers?|literature|citation|pubmed|novel|contradict)\b/i, "literature"],
     [/\b(submit|approve|archive|publish|lakehouse)\b/i, "submit"],
@@ -206,7 +206,7 @@ export function capabilityCatalogMarkdown(
       "The study arc is a map, not a lock. Follow the suggested move when it helps, or branch into data, literature, ideas, or audit work at any time.",
       "",
       runtime.trim(),
-      runtime ? "Full expert inventory: `/capabilities --all`." : "Full expert inventory: `/capabilities --all`.",
+      "Full expert inventory: `/capabilities --all`.",
       "",
     ].filter(Boolean);
     for (const lane of LANE_ORDER) {

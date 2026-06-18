@@ -94,7 +94,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     pi.sendMessage(
       {
         customType: "beril-phase",
-        content: `Now in the ${phase} phase. Next: ${nextAction(state)}`,
+        content: `Now in the ${phase} phase. Suggested: ${nextAction(state)}`,
         display: true,
         details: { phase, next: nextAction(state) },
       },

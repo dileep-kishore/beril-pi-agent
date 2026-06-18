@@ -86,6 +86,34 @@ test("planning_preflight writes an inspectable artifact and renders a card", asy
   assert.ok(lines[0].includes("Planning preflight · demo"));
 });
 
+test("research_plan renderResult guards the failure case", () => {
+  const { tools } = harness();
+  const lines = tools.research_plan
+    .renderResult(
+      { content: [{ type: "text", text: "boom" }], details: {} },
+      { expanded: false, isPartial: false },
+      theme,
+      { isError: true },
+    )
+    .render(60);
+  assert.ok(lines.some((l: string) => l.includes("Error")));
+  assert.ok(lines.some((l: string) => l.includes("boom")));
+});
+
+test("planning_preflight renderResult guards the failure case", () => {
+  const { tools } = harness();
+  const lines = tools.planning_preflight
+    .renderResult(
+      { content: [{ type: "text", text: "boom" }], details: {} },
+      { expanded: false, isPartial: false },
+      theme,
+      { isError: true },
+    )
+    .render(60);
+  assert.ok(lines.some((l: string) => l.includes("Error")));
+  assert.ok(lines.some((l: string) => l.includes("boom")));
+});
+
 test("/research-plan requires planning_preflight before RESEARCH_PLAN.md", async () => {
   const { commands, messages } = harness();
   await commands["research-plan"].handler("demo", { hasUI: false });

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,17 @@ _AUTHOR_FIELDS = ("name", "affiliation", "orcid")
 _HASH_PREFIX = "sha256:"
 _PROVENANCE_FILE = "provenance.json"
 _TRACE_FILE = "TRACE.jsonl"
+# Mirror lib/project-audit.ts redactForTrace: redact values whose KEY names a secret.
+_SECRET_KEY = re.compile(r"(token|secret|password|authorization|api[_-]?key|credential)", re.IGNORECASE)
+
+
+def _redact(value: object) -> object:
+    """Recursively redact dict values whose key matches a secret name."""
+    if isinstance(value, dict):
+        return {k: "[redacted]" if _SECRET_KEY.search(str(k)) else _redact(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    return value
 
 
 def _now() -> str:
@@ -59,12 +71,14 @@ def _research_state(project_dir: Path, proj: dict) -> dict:
 
 
 def _append_trace(project_dir: Path, event: str, payload: dict | None = None) -> None:
-    row = {
-        "at": _now(),
-        "project": project_dir.name,
-        "event": event,
-        **(payload or {}),
-    }
+    row = _redact(
+        {
+            "at": _now(),
+            "project": project_dir.name,
+            "event": event,
+            **(payload or {}),
+        }
+    )
     with (project_dir / _TRACE_FILE).open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, sort_keys=True, default=str) + "\n")
 
@@ -237,6 +251,9 @@ def run_lifecycle(args: argparse.Namespace) -> int:
                 print("--set must be a JSON object.", file=sys.stderr)
                 return 2
             block["updated_at"] = _now()  # server-stamped, not client-trusted
+            # Defense-in-depth: never persist/emit a secret-named field, mirroring
+            # the TS redactForTrace guard on the audit-write side.
+            block = _redact(block)
             provenance = _read_json(project_dir / _PROVENANCE_FILE)
             provenance.update(
                 {

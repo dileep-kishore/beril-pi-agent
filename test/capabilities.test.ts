@@ -46,6 +46,13 @@ test("matchCapability maps plain-language science tasks to the right route", () 
   assert.equal(matchCapability("Help me shape the paper story")?.command, "/paper-plan <project>");
 });
 
+test("a bare story/narrative prompt does not route to the paper plan", () => {
+  // "story"/"narrative" alone (e.g. exploring a dataset) must not hijack the
+  // paper-plan route — only qualified phrases like "paper story" do.
+  assert.notEqual(matchCapability("Tell me the story of this dataset")?.command, "/paper-plan <project>");
+  assert.notEqual(matchCapability("What is the narrative here?")?.command, "/paper-plan <project>");
+});
+
 test("runtimeSurfaceSummary counts runtime commands and tools defensively", () => {
   const summary = runtimeSurfaceSummary(
     [{ name: "whereami" }, { name: "skills" }],

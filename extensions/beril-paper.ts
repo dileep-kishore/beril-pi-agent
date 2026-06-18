@@ -33,7 +33,7 @@ export default function berilPaper(pi: ExtensionAPI) {
     },
     renderResult(result, { expanded, isPartial }, theme, context) {
       if (context?.isError) return errorCard(theme, toolErrorText(result));
-      if (isPartial) return partialLine(theme, "Reading paper plan...");
+      if (isPartial) return partialLine(theme, "Reading paper plan…");
       const d = result.details as { project: string; markdown: string };
       return markdownCard(theme, {
         title: `Paper plan · ${d.project}`,
