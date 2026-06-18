@@ -10,7 +10,12 @@ function harness() {
   return handlers;
 }
 const ctx = (hasUI: boolean, confirm: boolean, trusted = true) =>
-  ({ hasUI, ui: { confirm: async () => confirm }, isProjectTrusted: () => trusted }) as any;
+  ({
+    hasUI,
+    mode: hasUI ? "rpc" : "json",
+    ui: { confirm: async () => confirm },
+    isProjectTrusted: () => trusted,
+  }) as any;
 
 test("blocks destructive tool when user declines", async () => {
   const h = harness();
@@ -22,6 +27,30 @@ test("allows destructive tool when user confirms", async () => {
   const h = harness();
   const r = await h.tool_call({ type: "tool_call", toolName: "berdl_export", input: {} }, ctx(true, true));
   assert.equal(r, undefined);
+});
+
+test("uses a richer TUI overlay for destructive tools when available", async () => {
+  const h = harness();
+  let customCalled = false;
+  let confirmCalled = false;
+  const r = await h.tool_call({ type: "tool_call", toolName: "lakehouse_submit", input: { project: "demo" } }, {
+    hasUI: true,
+    mode: "tui",
+    ui: {
+      custom: async () => {
+        customCalled = true;
+        return true;
+      },
+      confirm: async () => {
+        confirmCalled = true;
+        return false;
+      },
+    },
+    isProjectTrusted: () => true,
+  } as any);
+  assert.equal(r, undefined);
+  assert.equal(customCalled, true);
+  assert.equal(confirmCalled, false);
 });
 
 test("auto-denies destructive tool with no UI", async () => {

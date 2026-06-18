@@ -281,7 +281,24 @@ def test_checkout_release_warns_on_fetch_failure_but_continues(monkeypatch, tmp_
     rc = start._checkout_release(tmp_path, "v0.0.1")
     assert rc == 0
     err = capsys.readouterr().err
-    assert "git fetch --tags failed" in err
+    assert "could not refresh git tags" in err
+
+
+def test_checkout_release_fetch_warning_does_not_dump_raw_ssh_stderr(monkeypatch, tmp_path, capsys):
+    raw = "Connection closed by 10.1.11.80 port 22\nfatal: Could not read from remote repository."
+
+    def handler(argv):
+        if argv[:2] == ["git", "fetch"]:
+            return _completed(returncode=1, stderr=raw)
+        return _make_git_dispatcher(tags={"v0.0.1": "ABC"}, head_sha="OLD")(argv)
+
+    _patch_run(monkeypatch, handler)
+    rc = start._checkout_release(tmp_path, "v0.0.1")
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "could not refresh git tags" in err
+    assert "Connection closed" not in err
+    assert "fatal:" not in err
 
 
 # ── default theme provisioning ────────────────────────────
@@ -291,6 +308,28 @@ def test_ensure_default_theme_creates_settings_when_absent(tmp_path: Path) -> No
     start._ensure_default_theme(tmp_path)
     data = json.loads((tmp_path / ".pi" / "settings.json").read_text())
     assert data["theme"] == "beril"
+
+
+def test_ensure_quiet_startup_creates_settings_when_absent(tmp_path: Path) -> None:
+    start._ensure_quiet_startup(tmp_path)
+    data = json.loads((tmp_path / ".pi" / "settings.json").read_text())
+    assert data["quietStartup"] is True
+
+
+def test_ensure_quiet_startup_adds_to_existing_without_clobbering(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"packages": [".."], "theme": "beril"}))
+    start._ensure_quiet_startup(tmp_path)
+    assert json.loads(settings.read_text()) == {"packages": [".."], "theme": "beril", "quietStartup": True}
+
+
+def test_ensure_quiet_startup_respects_an_existing_choice(tmp_path: Path) -> None:
+    settings = tmp_path / ".pi" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"quietStartup": False}))
+    start._ensure_quiet_startup(tmp_path)
+    assert json.loads(settings.read_text())["quietStartup"] is False
 
 
 def test_ensure_default_theme_adds_to_existing_without_clobbering(tmp_path: Path) -> None:

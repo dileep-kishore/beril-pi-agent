@@ -1,5 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { nextAction } from "../research-steps.ts";
+import { recommendedActions } from "../workflow.ts";
 import { GLYPH } from "./glyphs.ts";
 import { stepRail } from "./step-rail.ts";
 import { type SubstepState, substepRail } from "./substeps.ts";
@@ -30,6 +31,8 @@ export interface HudState {
   submitted?: boolean;
   /** Live sub-step progress within the current phase (tool-derived); omitted/empty renders no line. */
   substeps?: SubstepState;
+  /** Optional precomputed actions; defaults to deterministic lifecycle actions. */
+  actions?: string[];
 }
 
 type HudTheme = Theme;
@@ -52,5 +55,7 @@ export function workflowHud(theme: HudTheme, s: HudState): string[] {
 
   // The "what's next" hint always shows (a getting-started nudge before any project).
   lines.push(theme.fg("muted", `Next: ${nextAction(s.state ?? "")}`));
+  const actions = s.actions ?? recommendedActions(s.state, s.project);
+  if (actions.length) lines.push(theme.fg("muted", `Actions: ${actions.slice(0, 3).join("  ")}`));
   return lines;
 }

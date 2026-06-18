@@ -17,23 +17,27 @@ from beril_cli.paths import find_repo_root
 
 GITHUB_API_TIMEOUT_SECONDS = 10
 
-# Session-control flags pi understands; if the user passes any of these we must NOT
-# also inject --continue (it would conflict with or override their explicit choice).
+# Session-control flags Pi understands; if the user passes any of these, the
+# launcher marks the session as explicit so extensions may safely restore context.
 _SESSION_FLAGS = frozenset(
     {"-c", "--continue", "-r", "--resume", "--session", "--session-id", "--fork", "--no-session"}
 )
 
 
+def _has_session_flag(extra_args: list[str]) -> bool:
+    return any(arg.split("=", 1)[0] in _SESSION_FLAGS for arg in extra_args)
+
+
 def _with_continue(extra_args: list[str]) -> list[str]:
-    """Prepend ``--continue`` so ``beril start`` resumes the researcher's most-recent
-    project thread, unless the user already chose a session (``--continue``/``--resume``/
-    ``--session``/``--fork``/...). Matches the token before any ``=`` so joined forms
-    like ``--session-id=proj`` are caught too. ``pi --continue`` on a fresh checkout
-    with no prior session degrades to a new session.
+    """Return Pi args without implicit resume.
+
+    Historically this prepended ``--continue``. That made every ``beril start``
+    resurrect the last research thread, which is surprising for new users and
+    makes fresh sessions show stale project state. Keep the helper for backward-
+    compatible tests/call sites, but make fresh launch the default; users can
+    still pass ``--continue`` / ``--resume`` / ``--session`` explicitly.
     """
-    if any(arg.split("=", 1)[0] in _SESSION_FLAGS for arg in extra_args):
-        return extra_args
-    return ["--continue", *extra_args]
+    return extra_args
 
 
 def _sync_auth_token(env_path: Path) -> None:
@@ -81,6 +85,28 @@ def _set_theme(repo_root: Path, theme: str, *, force: bool = False) -> None:
         print(f"{action} theme to '{theme}' in .pi/settings.json")
     except (OSError, json.JSONDecodeError) as exc:
         print(f"Warning: could not set the theme: {exc}", file=sys.stderr)
+
+
+def _ensure_quiet_startup(repo_root: Path) -> None:
+    """Hide Pi's generic startup resource listing for the BERIL workbench.
+
+    BERIL installs its own science/workflow welcome panel from `beril-env`.
+    `quietStartup` removes Pi's built-in context/skills/extensions inventory so
+    the first visible surface is the BERIL-focused orientation. Respect an
+    explicit user value if one already exists.
+    """
+    settings_path = repo_root / ".pi" / "settings.json"
+    try:
+        data = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+        if not isinstance(data, dict):
+            return
+        if "quietStartup" in data:
+            return
+        data["quietStartup"] = True
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Warning: could not set quiet startup: {exc}", file=sys.stderr)
 
 
 def _read_pi_theme(repo_root: Path) -> str | None:
@@ -158,7 +184,7 @@ def _checkout_release(repo_root: Path, requested_version: str | None) -> int:
     )
     if fetch.returncode != 0:
         print(
-            f"Warning: git fetch --tags failed: {fetch.stderr.strip()}",
+            "Warning: could not refresh git tags; using local tag cache/current checkout.",
             file=sys.stderr,
         )
 
@@ -359,12 +385,13 @@ def run_start(
     else:
         _ensure_default_theme(repo_root)
         os.environ.setdefault("BERIL_THEME", _read_pi_theme(repo_root) or "beril")
+    _ensure_quiet_startup(repo_root)
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)
-    # Replace the current process with the agent. Default to resuming the most-recent
-    # project thread (--continue) so the researcher's named session carries forward,
-    # unless they passed an explicit session flag.
+    os.environ["BERIL_START_SESSION_MODE"] = "explicit" if _has_session_flag(extra_args) else "fresh"
+    # Replace the current process with the agent. Fresh launch is the default;
+    # pass Pi's --continue/--resume/--session flags explicitly to restore a thread.
     os.execvp(binary, [agent, *_with_continue(extra_args)])
 
     # execvp doesn't return on success; this is only reached on failure

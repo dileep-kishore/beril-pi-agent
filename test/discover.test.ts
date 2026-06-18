@@ -60,6 +60,29 @@ test("scoped title and lines surface tables with row counts", () => {
   assert.ok(text.includes("cluster") && text.includes("1.2k rows"));
 });
 
+test("scoped view finds the requested database even when it is not the first collection", () => {
+  const snap: DiscoverSnapshot = {
+    scope: { database: "enigma.genome_depot_enigma" },
+    tenants: [
+      {
+        id: "enigma",
+        collections: [
+          { id: "enigma.coral", name: "Enigma Coral", tables: [] },
+          {
+            id: "enigma.genome_depot_enigma",
+            name: "Enigma Genome Depot Enigma",
+            tables: [{ name: "browser_gene" }, { name: "browser_genome" }],
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(discoverTitle(snap), "Tables in enigma.genome_depot_enigma · 2");
+  assert.match(discoverSummary(snap), /browser_gene/);
+  assert.match(discoverLines(theme, snap).join("\n"), /browser_genome/);
+});
+
 test("empty inventory degrades to a muted note", () => {
   assert.equal(discoverLines(theme, { tenants: [] }).join("\n"), "(no accessible collections)");
 });
@@ -67,7 +90,7 @@ test("empty inventory degrades to a muted note", () => {
 test("discoverSummary is compact plain markdown (the model's content), never JSON", () => {
   const inv = discoverSummary(inventory);
   assert.ok(inv.startsWith("Collections · 2 tenants · 3 databases"));
-  assert.ok(inv.includes("- KBase: Ke Pangenome, Annotations"));
+  assert.ok(inv.includes("- KBase: Ke Pangenome (kbase.ke_pangenome), Annotations (kbase.ann)"));
   assert.ok(!inv.includes("{"));
   const sc = discoverSummary(scoped);
   assert.ok(sc.includes("- genome (42 rows) — one row per genome"));

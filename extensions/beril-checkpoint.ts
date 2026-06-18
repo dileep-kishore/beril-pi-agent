@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { linesCard } from "../lib/ui/card.ts";
 import {
   type CheckpointOpt,
   type CheckpointPick,
@@ -30,6 +31,55 @@ const CheckpointOption = Type.Object({
  * option (proceed) and says so.
  */
 export default function berilCheckpoint(pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "request_input",
+    label: "Ask the scientist",
+    description:
+      "Ask the scientist a free-form clarification question. Use when multiple choice would hide the needed nuance. Do not use for routine steps; ask only when the answer changes the research question, data choice, hypothesis, or analysis.",
+    parameters: Type.Object({
+      title: Type.String({ description: "The clarification question to ask." }),
+      placeholder: Type.Optional(Type.String({ description: "Short placeholder or prefill text." })),
+      multiline: Type.Optional(Type.Boolean({ description: "Use a multiline editor instead of a one-line input." })),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
+      if (!ctx.hasUI) {
+        const note = "No interactive UI is available; proceed only with explicitly stated assumptions.";
+        return {
+          content: [{ type: "text", text: `No scientist answer: ${note}` }],
+          details: { title: params.title, answer: undefined, note },
+        };
+      }
+      const answer =
+        params.multiline === true
+          ? await ctx.ui.editor(params.title, params.placeholder ?? "")
+          : await ctx.ui.input(params.title, params.placeholder ?? "");
+      const cleaned = answer?.trim();
+      const note = cleaned
+        ? undefined
+        : "No answer provided; wait for direction or state the assumption before proceeding.";
+      return {
+        content: [
+          {
+            type: "text",
+            text: cleaned ? `Scientist answered: ${cleaned}` : `No scientist answer: ${note}`,
+          },
+        ],
+        details: { title: params.title, answer: cleaned || undefined, note },
+      };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `question · ${args.title}`);
+    },
+    renderResult(result, _opts, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      const d = result.details as { title: string; answer?: string; note?: string };
+      return linesCard(theme, {
+        title: `Scientist input · ${d.title}`,
+        lines: [d.answer ? theme.fg("text", d.answer) : theme.fg("muted", d.note ?? "(no answer)")],
+      });
+    },
+  });
+
   pi.registerTool({
     name: "request_checkpoint",
     label: "Checkpoint with the scientist",

@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import berilLit, { assessStances, expandQueries, resolveCitation, resolveDoi } from "../extensions/beril-literature.ts";
+import berilLit, {
+  assessStances,
+  expandQueries,
+  parseLiteratureReviewArgs,
+  resolveCitation,
+  resolveDoi,
+} from "../extensions/beril-literature.ts";
 
 function harness() {
   const tools: any = {};
@@ -50,6 +56,14 @@ function summaryMap(records: Array<{ pmid: string; title: string }>) {
 test("registers lit_search + lit_fetch + lit_abstract tools + /literature-review", () => {
   const { tools, commands } = harness();
   assert.ok(tools.lit_search && tools.lit_fetch && tools.lit_abstract && commands["literature-review"]);
+});
+
+test("parseLiteratureReviewArgs supports explicit project scoping", () => {
+  assert.deepEqual(parseLiteratureReviewArgs("--project demo microbial AMR"), {
+    project: "demo",
+    topic: "microbial AMR",
+  });
+  assert.deepEqual(parseLiteratureReviewArgs("microbial AMR"), { project: undefined, topic: "microbial AMR" });
 });
 
 test("lit_abstract returns abstract text + record (fetch stubbed)", async () => {
@@ -218,6 +232,30 @@ test("/literature-review falls back to the bare topic when expansion has no mode
     const refs = await readFile(join(dir, "references.md"), "utf8");
     assert.match(refs, /References — bare topic/);
     assert.match(refs, /1 unique reference/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("/literature-review --project writes project-scoped references.md", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "beril-lit-project-"));
+  try {
+    await mkdir(join(dir, "projects", "demo"), { recursive: true });
+    const { commands, sent } = harness();
+    await withRoutedFetch(
+      (url) => {
+        const u = new URL(url);
+        if (u.pathname.endsWith("esearch.fcgi")) return { esearchresult: { idlist: ["42"] } };
+        return summaryMap([{ pmid: "42", title: "Scoped reference" }]);
+      },
+      async () => {
+        const cctx: any = { hasUI: false, mode: "json", cwd: dir, model: undefined };
+        await commands["literature-review"].handler("--project demo microbial AMR", cctx);
+      },
+    );
+    const refs = await readFile(join(dir, "projects", "demo", "references.md"), "utf8");
+    assert.match(refs, /Scoped reference/);
+    assert.match(sent[0], /projects\/demo\/references\.md/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

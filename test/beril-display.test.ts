@@ -4,7 +4,7 @@ import berilDisplay from "../extensions/beril-display.ts";
 
 function harness() {
   const handlers: Record<string, any> = {};
-  const pi: any = { on: (e: string, h: any) => (handlers[e] = h) };
+  const pi: any = { on: (e: string, h: any) => (handlers[e] = h), registerTool: () => {} };
   berilDisplay(pi);
   return { handlers };
 }

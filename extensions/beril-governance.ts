@@ -1,18 +1,21 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type ClaimRow, parseClaimLedger, parseEvidence, tallyClaims } from "../lib/claim-ledger.ts";
+import { type ClaimState, buildClaimState, claimStateSummary, serializeClaimState } from "../lib/claim-state.ts";
 import { projectCompletions } from "../lib/project-completions.ts";
 import { requireReady } from "../lib/readiness.ts";
+import { collectReviewPreflight, submitReadinessProblems } from "../lib/review-preflight.ts";
 import type { EvidenceView } from "../lib/science.ts";
 import { linesCard } from "../lib/ui/card.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import {
   callLine,
   claimLedgerCard,
+  claimStateCard,
   destructiveResultCard,
   errorCard,
   evidenceCard,
@@ -20,6 +23,7 @@ import {
   kvLines,
   lifecycleCard,
   partialLine,
+  reviewPreflightCard,
   toolErrorText,
   userCard,
 } from "../lib/ui/science-cards.ts";
@@ -110,6 +114,83 @@ export default function berilGovernance(pi: ExtensionAPI) {
       if (isPartial) return partialLine(theme, "Reading claim ledger…");
       const d = result.details as { rows: ClaimRow[] };
       return claimLedgerCard(theme, d.rows);
+    },
+  });
+
+  pi.registerTool({
+    name: "claim_state",
+    label: "Update claim state",
+    description:
+      "Build a first-class project-local claims.json from RESEARCH_PLAN.md and REPORT.md. Preserves existing claim IDs/reviewer notes, optionally persists the updated ledger, and highlights unsupported claims / empty refutes before review.",
+    parameters: Type.Object({
+      project: Type.String({ description: "Project id (directory under projects/)." }),
+      persist: Type.Optional(Type.Boolean({ description: "Write projects/<id>/claims.json (default false)." })),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
+      const dir = join(ctx.cwd, "projects", params.project);
+      const read = async (name: string) => readFile(join(dir, name), "utf8").catch(() => "");
+      const [planMd, reportMd, existingRaw] = await Promise.all([
+        read("RESEARCH_PLAN.md"),
+        read("REPORT.md"),
+        read("claims.json"),
+      ]);
+      let existing: ClaimState | undefined;
+      try {
+        existing = existingRaw ? (JSON.parse(existingRaw) as ClaimState) : undefined;
+      } catch {
+        existing = undefined;
+      }
+      const state = buildClaimState({ project: params.project, planMd, reportMd, existing });
+      const summary = claimStateSummary(state.rows);
+      const path = join(dir, "claims.json");
+      if (params.persist) await writeFile(path, serializeClaimState(state), "utf8");
+      pi.events.emit("beril:claims", {
+        project: params.project,
+        total: summary.total,
+        supported: summary.supported,
+        refuted: summary.refuted,
+      });
+      const text = `${summary.total} claim(s): ${summary.supported} supported, ${summary.refuted} refuted, ${summary.unsupported} unsupported, ${summary.emptyRefutes} with empty refutes.`;
+      return {
+        content: [{ type: "text", text }],
+        details: { state, rows: state.rows, summary, path, persisted: params.persist === true },
+      };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `claim state · ${args.project}${args.persist ? " · persist" : ""}`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Building claim state…");
+      const d = result.details as {
+        rows: ClaimState["rows"];
+        summary: ReturnType<typeof claimStateSummary>;
+        persisted?: boolean;
+      };
+      return claimStateCard(theme, d.rows, d.summary, d.persisted);
+    },
+  });
+
+  pi.registerTool({
+    name: "review_preflight",
+    label: "Review preflight",
+    description:
+      "Read-only: summarize whether a project is ready for review and submit by checking report presence, notebook hashes, claim support/refutes, red-team pass, and review record.",
+    parameters: Type.Object({
+      project: Type.String({ description: "Project id (directory under projects/)." }),
+    }),
+    async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
+      const view = await collectReviewPreflight(pi, ctx.cwd, params.project);
+      const text = `${params.project}: ${view.reviewReady ? "review ready" : "review not ready"}; ${view.submitReady ? "submit ready" : "submit not ready"}.`;
+      return { content: [{ type: "text", text }], details: view };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `review preflight · ${args.project}`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Checking review readiness…");
+      return reviewPreflightCard(theme, result.details as Parameters<typeof reviewPreflightCard>[1]);
     },
   });
 
@@ -250,8 +331,7 @@ export default function berilGovernance(pi: ExtensionAPI) {
       }
       setActiveProject(ctx, project);
       pi.sendUserMessage(
-        `Follow the synthesize skill to interpret the analysis for project "${project}" and write REPORT.md. ` +
-          `When the report is complete, call the lifecycle_transition tool to move "${project}" to "analysis".`,
+        `Follow the synthesize skill to interpret the analysis for project "${project}" and write REPORT.md. Before lifecycle_transition, update first-class claims: call claim_state with persist=true after drafting REPORT.md, then run claim_ledger and evidence on the weakest findings. Search for refuting literature/checks with lit_stance or /literature-review and offer /berdl-refute ${project}; empty Refutes slots must say what was searched. Only when REPORT.md and claims.json are current should you call lifecycle_transition to move "${project}" to "analysis".`,
       );
     },
   });
@@ -279,16 +359,25 @@ export default function berilGovernance(pi: ExtensionAPI) {
         if (ctx.hasUI) ctx.ui.notify("No ORCID configured — cannot submit. Run `beril setup` to add it.", "error");
         return;
       }
-      // Destructive: confirm in-session (the safety gate covers the model-tool path, not this command path).
-      if (ctx.hasUI) {
-        const ok = await ctx.ui.confirm(
-          `Submit "${project}"?`,
-          `This irreversibly replaces the remote archive, attributed to ORCID ${identity.orcid}. Proceed?`,
+      if (!ctx.hasUI) {
+        throw new Error(
+          `/submit ${project} blocked in non-interactive mode; irreversible submission requires UI approval.`,
         );
-        if (!ok) {
-          ctx.ui.notify("Submission cancelled.", "info");
-          return;
-        }
+      }
+      const preflight = await collectReviewPreflight(pi, ctx.cwd, project);
+      if (!preflight.submitReady) {
+        const problems = submitReadinessProblems(preflight);
+        ctx.ui.notify(`Submission blocked by review preflight: ${problems.join("; ")}`, "error");
+        return;
+      }
+      // Destructive: confirm in-session (the safety gate covers the model-tool path, not this command path).
+      const ok = await ctx.ui.confirm(
+        `Submit "${project}"?`,
+        `This irreversibly replaces the remote archive, attributed to ORCID ${identity.orcid}. Proceed?`,
+      );
+      if (!ok) {
+        ctx.ui.notify("Submission cancelled.", "info");
+        return;
       }
       try {
         const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", project]);
@@ -308,6 +397,13 @@ export default function berilGovernance(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, undefined);
+  });
+
+  pi.on("session_start", (event, ctx) => {
+    const freshStart = event.reason === "startup" && process.env.BERIL_START_SESSION_MODE === "fresh";
+    if (event.reason !== "new" && !freshStart) return;
+    activeProject = undefined;
     if (ctx.hasUI) ctx.ui.setStatus(PROJECT_STATUS_KEY, undefined);
   });
 }

@@ -1,7 +1,9 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { berilExec } from "../lib/beril-exec.ts";
 import { readCachedEnv } from "../lib/readiness.ts";
+import { type ReviewPreflightView, collectReviewPreflight } from "../lib/review-preflight.ts";
 import type { ResearchStateSnapshot } from "../lib/session-state.ts";
+import { reviewPreflightCard } from "../lib/ui/science-cards.ts";
 import { workflowStatusCard } from "../lib/ui/workflow-card.ts";
 import { type WorkflowView, buildWorkflowView } from "../lib/workflow.ts";
 
@@ -18,6 +20,23 @@ export default function berilWorkflow(pi: ExtensionAPI) {
         message.details?.view ?? buildWorkflowView(undefined),
         message.details?.focus ?? "whereami",
       ),
+  );
+  pi.registerMessageRenderer<{ view: ReviewPreflightView }>("beril-review-preflight-status", (message, _opts, theme) =>
+    reviewPreflightCard(
+      theme,
+      message.details?.view ?? {
+        project: "(unknown)",
+        report: false,
+        notebookHashes: 0,
+        claims: { total: 0, supported: 0, refuted: 0, unsupported: 0, emptyRefutes: 0 },
+        redTeam: false,
+        review: false,
+        reviewReady: false,
+        submitReady: false,
+        blockers: ["Preflight details were missing"],
+        warnings: [],
+      },
+    ),
   );
 
   async function collectView(): Promise<WorkflowView> {
@@ -56,6 +75,18 @@ export default function berilWorkflow(pi: ExtensionAPI) {
       { customType: "beril-workflow-status", content, display: true, details: { focus, view } },
       { triggerTurn: false, deliverAs: "nextTurn" },
     );
+    if (view.project) {
+      const preflight = await collectReviewPreflight(pi, ctx.cwd, view.project);
+      pi.sendMessage(
+        {
+          customType: "beril-review-preflight-status",
+          content: `${view.project}: ${preflight.submitReady ? "submit ready" : "submit not ready"}`,
+          display: true,
+          details: { view: preflight },
+        },
+        { triggerTurn: false, deliverAs: "nextTurn" },
+      );
+    }
     if (ctx.hasUI) ctx.ui.notify(focus === "next" ? `Next: ${view.command}` : content, "info");
   }
 

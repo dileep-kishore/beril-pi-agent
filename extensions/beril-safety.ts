@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isDestructive } from "../lib/destructive.ts";
+import { destructiveSummary, makeDestructiveOverlay } from "../lib/ui/destructive-overlay.ts";
 
 /**
  * Central destructive-action gate. Pi has no built-in permission system, so this
@@ -22,7 +23,13 @@ export default function berilSafety(pi: ExtensionAPI) {
     if (!ctx.hasUI) {
       return { block: true, reason: `Destructive tool ${toolName} blocked in non-interactive mode` };
     }
-    const ok = await ctx.ui.confirm(`Allow ${toolName}?`, "This will irreversibly modify remote data. Proceed?");
+    const ok =
+      ctx.mode === "tui"
+        ? await ctx.ui.custom<boolean>(makeDestructiveOverlay(toolName, input), {
+            overlay: true,
+            overlayOptions: { width: "70%", anchor: "center", maxHeight: "80%" },
+          })
+        : await ctx.ui.confirm(`Allow ${toolName}?`, `${destructiveSummary(toolName, input).join("\n")}\n\nProceed?`);
     return ok ? undefined : { block: true, reason: `User declined ${toolName}` };
   });
 }

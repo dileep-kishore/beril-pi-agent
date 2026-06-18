@@ -7,7 +7,7 @@ description: Use when the author is ready to stand behind a BERIL research proje
 
 `/submit` is the **approval event**: the moment the responsible author stands behind a research project and commits it to the BERDL lakehouse archive as complete. This skill is the judgment layer — what "ready" means, what a complete project contains, and what the author is attesting to. The mechanics (locking, hashing, marker files, upload, idempotent retry) are handled by the `/submit` command and its tools, not by you.
 
-To submit, run `/submit <project>`. Use `/whereami` first to confirm the project is reviewed and `/next` if the path is unclear. The command transitions the project to `complete` via `lifecycle_transition`, verifies the approval against `notebook_hash`-tracked content, gates on `beril_user` ORCID identity, and archives via `lakehouse_submit` (a destructive, confirmation-gated overwrite of the remote archive). The central `beril-safety` gate confirms the destructive upload before it runs.
+To submit, run `/submit <project>`. Use `/whereami` first to inspect the `review_preflight` card and `/next` if the path is unclear. The command now requires a passing `review_preflight` before it asks for destructive approval: REPORT.md must exist, claims must be supported or explicitly handled, refuting-evidence searches must be recorded, a REFUTATION_N.md red-team pass must exist, a REVIEW_N.md must exist, and the lifecycle must be `reviewed` (or `complete` for an intentional retry). It then verifies the ORCID identity through `beril_user` and archives via `lakehouse_submit` (a destructive, confirmation-gated overwrite of the remote archive). The central `beril-safety` gate confirms destructive model-tool uploads; `/submit` performs its own command-path approval.
 
 ## What submission means
 
@@ -26,11 +26,11 @@ A project must be at lifecycle state `reviewed` (report drafted, a current revie
 - `reviewed` — ready. Proceed to approval.
 - `complete` — already submitted, or approved and awaiting a retried upload (see *After submission*).
 
-If `/submit` reports a project is not at `reviewed`, treat the message as a checklist of what the science still needs, not an obstacle to route around.
+If `/submit` reports that `review_preflight` failed, treat the message as a checklist of what the science still needs, not an obstacle to route around.
 
 ## Pre-submission completeness rubric
 
-Before approving, confirm the project tells a complete scientific story. These are the criteria `/submit` checks; understand *why* each matters so you can judge borderline cases.
+Before approving, confirm the project tells a complete scientific story. These are the criteria `review_preflight` checks before `/submit` can proceed; understand *why* each matters so you can judge borderline cases.
 
 **Required (a project is not complete without these — a failure blocks submission):**
 

@@ -1,7 +1,9 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { type Component, Text, visibleWidth } from "@earendil-works/pi-tui";
 import type { ClaimRow } from "../claim-ledger.ts";
+import type { ClaimStateRow, ClaimStateSummary } from "../claim-state.ts";
 import type { LitRecord } from "../lit.ts";
+import type { ReviewPreflightView } from "../review-preflight.ts";
 import type { ClaimStatus, ConfidenceTier, EvidencePointer, EvidenceView } from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
@@ -638,6 +640,66 @@ export function claimLedgerCard(theme: Theme, rows: ClaimRow[]): Component {
     state: "settled",
     lines,
     maxBodyLines: 60,
+  });
+}
+
+export function claimStateCard(
+  theme: Theme,
+  rows: ClaimStateRow[],
+  summary: ClaimStateSummary,
+  persisted?: boolean,
+): Component {
+  const accentStyle = domainStyle(theme, "governance");
+  const lines = [
+    `${theme.fg("muted", "Claims     ")}${theme.fg("text", String(summary.total))}`,
+    `${roleStyle(theme, "supports")("Supported  ")}${theme.fg("text", String(summary.supported))}`,
+    `${roleStyle(theme, "refutes")("Refuted    ")}${theme.fg("text", String(summary.refuted))}`,
+    `${theme.fg("muted", "Unsupported")}${theme.fg(summary.unsupported ? "warning" : "text", String(summary.unsupported).padStart(2))}`,
+    `${theme.fg("muted", "Empty refutes")}${theme.fg(summary.emptyRefutes ? "warning" : "text", String(summary.emptyRefutes).padStart(1))}`,
+    `${theme.fg("muted", "Persisted  ")}${persisted ? theme.fg("success", "claims.json") : theme.fg("dim", "no")}`,
+    "",
+    ...rows.slice(0, 8).map((r) => `${statusTag(theme, r.status)}  ${theme.fg("text", r.claim)}`),
+    "",
+    verifyLine(theme, "open projects/<id>/claims.json, then inspect claim_ledger / evidence"),
+  ];
+  return linesCard(theme, {
+    title: cardHeader(theme, { title: `Claim state ${GLYPH.bullet} ${summary.total}` }),
+    accentStyle,
+    state: summary.unsupported || summary.emptyRefutes ? "warning" : "settled",
+    lines,
+    maxBodyLines: 24,
+  });
+}
+
+export function reviewPreflightCard(theme: Theme, v: ReviewPreflightView): Component {
+  const lines = [
+    `${theme.fg("muted", "Project       ")}${theme.fg("text", v.project)}`,
+    `${theme.fg("muted", "Lifecycle     ")}${theme.fg("text", v.status ?? "unknown")}`,
+    `${theme.fg("muted", "Report        ")}${v.report ? theme.fg("success", GLYPH.ok) : theme.fg("error", GLYPH.bad)}`,
+    `${theme.fg("muted", "Hashes        ")}${theme.fg(v.notebookHashes ? "text" : "warning", String(v.notebookHashes))}`,
+    `${theme.fg("muted", "Claims        ")}${theme.fg("text", String(v.claims.total))} ${theme.fg("dim", "total")}  ${roleStyle(theme, "supports")(`${v.claims.supported} supported`)}  ${roleStyle(theme, "refutes")(`${v.claims.refuted} refuted`)}`,
+    `${theme.fg("muted", "Unsupported   ")}${theme.fg(v.claims.unsupported ? "warning" : "text", String(v.claims.unsupported))}`,
+    `${theme.fg("muted", "Empty refutes ")}${theme.fg(v.claims.emptyRefutes ? "warning" : "text", String(v.claims.emptyRefutes))}`,
+    `${theme.fg("muted", "Red-team      ")}${v.redTeam ? theme.fg("success", GLYPH.ok) : theme.fg("warning", GLYPH.warn)}`,
+    `${theme.fg("muted", "Review        ")}${v.review ? theme.fg("success", GLYPH.ok) : theme.fg("warning", GLYPH.warn)}`,
+    `${theme.fg("muted", "Review ready  ")}${v.reviewReady ? theme.fg("success", "review ready") : theme.fg("warning", "not ready")}`,
+    `${theme.fg("muted", "Submit ready  ")}${v.submitReady ? theme.fg("success", "submit ready") : theme.fg("warning", "not ready")}`,
+  ];
+  if (v.blockers.length) {
+    lines.push("", theme.fg("error", "Blockers"));
+    for (const blocker of v.blockers) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", blocker)}`);
+  }
+  if (v.warnings.length) {
+    lines.push("", theme.fg("warning", "Warnings"));
+    for (const warning of v.warnings) lines.push(`  ${theme.fg("dim", GLYPH.bullet)} ${theme.fg("text", warning)}`);
+  }
+  lines.push("", verifyLine(theme, "run claim_state, /berdl-refute, /berdl-review, then /submit when ready"));
+  return linesCard(theme, {
+    title: cardHeader(theme, { title: `Preflight ${GLYPH.bullet} ${v.project}` }),
+    accentStyle: domainStyle(theme, v.submitReady ? "governance" : "destructive"),
+    state: v.submitReady ? "settled" : "warning",
+    lines,
+    maxBodyLines: 32,
   });
 }
 

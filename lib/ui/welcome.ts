@@ -31,8 +31,8 @@ export interface WelcomeState {
 
 /** Rotating getting-started tips — one BERDL/co-scientist feature per line. */
 export const TIPS: readonly string[] = [
+  "Frame the question with guided prompts before you query the data.",
   "berdl_peek previews a table's columns and a few rows before you query it.",
-  "Ask a research question in plain language — it maps to the available data.",
   "Checkpoints pause at natural seams so you steer the science, not the commands.",
   "/literature-review <topic> pulls and synthesizes the relevant papers.",
   "/research-plan turns an explored question into a concrete, reviewable plan.",
@@ -62,7 +62,7 @@ export function welcomePanel(theme: WelcomeTheme, s: WelcomeState, width: number
       }`
     : theme.fg("muted", "run `beril setup` to set your identity");
   const brand = s.brand;
-  const start = `${theme.fg("accent", "/berdl-start")}${theme.fg("dim", `  ${GLYPH.bullet}  or ask a research question`)}`;
+  const start = `${theme.fg("accent", "/berdl-start")}${theme.fg("dim", `  ${GLYPH.bullet}  guided question framing`)}`;
   const tip = theme.fg("dim", s.tip ?? pickTip(0));
 
   const body = [

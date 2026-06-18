@@ -18,6 +18,35 @@ import {
 // give it a generous ceiling rather than the default 120s exec timeout.
 const RUN_TIMEOUT_MS = 3_600_000;
 
+export type AnalyzeMode = "full" | "first-result" | "continue";
+
+export interface AnalyzeArgs {
+  project: string;
+  mode: AnalyzeMode;
+}
+
+export function parseAnalyzeArgs(raw: string): AnalyzeArgs | undefined {
+  const parts = raw.trim().split(/\s+/).filter(Boolean);
+  let project: string | undefined;
+  let mode: AnalyzeMode = "full";
+  for (const p of parts) {
+    if (p === "--first-result") mode = "first-result";
+    else if (p === "--continue") mode = "continue";
+    else if (!project) project = p;
+  }
+  return project ? { project, mode } : undefined;
+}
+
+function analyzePrompt(project: string, mode: AnalyzeMode): string {
+  if (mode === "first-result") {
+    return `Follow the analysis-notebooks skill for project "${project}", but only run the first discriminating notebook in this turn. Use notebook_scaffold if needed, call notebook_list to identify the first numbered notebook, move "${project}" to "active" with lifecycle_transition, then call notebook_run with the single notebook parameter for that first discriminating notebook. Show the first result or figure, then call request_checkpoint before any additional execution.`;
+  }
+  if (mode === "continue") {
+    return `Continue after the first-result checkpoint for project "${project}". Use notebook_list to inspect remaining notebooks and saved outputs, run the remaining notebooks with notebook_run, and stop if a notebook failure changes the scientific interpretation. When all required notebooks have saved outputs, run /synthesize ${project}.`;
+  }
+  return `Follow the analysis-notebooks skill for project "${project}". Start with the first-result workflow: use notebook_scaffold if needed, notebook_list to choose the first numbered notebook, lifecycle_transition to move "${project}" to "active", run exactly that first discriminating notebook with notebook_run, show the result, and call request_checkpoint. Only after the scientist approves should you continue with /analyze ${project} --continue.`;
+}
+
 /**
  * The analysis phase: turn an approved research plan into executed notebooks.
  * The judgment (how to design good notebooks) lives in the analysis-notebooks
@@ -127,14 +156,12 @@ export default function berilAnalysis(pi: ExtensionAPI) {
     description: "Scaffold + run the analysis notebooks for a project, checking in after the first result.",
     getArgumentCompletions: projectCompletions,
     async handler(args: string, ctx: ExtensionCommandContext) {
-      const project = args.trim();
-      if (!project) {
+      const parsed = parseAnalyzeArgs(args);
+      if (!parsed) {
         if (ctx.hasUI) ctx.ui.notify("Usage: /analyze <project>", "warning");
         return;
       }
-      pi.sendUserMessage(
-        `Follow the analysis-notebooks skill to run the analysis for project "${project}". Use notebook_scaffold to create the numbered notebooks from RESEARCH_PLAN.md (if not already present), then move "${project}" to "active" with lifecycle_transition. Execute them with notebook_run. After the FIRST notebook's results are in, pause: show the scientist the first result or figure and use request_checkpoint to ask whether it looks right before continuing the rest. When all notebooks are executed with saved outputs, run /synthesize.`,
-      );
+      pi.sendUserMessage(analyzePrompt(parsed.project, parsed.mode));
     },
   });
 }

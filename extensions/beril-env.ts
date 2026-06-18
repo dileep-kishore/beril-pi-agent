@@ -109,9 +109,26 @@ export default function berilEnv(pi: ExtensionAPI) {
     pushFooterRender();
   }
 
+  function shouldSeedActiveProject(reason?: string): boolean {
+    if (reason === "new") return false;
+    if (reason === "startup" && process.env.BERIL_START_SESSION_MODE === "fresh") return false;
+    return true;
+  }
+
+  function clearResearchHud(): void {
+    hud.project = undefined;
+    hud.state = undefined;
+    hud.submitted = false;
+    hud.substeps = undefined;
+    claims = undefined;
+    lastPhase = undefined;
+    renderHud();
+    pushFooterRender();
+  }
+
   /**
    * Name the Pi session after the active project + phase, so a resumed session
-   * (`beril start` defaults to `--continue`) reads as "<project> · <phase>" in the
+   * (explicit `--continue` / `--resume`) reads as "<project> · <phase>" in the
    * selector instead of a raw UUID. Idempotent via getSessionName(); no-op until a
    * project is known. setSessionName/getSessionName live on the ExtensionAPI (pi).
    */
@@ -134,6 +151,16 @@ export default function berilEnv(pi: ExtensionAPI) {
     renderHud();
     applySessionName();
     announcePhase(state);
+  });
+
+  pi.registerMessageRenderer<{ env?: BerdlEnv }>("beril-env-status", (message, _opts, theme) => {
+    const env = message.details?.env ?? {
+      location: "unknown",
+      ready: false,
+      checks: {},
+      next_steps: ["Run /berdl-start for connection guidance, or inspect `beril env --json` for the raw error."],
+    };
+    return envCard(theme, env);
   });
 
   // The pinned phase banner — a tinted one-liner in the transcript on the custom-
@@ -200,9 +227,8 @@ export default function berilEnv(pi: ExtensionAPI) {
   // instead of staying stuck on "BERDL ?".
   const unsubscribeEnv = onEnvChange(applyEnvToHud);
 
-  /** Re-run the readiness check, update the connection chip + HUD + footer. Returns the env (UI only). */
+  /** Re-run the readiness check, update the connection chip + HUD + footer. Returns the env. */
   async function refreshStatus(ctx: ExtensionContext): Promise<BerdlEnv | undefined> {
-    if (!ctx.hasUI) return undefined;
     try {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
       setCachedEnv(env); // fires onEnvChange → applyEnvToHud (chip + HUD + footer)
@@ -211,10 +237,29 @@ export default function berilEnv(pi: ExtensionAPI) {
       hud.connection = "BERDL status unknown";
       hud.location = "BERDL ?";
       hud.ready = false;
-      ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("error", "BERDL status unknown"));
+      if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("error", "BERDL status unknown"));
       renderHud();
       return undefined;
     }
+  }
+
+  function showEnvStatus(env: BerdlEnv | undefined): void {
+    const fallback: BerdlEnv = {
+      location: "unknown",
+      ready: false,
+      checks: {},
+      next_steps: ["Run /berdl-start for connection guidance, or inspect `beril env --json` for the raw error."],
+    };
+    const shown = env ?? fallback;
+    pi.sendMessage(
+      {
+        customType: "beril-env-status",
+        content: `BERDL ${shown.location}: ${shown.ready ? "ready" : "not ready"}`,
+        display: true,
+        details: { env: shown },
+      },
+      { triggerTurn: false },
+    );
   }
 
   /** Parse a project's plan + report into a claim tally (best-effort; undefined when empty/unreadable). */
@@ -346,6 +391,7 @@ export default function berilEnv(pi: ExtensionAPI) {
     description: "Check the BERDL connection and (re)start pproxy if the SSH tunnels are up.",
     async handler(_args: string, ctx: ExtensionContext) {
       const env = await refreshStatus(ctx);
+      showEnvStatus(env);
       if (ctx.hasUI) {
         ctx.ui.notify(
           env?.ready ? "BERDL ready." : "BERDL not ready — see next steps.",
@@ -356,9 +402,10 @@ export default function berilEnv(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("berdl-status", {
-    description: "Refresh the BERDL connection status indicator.",
+    description: "Refresh and show the BERDL connection status.",
     async handler(_args: string, ctx: ExtensionContext) {
-      await refreshStatus(ctx);
+      const env = await refreshStatus(ctx);
+      showEnvStatus(env);
     },
   });
 
@@ -383,9 +430,12 @@ export default function berilEnv(pi: ExtensionAPI) {
     brand = brandForTheme(process.env.BERIL_THEME);
     await refreshStatus(ctx);
     identity = await fetchIdentity();
-    // Seed the active project's stage + claim tally so the arc + claims show on a
-    // fresh restart, not just after the first in-session lifecycle transition.
-    if (ctx.hasUI) await seedActiveProject(ctx);
+    // Seed project state only when restoring a session. A fresh `beril start` or
+    // Pi `/new` must not display the last lifecycle project as if it were active.
+    if (ctx.hasUI) {
+      if (shouldSeedActiveProject(event.reason)) await seedActiveProject(ctx);
+      else clearResearchHud();
+    }
 
     // The custom header/footer are TUI-only (no-op in rpc/json/print).
     if (ctx.mode === "tui") {
