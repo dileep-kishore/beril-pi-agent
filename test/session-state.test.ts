@@ -69,3 +69,70 @@ test("formatReinjection omits the checkpoint line when none is known", () => {
   const snap = buildSnapshot({ project: "p", phase: "active", claims: TALLY });
   assert.ok(!formatReinjection(snap).includes("Last checkpoint decision"));
 });
+
+// ── world-model orientation sections ─────────────────────
+
+test("buildSnapshot clamps the question to 240 chars and bounds the lists to 8", () => {
+  const snap = buildSnapshot({
+    project: "p",
+    phase: "active",
+    claims: TALLY,
+    question: `What drives X?\n${"y".repeat(400)}`,
+    openQuestions: Array.from({ length: 12 }, (_, i) => `q${i}`),
+    assumptions: Array.from({ length: 11 }, (_, i) => `a${i}`),
+    deadEnds: Array.from({ length: 10 }, (_, i) => `d${i}`),
+  });
+  assert.ok(snap.question && snap.question.length <= 240);
+  assert.ok(!snap.question?.includes("\n")); // single-lined
+  assert.equal(snap.openQuestions?.length, 8); // >8 truncated
+  assert.equal(snap.assumptions?.length, 8);
+  assert.equal(snap.deadEnds?.length, 8);
+  // The first entries are kept (truncation drops the tail).
+  assert.equal(snap.openQuestions?.[0], "q0");
+  assert.equal(snap.deadEnds?.[7], "d7");
+});
+
+test("buildSnapshot clamps each list entry and drops empty ones", () => {
+  const snap = buildSnapshot({
+    project: "p",
+    phase: "active",
+    claims: TALLY,
+    openQuestions: [`is ${"z".repeat(300)} relevant?`, "   ", "real question"],
+  });
+  assert.ok(snap.openQuestions?.[0] && snap.openQuestions[0].length <= 160);
+  // Blank entries are dropped, so only the two real ones survive in order.
+  assert.deepEqual(
+    snap.openQuestions?.slice(0, 2).map((q) => q.length <= 160),
+    [true, true],
+  );
+  assert.ok(!snap.openQuestions?.includes(""));
+  assert.ok(snap.openQuestions?.includes("real question"));
+});
+
+test("buildSnapshot omits world-model sections when not supplied", () => {
+  const snap = buildSnapshot({ project: "p", phase: "active", claims: TALLY });
+  assert.equal(snap.question, undefined);
+  assert.equal(snap.openQuestions, undefined);
+  assert.equal(snap.assumptions, undefined);
+  assert.equal(snap.deadEnds, undefined);
+});
+
+test("formatReinjection surfaces open questions + dead ends under the re-verify guard", () => {
+  const snap = buildSnapshot({
+    project: "aquila",
+    phase: "analysis",
+    claims: TALLY,
+    question: "Does iron limitation drive the bloom?",
+    openQuestions: ["which depth horizon dominates?"],
+    assumptions: ["nitrate is non-limiting in spring"],
+    deadEnds: ["salinity gradient was a dead end"],
+  });
+  const text = formatReinjection(snap);
+  assert.match(text, /Does iron limitation drive the bloom\?/);
+  assert.match(text, /which depth horizon dominates\?/);
+  assert.match(text, /salinity gradient was a dead end/);
+  assert.match(text, /nitrate is non-limiting in spring/);
+  // Still carries the anti-laundering / orientation guard.
+  assert.match(text, /NOT established findings/);
+  assert.match(text, /re-verify/);
+});

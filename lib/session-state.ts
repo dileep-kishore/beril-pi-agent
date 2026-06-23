@@ -17,6 +17,11 @@
 import type { ClaimTally } from "./claim-ledger.ts";
 import { currentStep } from "./research-steps.ts";
 
+/** Caps for the bounded world-model orientation sections (entries / chars). */
+const MAX_LIST = 8;
+const MAX_ENTRY = 160;
+const MAX_QUESTION = 240;
+
 /** The persisted research-state block — small, tool-derived, anti-laundering. */
 export interface ResearchStateSnapshot {
   project: string;
@@ -27,6 +32,20 @@ export interface ResearchStateSnapshot {
   claims: { total: number; supported: number; refuted: number };
   /** `<= 160` chars, single line: the scientist's last checkpoint choice. Omitted when unknown. */
   lastCheckpoint?: string;
+  /**
+   * The lightweight investigation "world model" — orientation only, NOT findings.
+   * The agent maintains these mid-arc so a compaction keeps the thread; they are
+   * re-verifiable prompts to the agent, never settled results (no `findings[]`,
+   * which would duplicate claims.json). All bounded + clamped. Omitted when empty.
+   */
+  /** `<= 240` chars, single line: the research question under investigation. */
+  question?: string;
+  /** `<= 8` single-line entries (`<= 160` chars each): still-open questions. */
+  openQuestions?: string[];
+  /** `<= 8` single-line entries: working assumptions that would change the analysis. */
+  assumptions?: string[];
+  /** `<= 8` single-line entries: tried-and-abandoned avenues, so they aren't re-attempted. */
+  deadEnds?: string[];
 }
 
 /** Inputs the memory extension gathers before shaping a snapshot. */
@@ -35,12 +54,29 @@ export interface SnapshotInput {
   phase: string;
   claims: ClaimTally;
   lastCheckpoint?: string;
+  question?: string;
+  openQuestions?: string[];
+  assumptions?: string[];
+  deadEnds?: string[];
 }
 
 /** Collapse to a single line and clamp to `max` chars (with an ellipsis when cut). */
 function clampLine(s: string, max: number): string {
   const oneLine = s.replace(/\s+/g, " ").trim();
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
+}
+
+/**
+ * Single-line + clamp each entry, drop blanks, then cap the list length. Tolerates
+ * a non-array (returns []) so a malformed snapshot can never crash the snapshotter.
+ */
+function clampList(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((s): s is string => typeof s === "string")
+    .map((s) => clampLine(s, MAX_ENTRY))
+    .filter((s) => s.length > 0)
+    .slice(0, MAX_LIST);
 }
 
 /**
@@ -61,6 +97,14 @@ export function buildSnapshot(input: SnapshotInput): ResearchStateSnapshot {
   };
   const checkpoint = input.lastCheckpoint && clampLine(input.lastCheckpoint, 160);
   if (checkpoint) snap.lastCheckpoint = checkpoint;
+  const question = input.question && clampLine(input.question, MAX_QUESTION);
+  if (question) snap.question = question;
+  const openQuestions = clampList(input.openQuestions);
+  if (openQuestions.length) snap.openQuestions = openQuestions;
+  const assumptions = clampList(input.assumptions);
+  if (assumptions.length) snap.assumptions = assumptions;
+  const deadEnds = clampList(input.deadEnds);
+  if (deadEnds.length) snap.deadEnds = deadEnds;
   return snap;
 }
 
@@ -79,6 +123,21 @@ export function formatReinjection(s: ResearchStateSnapshot): string {
     "(read-only tally; re-verify before relying on any of them).",
   ];
   if (s.lastCheckpoint) lines.push(`Last checkpoint decision: ${s.lastCheckpoint}.`);
+  // The world-model orientation sections: still framed as where-we-left-off, not
+  // findings. They are re-verifiable prompts, so they sit ABOVE the re-verify guard.
+  if (s.question) lines.push(`Working question: ${s.question}`);
+  if (s.openQuestions?.length) {
+    lines.push("Open questions to resolve:");
+    for (const q of s.openQuestions) lines.push(`  - ${q}`);
+  }
+  if (s.assumptions?.length) {
+    lines.push("Working assumptions (unverified):");
+    for (const a of s.assumptions) lines.push(`  - ${a}`);
+  }
+  if (s.deadEnds?.length) {
+    lines.push("Dead ends already tried (do not re-attempt blindly):");
+    for (const d of s.deadEnds) lines.push(`  - ${d}`);
+  }
   lines.push(
     "Treat the above as where we left off, not as proof. Re-open the plan/report and",
     "re-run checks before asserting any result as settled.",

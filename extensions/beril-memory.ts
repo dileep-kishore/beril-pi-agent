@@ -42,6 +42,21 @@ export default function berilMemory(pi: ExtensionAPI) {
     lastCheckpoint = `${title} -> ${choice}`;
   });
 
+  /** Re-read the stored research_state snapshot (best-effort; {} when none/error). */
+  async function readSnapshot(project: string): Promise<Partial<ResearchStateSnapshot>> {
+    try {
+      const res = await berilExec<ResearchStateSnapshot | Record<string, never>>(pi, [
+        "lifecycle",
+        "session-state",
+        project,
+        "--get",
+      ]);
+      return res && typeof res === "object" ? (res as Partial<ResearchStateSnapshot>) : {};
+    } catch {
+      return {};
+    }
+  }
+
   /** Parse a project's plan + report into a claim tally (best-effort; never throws). */
   async function readClaimTally(cwd: string, project: string): Promise<ClaimTally> {
     try {
@@ -71,11 +86,21 @@ export default function berilMemory(pi: ExtensionAPI) {
       const cur = await berilExec<{ project?: string; status?: string }>(pi, ["lifecycle", "current"]);
       if (!cur.project) return undefined;
       const claims = await readClaimTally(ctx.cwd, cur.project);
+      // READ-MODIFY-WRITE MERGE: the Python --set REPLACES the whole research_state
+      // block, so re-stamping only the count/identifier core would WIPE the
+      // world-model orientation (question/openQuestions/assumptions/deadEnds) the
+      // agent set mid-arc via world_model. Re-read the snapshot first and carry
+      // those sections through buildSnapshot (which re-clamps/bounds them).
+      const prev = await readSnapshot(cur.project);
       const snap = buildSnapshot({
         project: cur.project,
         phase: cur.status ?? "",
         claims,
         lastCheckpoint,
+        question: prev.question,
+        openQuestions: prev.openQuestions,
+        assumptions: prev.assumptions,
+        deadEnds: prev.deadEnds,
       });
       // The Python CLI owns provenance.json; it server-stamps `updated_at`.
       // TS preserves the existing CLI contract and never writes lifecycle YAML.
