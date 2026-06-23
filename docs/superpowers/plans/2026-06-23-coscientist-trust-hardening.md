@@ -157,35 +157,47 @@ persists the widened JSON); caps ≤8 per section / question ≤240.
 
 ---
 
-## Phase 4 — Measurement + falsification (WS2 P1.6 + WS3 P1.4) — deferred, sketch
+## Phase 4 — Simplification pass + light falsification guidance
 
-Gated on Phases 2–3. Specify fully before starting.
+**The reproducibility eval (old P1.6) is CUT** — no re-running notebooks, no
+`beril reproduce`, no byte/hash reproducibility metric. The notebook + its saved
+outputs *is* the reproducible record; the canonical hash stays only as the
+integrity gate. A 2026-06-23 simplicity audit also found shipped over-surfacing to
+trim. Each item below is small (S/M) and independent; none touches the ORCID gate.
 
-**P1.6 — reproducibility/trust eval (pytest/CI only):**
-- [ ] `tests/test_reproduce.py` + a small `scripts/` helper: re-run a
-      known-stable fixture notebook N times → identical canonical-JSON hashes;
-      a known-flaky fixture → differing hashes (TP/FP). Reuse
-      `tests/test_notebook_hash.py`'s drift corpus for the cosmetic-vs-real half.
-- [ ] `test/science-eval.test.ts`: claim fixtures tagged stable/flaky → assert
-      the tier correlates with reproducibility.
-- [ ] (Defer the `beril reproduce` CLI subcommand until a product caller exists.)
+**Trim shipped bloat (de-bloat WS2):**
+- [ ] **Cut the dead `faithfulnessForPointer` + `FaithfulnessTier`**
+      (`lib/science.ts`) and their tests — never wired to any production path; the
+      `synthesize` skill already covers faithfulness in prose.
+- [ ] **Surface `tier_mismatch` once, where it matters** — keep the
+      `review-preflight` warning; drop the per-claim caption and the duplicate
+      `Single-source`/`Tier mismatch` card counters (`lib/ui/science-cards.ts`).
+- [ ] **Render the grounding footer only when it adds signal** (grounding
+      disagrees with the written tier), not on every `evidenceCard`.
 
-**P1.4 — falsification-ranked hypothesis pass:**
-- [ ] `lib/falsification-rank.ts`: pure ranker by **survival** (survived+result >
-      survived+lit-only > unfalsified > refuted); "unfalsified" is never
-      "survived"; tolerant of `[]`/garbled rows.
-- [ ] `extensions/beril-world.ts` `/falsify-rank` command (thin): read competing
-      hypotheses, mark un-executed ones `unfalsified`, reuse `/berdl-refute` (on
-      request) + BERDL-gated `notebook_run`, write survival back to the world
-      model, render a ranked card.
-- [ ] `skills/falsify-rank/SKILL.md`: how to generate N competing explanations,
-      derive a disconfirming check each, and rank by survival not novelty.
-- [ ] Re-point `/idea-tournament` to hand off to `/falsify-rank` (keep
-      approved-memory seeding).
+**Scope the leakage rubric (de-bloat WS1):**
+- [ ] In `lib/review-rubric.ts` + `skills/berdl-review/SKILL.md`, make the
+      ML-specific half (train/test leakage, look-ahead, group leakage, held-out
+      baseline) **conditional** — "when the analysis trains/tunes a model or
+      threshold, also check…". Keep selection-bias + metric-misuse universal (they
+      apply to plain descriptive SQL too). Don't force an ML leakage hunt on every
+      review.
+
+**P1.4 — falsification guidance, not machinery:**
+- [ ] `/berdl-refute` already runs the disconfirming checks and feeds surviving
+      ones into finding status. Add **one guidance paragraph** to the
+      `berdl-review` (refute) skill + the `synthesize` finding-status tagging:
+      "rank competing explanations by **survival** of a disconfirming check; an
+      unfalsified hypothesis is not a survived one; never rank by idea-stage
+      novelty." **No** new command / skill file / `lib` ranker / `/idea-tournament`
+      re-point. Revisit only if a user needs to compare 3+ live hypotheses.
 
 ---
 
 ## Phase 5 — Documentation: additions + differentiation from the original BERIL
+
+**Decoupled from this plan's completion** — it can ship anytime, independent of
+the trust work; it is not a gate for Phases 1–4.
 
 **Files:**
 - Create: `docs/beril-pi-vs-research-observatory.md`
@@ -193,9 +205,8 @@ Gated on Phases 2–3. Specify fully before starting.
   `/Users/g8k/.superset/projects/BERIL-research-observatory`
 
 - [ ] Draft a **concise** doc (~1 page) in `docs/` that documents **(a) the
-      additions from this plan** — WS1 trustworthy review gate, WS2
-      faithfulness-vs-groundedness trust split, WS3 investigation world model
-      (and the Phase-4 eval + falsification pass) — **and (b) what makes
+      additions from this plan** — WS1 trustworthy review gate, WS2 groundedness
+      trust axis, WS3 investigation world model — **and (b) what makes
       beril-pi-agent different** from the original BERIL Research Observatory.
 - [ ] State the relationship + **standalone invariant**: beril-pi-agent is a
       self-contained Pi package that *replaces* the original's Claude Code / Codex
@@ -203,14 +214,13 @@ Gated on Phases 2–3. Specify fully before starting.
       import, depend on, or modify the original repo at runtime (read it
       read-only, for this doc only — see the `beril-pi-agent-standalone` memory).
 - [ ] Cover the differentiators concisely: terminal/TUI artifact-"science cards"
-      surface; calibrated trust **computed, not verbalized** (now split into
-      faithfulness vs groundedness); **disconfirmation-first** review/refute with
-      a human ORCID-bound sign-off gate; reproducibility hashing + ORCID-gated
-      submission; provenance/`TRACE.jsonl` auditability; **free + keyless,
-      nothing third-party in a core path**; map-not-lock advisory arc.
+      surface; calibrated trust **computed, not verbalized** (with a groundedness
+      axis); **disconfirmation-first** review/refute with a human ORCID-bound
+      sign-off gate; the **notebook-as-record** + ORCID-gated submission;
+      provenance/`TRACE.jsonl` auditability; **free + keyless, nothing
+      third-party in a core path**; map-not-lock advisory arc.
 - [ ] Keep it concise; **link** to this design spec and the
       `coscientist-landscape-positioning` memory rather than duplicating them.
-- [ ] Draft once Phase 3 lands; append the Phase-4 additions when they land.
 
 **Verify:** doc is ≤ ~1.5 pages, every claim about the original is grounded in a
 read-only inspection, and no runtime dependency on the original repo is

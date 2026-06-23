@@ -6,11 +6,15 @@ Status: planned
 
 Translate the co-scientist landscape research (2026-06-23; see the team memory
 `coscientist-landscape-positioning`) into beril's current Pi architecture. Six
-recommendations — three P0, three P1 — that make the review gate trustworthy,
-split and surface calibrated trust into *faithfulness* vs *groundedness*, and
-give long investigations a coherent local state. They are combined into **three
-workstreams** that land on **three state planes that already exist** — no new
-store, no new subagent.
+recommendations that make the review gate trustworthy, add a *groundedness* axis
+to calibrated trust, and give long investigations a coherent local state. They
+are combined into **three workstreams** that land on **three state planes that
+already exist** — no new store, no new subagent.
+
+The workflow stays **deliberately lean**: exactly one new hard gate (the human
+ORCID sign-off), everything else advisory. We do not keep checking things that
+don't change a conclusion, and we never re-run notebooks (see the Reproducibility
+principle under WS2).
 
 The standing priority is unchanged: fit/robustness > minimal code > no required
 paid API. Confidence stays **computed, never verbalized**; irreversible actions
@@ -62,28 +66,33 @@ These reorder the priorities and make WS1 the highest-leverage starting point:
     fail-closed on `!hasUI`/untrusted; preserve the report-hash TOCTOU guard; the
     human signs off on the exact reviewed report.
 
-### Workstream 2 — Calibrated trust, measured (P0.3 + P1.6)
+### Workstream 2 — Calibrated trust: a groundedness axis (P0.3)
 
 - **Problem:** trust is a single principled tier (`high = ≥2 re-runnable
   results`) that conflates "the source supports the claim" with "there is enough
-  independent evidence," and is asserted rather than measured.
+  independent evidence."
 - **Pi-native home:** pure computation + types → `lib/science.ts` /
-  `lib/claim-state.ts`; rendering → the science **cards**; judgment →
-  `skills/synthesize`; measurement → a **Python eval** (substrate).
+  `lib/claim-state.ts`; rendering → the science **cards** (only when it adds
+  signal); judgment → `skills/synthesize`.
 - **Deliverables (P0.3, near-term):**
-  - `groundednessForEvidence(supports)` (counts **distinct** independent
-    re-runnable sources; reuses `isResult` so web/lit cannot masquerade as
-    results) and `faithfulnessForPointer(pointer)` (does the claimed number/sentence
-    appear in the pointer's `exact`) beside `tierForEvidence` in `lib/science.ts`.
-  - `ClaimStateRow.groundedness` + a `tier_mismatch` flag persisted in
-    `claims.json`; surfaced as a **glyph+word footer, never a number** (mirrors
-    `confidenceFooter`); a **warning, not a blocker** in `review-preflight`.
-- **Deliverables (P1.6, Phase 4):**
-  - A CORE-Bench-style eval **as pytest / CI only** (no user-facing command in
-    v1): validate that `high ⇒ reproducible` (re-run a fixture notebook N times,
-    compare canonical-JSON hashes) and that the reproducibility hash catches real
-    content drift while ignoring autosave (TP/FP). The drift half largely reuses
-    the existing `tests/test_notebook_hash.py` corpus.
+  - `groundednessForEvidence(supports)` — counts **distinct** independent
+    re-runnable sources (reuses `isResult`, so it is keyed to the *count of
+    distinct artifacts*, never to the values/bytes/hashes of stochastic outputs).
+  - `ClaimStateRow.groundedness` + a `tier_mismatch` flag in `claims.json`,
+    surfaced **once, where it matters** — a single advisory line at the
+    `review-preflight` seam (a **warning, not a blocker**), and a grounding word
+    on a claim card **only when it disagrees with the written tier**. Computed,
+    never verbalized.
+
+> **Reproducibility (the governing principle).** Reproducibility is captured by
+> the analysis notebook together with its saved outputs — the notebook **is** the
+> reproducible record. beril does **not** re-run notebooks to "prove"
+> reproducibility, and byte/output/canonical-hash equality is explicitly **not** a
+> reproducibility or trust signal (a stochastic analysis changes numbers without
+> changing the conclusion). The canonical-JSON notebook hash survives **only** as
+> the artifact-integrity / TOCTOU check at the approval gate ("was the reviewed
+> notebook/report edited after sign-off?"), alongside the raw-file report hash.
+> There is no reproducibility eval, no `beril reproduce` command, no re-execution.
 
 ### Workstream 3 — Investigation state + falsification-first hypotheses (P1.5 + P1.4)
 
@@ -94,7 +103,7 @@ These reorder the priorities and make WS1 the highest-leverage starting point:
 - **Pi-native home:** state shape → `lib/session-state.ts` (extends the existing
   `research_state` block in `provenance.json`); surface → a **new `beril-world`
   extension** (tool + command + card); compaction → the `beril-memory`
-  **event hook**; the ranker → a **pure lib**; the protocol → a **skill**.
+  **event hook**.
 - **Deliverables (P1.5, near-term):**
   - Extend `ResearchStateSnapshot` with bounded `question`, `openQuestions`,
     `assumptions`, `deadEnds`. A `world_model` read/update tool + `/world-model`
@@ -103,11 +112,16 @@ These reorder the priorities and make WS1 the highest-leverage starting point:
     `session_before_compact` (because the Python `session-state --set` *replaces*
     the whole `research_state` block — the merge must happen in TS or compaction
     clobbers it).
-- **Deliverables (P1.4, Phase 4):**
-  - `lib/falsification-rank.ts` (pure ranker by **survival** of a disconfirming
-    check; "unfalsified" never ranks as "survived"); `/falsify-rank` command +
-    `skills/falsify-rank/SKILL.md`; reuse the existing `/berdl-refute` subagent
-    and the BERDL-gated `notebook_run` execution; `/idea-tournament` hands off.
+- **Deliverables (P1.4, Phase 4 — light touch):**
+  - `/berdl-refute` **already** runs the disconfirming checks (BERDL-gated
+    `notebook_run`), writes `REFUTATION_N.md`, extracts surviving checks, and
+    feeds them into finding status. P1.4 is therefore **one guidance paragraph**,
+    not new machinery: in the `berdl-review` (refute) skill + the `synthesize`
+    finding-status tagging, instruct "rank competing explanations by **survival**
+    of a disconfirming check; an unfalsified hypothesis is **not** a survived one;
+    never rank by idea-stage novelty." **No** new command, skill file, `lib`
+    ranker, or `/idea-tournament` re-point — revisit a dedicated surface only if a
+    user actually needs to compare 3+ live hypotheses.
 
 ## Shared-state design (no new store)
 
@@ -117,8 +131,8 @@ authority hierarchy. This is the key to combining them without overlap:
 | Plane | Authority | Receives |
 | --- | --- | --- |
 | `beril.yaml:approval` | authoritative | WS1 human ORCID sign-off record |
-| `claims.json` (claim ledger) | gate-validated | WS2 per-claim `groundedness` / `faithfulness` / `tier_mismatch` |
-| `provenance.json:research_state` | non-authoritative | WS3 world model (question / open-Qs / assumptions / dead-ends / hypotheses) |
+| `claims.json` (claim ledger) | gate-validated | WS2 per-claim `groundedness` / `tier_mismatch` |
+| `provenance.json:research_state` | non-authoritative | WS3 world model (question / open-Qs / assumptions / dead-ends) |
 
 The single cross-link: WS1's reviewer **reads** `claims.json` and the world-model
 section (a prompt change). WS1's sign-off is authoritative state and stays in
@@ -131,12 +145,11 @@ section (a prompt change). WS1's sign-off is authoritative state and stays in
 | reviewer judgment (failure-mode rubric, read-outputs steer) | rubric string + `skills/berdl-review` | judgment, and the rubric *is* the subagent's system prompt |
 | non-bypassable review gate | Python lifecycle state machine | only the CLI gate survives the generic `lifecycle_transition` tool |
 | human sign-off seam | extension `ctx.ui.confirm` (fail-closed `!hasUI`) | the existing confirmation primitive used by `/submit` and the safety gate |
-| trust computation (groundedness/faithfulness) | `lib/science.ts` pure functions | the calibrated-trust home; deterministic, testable without a model |
-| trust display | science cards (glyph+word footer) | keeps confidence computed-not-verbalized |
-| reproducibility/trust measurement | Python eval (pytest/CI) | substrate; deterministic; no product surface needed in v1 |
+| trust computation (groundedness) | `lib/science.ts` pure functions | the calibrated-trust home; deterministic, testable without a model |
+| trust display | science cards (glyph+word footer, only when it adds signal) | keeps confidence computed-not-verbalized |
 | investigation orientation state | `provenance.json:research_state` via the existing `session-state` verb | non-authoritative, local, keyless; survives sessions |
 | world-model surface | new `beril-world` extension (tool + command + card) | one concern per file |
-| falsification ranking | pure `lib/falsification-rank.ts` + skill + thin command; reuse `/berdl-refute` | judgment in the skill, ranking is pure, **no new subagent** |
+| falsification guidance | one paragraph in the refute + synthesize skills (reusing `/berdl-refute`) | the disconfirming work already exists; no new command/skill/ranker |
 
 ## Explicit non-goals / cuts (first iteration)
 
@@ -146,13 +159,17 @@ section (a prompt change). WS1's sign-off is authoritative state and stays in
 - **Cut WS3 `findings[]`** — it would re-derive tiers that already live in
   `claims.json`, recreating the store-overlap this design avoids. The world model
   *links* to `claim_id`s instead.
-- **Defer the `beril reproduce` CLI subcommand** — P1.6 is a measurement; build
-  it as pytest first; add a product command only if a caller appears.
+- **Cut the reproducibility eval entirely (P1.6).** No re-running notebooks, no
+  `beril reproduce` command, no byte/canonical-hash reproducibility metric — the
+  notebook + its saved outputs *is* the reproducible record (see the
+  Reproducibility principle under WS2). The canonical-JSON hash stays only as the
+  integrity check at the approval gate.
 - **Do not extend `stamp_execution`** with `run_id`/`wall_time` — nothing
   consumes it.
-- **Defer faithfulness stance wiring** (`lit_stance` → `EvidencePointer`); ship
-  the pure `exact`-contains faithfulness check only.
-- **Defer P1.6 (eval) and P1.4 (falsification pass) to Phase 4.**
+- **Drop `faithfulnessForPointer`** — an unwired pure function + type + tests; the
+  `synthesize` skill already asks the agent to verify a cited value appears in its
+  source. Lean on the prose.
+- **P1.4 (Phase 4) is guidance only**, not a new command / skill / ranker (above).
 
 ## Risk controls
 
@@ -163,9 +180,11 @@ section (a prompt change). WS1's sign-off is authoritative state and stays in
 - AI review is **advisory**; the `analysis → reviewed` transition is gated on a
   human ORCID sign-off, enforced in the authoritative state machine and
   **fail-closed headless/untrusted**. The report-hash TOCTOU guard is preserved.
-- The **two SHA-256 primitives stay distinct**: raw-file hash for the approval /
-  TOCTOU integrity; canonical-JSON hash for reproducibility. The world model
-  stores no report fingerprint.
+- The **two SHA-256 primitives stay distinct, and both are *integrity* checks,
+  not reproducibility metrics**: the raw-file hash gates the approval (TOCTOU);
+  the canonical-JSON hash detects content drift in a notebook/report at the gate
+  ("edited after sign-off?"). Neither is re-run; neither feeds a trust tier. The
+  world model stores no report fingerprint.
 - The world model lives **only in `provenance.json` (non-authoritative)**;
   `beril.yaml` stays the sole lifecycle authority and `claims.json` the sole
   transition-gating ledger. The world model never gates a transition.
@@ -183,19 +202,19 @@ original BERIL Research Observatory — the self-contained Pi/TUI co-scientist t
 BERDL substrate (the `beril-pi-agent-standalone` invariant: never import, depend
 on, or modify the original at runtime). It frames the trust-hardening here as
 advancing beril's distinctive, field-validated stance (computed calibrated trust,
-disconfirmation-first review, reproducibility + ORCID gating, keyless). See plan
-Phase 5; the original repo is read **read-only**, for the doc only.
+disconfirmation-first review, the notebook-as-record + ORCID gating, keyless). It
+is **decoupled** from this plan's completion — it can ship anytime, independent of
+the trust work. See plan Phase 5; the original repo is read **read-only**, for the
+doc only.
 
 ## Verification
 
 - Focused TS tests (`node --test`): review sign-off (confirm=false / headless /
-  untrusted), the leakage rubric clause, `groundednessForEvidence` /
-  `faithfulnessForPointer`, `claim-state` groundedness rollup + `tier_mismatch`,
-  `session-state` world-model shape + re-injection, the `beril-world` tool, and
-  (Phase 4) the pure falsification ranker.
+  untrusted), the leakage rubric clause, `groundednessForEvidence`, `claim-state`
+  groundedness rollup + `tier_mismatch`, `session-state` world-model shape +
+  re-injection, and the `beril-world` tool.
 - Focused Python tests (`pytest`): the `set analysis→reviewed` sign-off gate
-  (refuses bare promote; writes the approval block with valid flags), the
-  world-model JSON round-trip through `session-state`, and (Phase 4) the
-  reproduce/TP-FP eval.
+  (refuses bare promote; writes the approval block with valid flags) and the
+  world-model JSON round-trip through `session-state`.
 - Full suite: `env -u NO_COLOR bun run check`, `env -u NO_COLOR bun run test`,
   `uv run --group test pytest tests`.
