@@ -35,6 +35,21 @@ export const CAPABILITIES: Capability[] = [
     aliases: [/start|continue|where am i|lost|status/i],
   },
   {
+    id: "world-model",
+    title: "Track investigation state",
+    lane: "explore",
+    intent:
+      "Keep the working question, open questions, assumptions, and dead ends so a long arc stays oriented (orientation only, not findings).",
+    command: "/world-model <project>",
+    skill: "world-model",
+    tools: ["world_model"],
+    when: "A long investigation risks losing the thread, or you want to record what is still open or already ruled out.",
+    next: "/whereami or /next",
+    aliases: [
+      /world model|open question|assumption|dead end|still open|already (tried|ruled out)|investigation state/i,
+    ],
+  },
+  {
     id: "discover",
     title: "Explore data",
     lane: "explore",
