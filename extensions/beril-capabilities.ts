@@ -1,14 +1,26 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { capabilityCatalogMarkdown, matchCapability, routeNudge, runtimeSurfaceSummary } from "../lib/capabilities.ts";
+import {
+  type CapabilityCatalogOptions,
+  capabilityCatalogMarkdown,
+  matchCapability,
+  routeNudge,
+  runtimeSurfaceSummary,
+} from "../lib/capabilities.ts";
 import { capabilitiesCard } from "../lib/ui/capabilities.ts";
 
-function catalog(pi: ExtensionAPI): string {
-  return capabilityCatalogMarkdown(runtimeSurfaceSummary(pi.getCommands?.() ?? [], pi.getAllTools?.() ?? []));
+function parseCatalogMode(args: string): CapabilityCatalogOptions["mode"] {
+  return args.trim().split(/\s+/).includes("--all") ? "all" : "guide";
 }
 
-function showCatalog(pi: ExtensionAPI, ctx: ExtensionCommandContext): void {
-  const markdown = catalog(pi);
+function catalog(pi: ExtensionAPI, mode: CapabilityCatalogOptions["mode"] = "guide"): string {
+  return capabilityCatalogMarkdown(runtimeSurfaceSummary(pi.getCommands?.() ?? [], pi.getAllTools?.() ?? []), {
+    mode,
+  });
+}
+
+function showCatalog(pi: ExtensionAPI, ctx: ExtensionCommandContext, mode: CapabilityCatalogOptions["mode"]): void {
+  const markdown = catalog(pi, mode);
   pi.sendMessage(
     {
       customType: "beril-capabilities",
@@ -34,16 +46,16 @@ export default function berilCapabilities(pi: ExtensionAPI) {
   );
 
   pi.registerCommand("skills", {
-    description: "Show BERIL skills grouped by scientist intent.",
-    async handler(_args, ctx) {
-      showCatalog(pi, ctx);
+    description: "Show common BERIL moves grouped by scientist intent.",
+    async handler(args, ctx) {
+      showCatalog(pi, ctx, parseCatalogMode(args));
     },
   });
 
   pi.registerCommand("capabilities", {
-    description: "Show BERIL commands, skills, and tools grouped by workflow intent.",
-    async handler(_args, ctx) {
-      showCatalog(pi, ctx);
+    description: "Show BERIL moves; pass --all for commands, skills, and tools.",
+    async handler(args, ctx) {
+      showCatalog(pi, ctx, parseCatalogMode(args));
     },
   });
 
@@ -51,7 +63,7 @@ export default function berilCapabilities(pi: ExtensionAPI) {
     description: "Show BERIL capability palette.",
     handler(ctx) {
       if (ctx.hasUI) {
-        const markdown = catalog(pi);
+        const markdown = catalog(pi, "guide");
         pi.sendMessage(
           { customType: "beril-capabilities", content: markdown, display: true, details: { markdown } },
           { triggerTurn: false },

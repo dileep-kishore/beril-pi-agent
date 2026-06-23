@@ -6,7 +6,7 @@ import { GLYPH } from "./glyphs.ts";
 import { domainStyle } from "./palette.ts";
 import { cardHeader } from "./status-line-header.ts";
 
-/** Render a deterministic workflow-orientation card for /whereami and /next. */
+/** Render an advisory workflow-orientation card for /whereami and /next. */
 export function workflowStatusCard(theme: Theme, view: WorkflowView, focus: "whereami" | "next"): Component {
   const lines: string[] = [];
   const v = (s?: string) => theme.fg(s ? "text" : "muted", s || "(none)");
@@ -28,12 +28,12 @@ export function workflowStatusCard(theme: Theme, view: WorkflowView, focus: "whe
     lines.push(`${theme.fg("muted", "Checkpoint  ")}${theme.fg("text", view.lastCheckpoint)}`);
   }
   lines.push("");
-  lines.push(`${theme.fg("muted", "Next        ")}${theme.fg("text", view.next)}`);
+  lines.push(`${theme.fg("muted", "Suggested   ")}${theme.fg("text", view.next)}`);
   lines.push(`${theme.fg("muted", "Command     ")}${theme.bold(theme.fg("accent", view.command))}`);
   if (view.updatedAt) lines.push(theme.fg("dim", `research_state updated ${view.updatedAt}`));
 
   return linesCard(theme, {
-    title: cardHeader(theme, { title: focus === "next" ? "Next step" : "Where am I?" }),
+    title: cardHeader(theme, { title: focus === "next" ? "Suggested move" : "Where am I?" }),
     accentStyle: domainStyle(theme, "governance"),
     state: view.project ? "settled" : "warning",
     lines,

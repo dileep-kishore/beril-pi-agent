@@ -95,6 +95,12 @@ def main(argv: list[str] | None = None) -> int:
         default=-1,
         help="Per-cell execution timeout in seconds (for 'run'; default: -1 = none)",
     )
+    notebook_parser.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help="For 'run': skip notebooks with prior successful BERIL execution metadata.",
+    )
 
     # export
     export_parser = sub.add_parser("export", help="Export query results to MinIO (destructive)")

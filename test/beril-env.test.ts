@@ -258,16 +258,16 @@ test("session_shutdown clears the chip, the widget, the footer, and the header",
   assert.equal(headerCalls.at(-1), undefined, "header cleared");
 });
 
-test("beril:lifecycle puts the step rail in the HUD and the project in the footer", async () => {
+test("beril:lifecycle puts the advisory rail in the HUD and the project in the footer", async () => {
   const h = harness();
   berilEnv(h.pi);
   const { ctx, widgets, renderFooter } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   h.events.emit("beril:lifecycle", { project: "demo", state: "analysis" });
   const hud = lastWidget(widgets);
-  // analysis points the scientist at the review step, with a 'Next' hint.
+  // analysis points the scientist at the review step, with an advisory hint.
   assert.match(hud, /▸ review/, "marks the current step in the HUD");
-  assert.match(hud, /Next:.*review the report/, "shows the next action");
+  assert.match(hud, /Suggested:.*review the report/, "shows the suggested action");
   assert.doesNotMatch(hud, /◆ demo/, "project no longer duplicated in the HUD");
   assert.match(renderFooter(), /◆ demo/, "project shows in the footer");
 });
@@ -309,6 +309,9 @@ test("a lifecycle phase change pins a banner — once per phase, not per event",
   assert.equal(h.messages.length, 1, "one banner for the analysis→review phase");
   assert.equal(h.messages[0].customType, "beril-phase");
   assert.match(h.messages[0].content, /review/);
+  // The banner uses the advisory "Suggested:" verb, matching the HUD/footer/whereami.
+  assert.match(h.messages[0].content, /Suggested:/, "banner uses the advisory Suggested: verb");
+  assert.doesNotMatch(h.messages[0].content, /Next:/, "banner no longer hard-asserts Next:");
   h.events.emit("beril:lifecycle", { project: "demo", state: "reviewed" }); // → submit phase
   assert.equal(h.messages.length, 2, "a new banner when the phase actually changes");
 });

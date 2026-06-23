@@ -49,6 +49,9 @@ test("/analyze --continue sends a continuation workflow prompt", async () => {
   await h.commands.analyze.handler("demo --continue", { hasUI: false });
   assert.match(sent[0], /continue after the first-result checkpoint/i);
   assert.match(sent[0], /remaining notebooks/i);
+  assert.match(sent[0], /resume/i);
+  assert.match(sent[0], /\/paper-plan demo/);
+  assert.match(sent[0], /\/synthesize demo/);
 });
 
 test("notebook_scaffold parses the created/skipped manifest", async () => {
@@ -72,6 +75,18 @@ test("notebook_run surfaces a partial failure (exit 1) instead of throwing", asy
   const res = await h.tools.notebook_run.execute("id", { project: "demo" }, undefined, undefined);
   assert.equal((res.details as any).ok, false);
   assert.match(res.content[0].text, /1 failed/);
+});
+
+test("notebook_run passes --resume when requested", async () => {
+  let seen: string[] = [];
+  const payload = { project: "demo", executed: [], skipped: [], ok: true };
+  const h = harness((_cmd, args) => {
+    seen = args;
+    return { stdout: JSON.stringify(payload), stderr: "", code: 0, killed: false };
+  });
+  const res = await h.tools.notebook_run.execute("id", { project: "demo", resume: true }, undefined, undefined);
+  assert.deepEqual(seen, ["notebook", "run", "demo", "--resume"]);
+  assert.equal((res.details as any).ok, true);
 });
 
 test("notebook_run throws on an environment error (exit 2)", async () => {

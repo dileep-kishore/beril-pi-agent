@@ -55,6 +55,9 @@ def test_set_emits_new_status(monkeypatch, capsys, tmp_path):
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["status"] == "reviewed"
     assert load_project(d)["status"] == "reviewed"
+    rows = [json.loads(line) for line in (d / "TRACE.jsonl").read_text().splitlines()]
+    assert rows[-1]["event"] == "lifecycle.set"
+    assert rows[-1]["status"] == "reviewed"
 
 
 def test_illegal_set_returns_2(monkeypatch, capsys, tmp_path):
@@ -192,6 +195,9 @@ def test_approve_writes_block_in_key_order(monkeypatch, capsys, tmp_path):
     assert approval["by"] == "0000-0001-2345-6789"
     assert approval["report_hash"].startswith("sha256:")
     assert approval["review"] == "projects/demo/REVIEW_1.md"
+    rows = [json.loads(line) for line in (d / "TRACE.jsonl").read_text().splitlines()]
+    assert rows[-1]["event"] == "lifecycle.approve"
+    assert rows[-1]["approval"]["by"] == "0000-0001-2345-6789"
 
 
 def test_approve_rejects_stale_review_hash(monkeypatch, capsys, tmp_path):
@@ -237,6 +243,9 @@ def test_marker_submitted_writes_file(monkeypatch, capsys, tmp_path):
     rc = lifecycle_cmd.run_lifecycle(_ns(action="marker", kind="submitted"))
     assert rc == 0
     assert (d / "SUBMITTED.md").exists()
+    rows = [json.loads(line) for line in (d / "TRACE.jsonl").read_text().splitlines()]
+    assert rows[-1]["event"] == "lifecycle.marker"
+    assert rows[-1]["marker"] == "SUBMITTED.md"
 
 
 def test_marker_failed_writes_file(monkeypatch, capsys, tmp_path):
@@ -295,6 +304,25 @@ def test_current_picks_most_recent_non_complete(monkeypatch, capsys, tmp_path):
     assert rc == 0
     assert json.loads(capsys.readouterr().out) == {
         "project": "newest",
+        "status": "analysis",
+    }
+
+
+def test_current_considers_provenance_and_trace_mtime(monkeypatch, capsys, tmp_path):
+    import os
+
+    _make(tmp_path, "old", "active", 1000)
+    recent = _make(tmp_path, "recent", "analysis", 2000)
+    d = recent.parent
+    (d / "provenance.json").write_text("{}")
+    (d / "TRACE.jsonl").write_text("{}\n")
+    os.utime(d / "provenance.json", (5000, 5000))
+    os.utime(d / "TRACE.jsonl", (6000, 6000))
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="current", project=None))
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "project": "recent",
         "status": "analysis",
     }
 

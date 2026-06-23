@@ -150,6 +150,65 @@ def bound_spark_retries() -> None:
         pass
 
 
+def classify_query_error(exc: Exception) -> str:
+    msg = str(exc)
+    if "RETRIES_EXCEEDED" in msg or "UNAVAILABLE" in msg:
+        return "connectivity"
+    if (
+        "KBASE_AUTH_TOKEN" in msg
+        or "token is required" in msg.lower()
+        or "missing token" in msg.lower()
+        or "expired token" in msg.lower()
+        or "invalid token" in msg.lower()
+    ):
+        return "auth"
+    permission_markers = (
+        "AccessControlException",
+        "Token denied",
+        "AccessDenied",
+        "Access denied",
+        "not authorized",
+        "unauthorized",
+        "403 Forbidden",
+        "permission denied",
+        "NoAuthWithAWSException",
+    )
+    if any(marker.lower() in msg.lower() for marker in permission_markers):
+        return "permission"
+    if (
+        "TABLE_OR_VIEW_NOT_FOUND" in msg
+        or "PARSE_SYNTAX_ERROR" in msg
+        or "AnalysisException" in msg
+        or "Syntax error" in msg
+    ):
+        return "query"
+    return "unknown"
+
+
+def sanitized_query_error(exc: Exception, *, on_cluster: bool) -> str:
+    kind = classify_query_error(exc)
+    if kind == "connectivity" and not on_cluster:
+        return (
+            "Query failed: the BERDL Spark Connect server is unreachable "
+            "(retries exhausted). Its JupyterHub server may not be running — "
+            "check `berdl-remote status` and that the SSH tunnels + pproxy are "
+            "up, then retry."
+        )
+    if kind == "auth":
+        return (
+            "Query failed: BERDL authentication is missing or expired. Stop here "
+            "and refresh KBASE_AUTH_TOKEN with `uv run beril setup` (`beril setup` "
+            "inside an activated environment), then inspect `/berdl-status` before retrying."
+        )
+    if kind == "permission":
+        return (
+            "Query failed: BERDL authorization blocked this request. Stop here: "
+            "the current user does not appear to have permission for one or more "
+            "requested resources. Request access or choose a readable table before retrying."
+        )
+    return f"Query failed: {exc}"
+
+
 def apply_proxy_settings(args: argparse.Namespace) -> None:
     if args.berdl_proxy:
         if args.host_template is None:
@@ -242,19 +301,7 @@ def main() -> int:
             df = df.limit(args.limit)
         rows = [row.asDict(recursive=True) for row in df.collect()]
     except Exception as exc:
-        msg = str(exc)
-        if not on_cluster and ("RETRIES_EXCEEDED" in msg or "UNAVAILABLE" in msg):
-            # Not a SQL error: the Spark Connect endpoint never answered. Make the
-            # distinction explicit so it isn't mistaken for a bad query.
-            print(
-                "Query failed: the BERDL Spark Connect server is unreachable "
-                "(retries exhausted). Its JupyterHub server may not be running — "
-                "check `berdl-remote status` and that the SSH tunnels + pproxy are "
-                "up, then retry.",
-                file=sys.stderr,
-            )
-        else:
-            print(f"Query failed: {exc}", file=sys.stderr)
+        print(sanitized_query_error(exc, on_cluster=on_cluster), file=sys.stderr)
         return 1
 
     payload: dict[str, Any] = {

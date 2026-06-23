@@ -42,6 +42,7 @@ test("welcome panel starts by inviting guided question framing", () => {
   const text = welcomePanel(theme, { ...state, tip: undefined }, 80).join("\n");
   assert.match(text, /frame the question/i);
   assert.match(text, /guided/i);
+  assert.match(text, /map, not a lock/i);
 });
 
 test("pickTip wraps deterministically over the tip list", () => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import berilData from "../extensions/beril-data.ts";
-import { isConnectivityError } from "../lib/beril-exec.ts";
+import { isConnectivityError, isPermissionError } from "../lib/beril-exec.ts";
 import { isDestructive } from "../lib/destructive.ts";
 import { resetReadinessCache } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
@@ -25,6 +25,16 @@ function harness(execImpl: any) {
 }
 const ctx: any = { hasUI: false, mode: "json" };
 const ready = { ready: true, location: "off-cluster", checks: {}, next_steps: [] };
+
+// The verbatim sanitized stderr scripts/run_sql.py emits for a real authz/auth
+// denial — prose that contains NONE of the raw permission markers. A real
+// permission denial used to round-trip as "unknown", so berdl_feasibility
+// recorded the table as ABSENT (a false "not-answerable" verdict). These are the
+// regression fixtures for that HIGH bug.
+const SANITIZED_PERMISSION =
+  "Query failed: BERDL authorization blocked this request. Stop here: the current user does not appear to have permission for one or more requested resources. Request access or choose a readable table before retrying.";
+const SANITIZED_AUTH =
+  "Query failed: BERDL authentication is missing or expired. Stop here and refresh KBASE_AUTH_TOKEN with `uv run beril setup` (`beril setup` inside an activated environment), then inspect `/berdl-status` before retrying.";
 
 test("registers berdl_query + berdl_discover + berdl_peek + berdl_export", () => {
   const tools = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
@@ -158,6 +168,13 @@ test("isConnectivityError flags transport outages but not SQL/analysis errors", 
   assert.ok(!isConnectivityError(new Error("[PARSE_SYNTAX_ERROR] Syntax error at or near 'SELCT'")));
 });
 
+test("isPermissionError flags BERDL authorization failures", () => {
+  assert.ok(isPermissionError(new Error("Query failed: AccessControlException: access denied to tenant table")));
+  assert.ok(isPermissionError(new Error("Token denied for resource kbase.ke_pangenome.genome")));
+  assert.ok(isPermissionError(new Error("403 Forbidden: not authorized")));
+  assert.ok(!isPermissionError(new Error("[TABLE_OR_VIEW_NOT_FOUND] The table `db`.`t` cannot be found")));
+});
+
 test("berdl_feasibility surfaces a Spark-unreachable outage as an error, never as 'absent'", async () => {
   // When the schema probe fails because Spark Connect is down, the tool must NOT
   // claim the column is absent (a false 'not-answerable' verdict). It must abort
@@ -181,6 +198,109 @@ test("berdl_feasibility surfaces a Spark-unreachable outage as an error, never a
         ctx,
       ),
     /unreachable/,
+  );
+});
+
+test("berdl_feasibility surfaces authorization failures as stop conditions", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return {
+      stdout: "",
+      stderr: "Query failed: AccessControlException: access denied to table db.t.",
+      code: 1,
+      killed: false,
+    };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    /access denied|permission|authorization/i,
+  );
+});
+
+test("berdl_feasibility aborts on the VERBATIM sanitized PERMISSION stderr (never 'absent')", async () => {
+  // The HIGH-bug regression: run_sql.py rewrites the denial into prose with none
+  // of the raw markers. Before the classifier learned that phrasing, this fell
+  // through to checked.push({ exists: false }) and rendered the table as MISSING.
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_PERMISSION, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    (err: any) => /[Rr]equest access|authorization|permission/.test(err.message) && !/exists|MISSING/.test(err.message),
+  );
+});
+
+test("berdl_feasibility aborts on the VERBATIM sanitized AUTH stderr (auth-subclass stop)", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_AUTH, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () =>
+      tools.berdl_feasibility.execute(
+        "id",
+        { question: "Q", checks: [{ table: "db.t", column: "c" }] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    (err: any) => /credentials|beril setup|authentication/i.test(err.message) && !/MISSING/.test(err.message),
+  );
+});
+
+test("berdl_query throws the permission guidance for the VERBATIM sanitized PERMISSION stderr", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_PERMISSION, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () => tools.berdl_query.execute("id", { query: "SELECT * FROM db.t", limit: 100 }, undefined, undefined, ctx),
+    /[Rr]equest access/,
+  );
+});
+
+test("berdl_query throws the auth guidance for the VERBATIM sanitized AUTH stderr", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return { stdout: "", stderr: SANITIZED_AUTH, code: 1, killed: false };
+  });
+  await assert.rejects(
+    () => tools.berdl_query.execute("id", { query: "SELECT * FROM db.t", limit: 100 }, undefined, undefined, ctx),
+    /refresh credentials|beril setup/,
+  );
+});
+
+test("berdl_query sanitizes authorization failures", async () => {
+  const tools = harness(async (_c: string, args: string[]) => {
+    if (args[0] === "env") return { stdout: JSON.stringify(ready), stderr: "", code: 0, killed: false };
+    return {
+      stdout: "",
+      stderr:
+        "Traceback...\nAccessControlException: org.apache.hadoop.fs.s3a.auth.NoAuthWithAWSException\nsecret stack",
+      code: 1,
+      killed: false,
+    };
+  });
+  await assert.rejects(
+    () => tools.berdl_query.execute("id", { query: "SELECT * FROM db.t", limit: 100 }, undefined, undefined, ctx),
+    (err: any) =>
+      /permission|authorization|access/i.test(err.message) &&
+      !/NoAuthWithAWSException|Traceback|secret stack/.test(err.message),
   );
 });
 

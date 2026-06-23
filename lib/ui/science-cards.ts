@@ -348,6 +348,8 @@ export interface NotebookInfo {
   path: string;
   cells: number;
   has_outputs: boolean;
+  execution_ok?: boolean | null;
+  executed_at?: string | null;
 }
 
 /** Notebook listing → each with cell count and a saved-outputs indicator. */
@@ -360,7 +362,13 @@ export function notebookListCard(theme: Theme, notebooks: NotebookInfo[]): Compo
     const mark = n.has_outputs
       ? theme.fg("success", `${GLYPH.ok} outputs`)
       : theme.fg("warning", `${GLYPH.pending} no outputs`);
-    return `${theme.fg("text", n.path)}  ${theme.fg("dim", `${n.cells} cells`)}  ${mark}`;
+    const exec =
+      n.execution_ok === true
+        ? theme.fg("success", `${GLYPH.ok} ran`)
+        : n.execution_ok === false
+          ? theme.fg("error", `${GLYPH.bad} failed`)
+          : theme.fg("dim", "not run");
+    return `${theme.fg("text", n.path)}  ${theme.fg("dim", `${n.cells} cells`)}  ${mark}  ${exec}`;
   });
   lines.push("", verifyLine(theme, "open notebooks with no outputs, or rerun notebook_run"));
   return linesCard(theme, {
@@ -378,12 +386,18 @@ export interface NotebookRun {
 }
 
 /** Notebook execution result → per-notebook ✓/✗ with the first error line. */
-export function notebookRunCard(theme: Theme, r: { executed: NotebookRun[]; ok: boolean }): Component {
-  const lines = r.executed.map((e) =>
-    e.ok
-      ? `${theme.fg("success", GLYPH.ok)} ${theme.fg("text", e.notebook)}`
-      : `${theme.fg("error", GLYPH.bad)} ${theme.fg("text", e.notebook)} ${theme.fg("dim", e.error ? `— ${e.error.split("\n")[0]}` : "")}`,
-  );
+export function notebookRunCard(
+  theme: Theme,
+  r: { executed: NotebookRun[]; skipped?: { notebook: string; reason: string }[]; ok: boolean },
+): Component {
+  const lines = [
+    ...(r.skipped ?? []).map((e) => theme.fg("dim", `${GLYPH.bullet} ${e.notebook} — ${e.reason}`)),
+    ...r.executed.map((e) =>
+      e.ok
+        ? `${theme.fg("success", GLYPH.ok)} ${theme.fg("text", e.notebook)}`
+        : `${theme.fg("error", GLYPH.bad)} ${theme.fg("text", e.notebook)} ${theme.fg("dim", e.error ? `— ${e.error.split("\n")[0]}` : "")}`,
+    ),
+  ];
   if (!lines.length) lines.push(theme.fg("muted", "(nothing executed)"));
   lines.push("", verifyLine(theme, "open executed notebooks and inspect saved outputs / first failed cell"));
   const title = cardHeader(theme, {

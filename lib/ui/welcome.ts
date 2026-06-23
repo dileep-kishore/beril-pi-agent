@@ -31,6 +31,7 @@ export interface WelcomeState {
 
 /** Rotating getting-started tips — one BERDL/co-scientist feature per line. */
 export const TIPS: readonly string[] = [
+  "Frame the question first; the research arc is a map, not a lock.",
   "Frame the question with guided prompts before you query the data.",
   "berdl_peek previews a table's columns and a few rows before you query it.",
   "Checkpoints pause at natural seams so you steer the science, not the commands.",

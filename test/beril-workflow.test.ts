@@ -55,7 +55,9 @@ test("recommendedActions gives concrete next commands per lifecycle phase", () =
     "/analyze demo --first-result",
     "/analyze demo --continue",
   ]);
+  assert.ok(recommendedActions("active", "demo").includes("/paper-plan demo"));
   assert.ok(recommendedActions("analysis", "demo").includes("/berdl-refute demo"));
+  assert.ok(recommendedActions("analysis", "demo").includes("/paper-plan demo"));
   assert.ok(recommendedActions("reviewed", "demo").includes("/submit demo"));
 });
 
@@ -143,8 +145,8 @@ test("/next degrades gracefully when there is no active project", async () => {
   const view = h.messages[0].message.details.view;
   assert.equal(view.project, undefined);
   assert.match(view.command, /berdl-status/);
-  assert.match(h.messages[0].message.content, /Next:/);
+  assert.match(h.messages[0].message.content, /Suggested:/);
   const rendered = h.renderers["beril-workflow-status"](h.messages[0].message, {}, fakeTheme).render(100).join("\n");
-  assert.match(rendered, /Next step/);
+  assert.match(rendered, /Suggested move/);
   assert.match(rendered, /Project\s+\(none\)/);
 });

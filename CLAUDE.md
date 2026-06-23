@@ -102,17 +102,21 @@ uv run beril start                               # refresh token, pin release, e
   (`berilExec(pi, [...])`, which wraps `pi.exec("beril", ...)` and parses JSON);
   they do **not** reimplement BERDL access in TypeScript.
 - **`beril` CLI = execution substrate** — the proven Python that does the real
-  work and owns reproducibility. `beril.yaml` is the authoritative per-project
-  state; TS keeps only fast-path UI caches.
+  work and owns reproducibility. `beril.yaml` is the authoritative lifecycle /
+  approval state; `provenance.json` and `TRACE.jsonl` hold inspectable,
+  non-authoritative runtime/session audit context. TS keeps only fast-path UI
+  caches.
 
 **The research arc is a lifecycle.** Projects move
 `exploration → proposed → active → analysis → reviewed → complete` (with legal
 demotes like `reviewed → analysis`), enforced by the `lifecycle_transition`
 tool / `beril lifecycle`. The commands woven through it:
 `/berdl-start → /literature-review → /research-plan → /analyze --first-result →
-/analyze --continue → /synthesize → /berdl-refute → /berdl-review → /submit`.
-`/skills` and `/capabilities` expose the available routes by scientist intent
-for new users and returning sessions.
+/analyze --continue → /paper-plan → /synthesize → /berdl-refute →
+/berdl-review → /submit`.
+Treat this as a map, not a lock: users can branch into data, literature, ideas,
+or audit work when useful. `/skills` exposes a compact route guide by scientist
+intent; `/capabilities --all` shows the full command/skill/tool inventory.
 
 **The extensions** (one concern each — see `extensions/` for the current set):
 
@@ -127,10 +131,17 @@ for new users and returning sessions.
   library docs via Context7's no-key tier). Both free/keyless; never destructive.
   Web/docs evidence stays LOW tier (cannot lift a claim on its own).
 - `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list` and
-  `/analyze` (split into a first-result checkpoint and a continuation pass).
-- `beril-capabilities` — `/skills`, `/capabilities`, the capability palette,
-  and conservative route nudges from plain-language scientific intent.
-- `beril-plan` — `research_plan` plan-card tool and `/research-plan`.
+  `/analyze` (split into a first-result checkpoint and a resume-aware
+  continuation pass).
+- `beril-capabilities` — `/skills`, `/capabilities`, `/capabilities --all`, the
+  capability palette, and conservative route nudges from plain-language
+  scientific intent.
+- `beril-plan` — `planning_preflight`, `research_plan` plan-card tool, and
+  `/research-plan`.
+- `beril-paper` — `paper_plan` narrative-plan card and `/paper-plan`, separating
+  paper assembly from mechanical analysis.
+- `beril-audit` — `project_provenance`, `project_trace`, `/provenance`, and
+  `/trace` for inspectable project audit artifacts.
 - `beril-literature` — `lit_search` (dual-source: PubMed + Europe PMC, both
   keyless) / `lit_fetch` / `lit_abstract` / `lit_stance` and `/literature-review`
   (project-scoped references, in-process model calls for query expansion +

@@ -37,7 +37,7 @@ A clear answer.
 
 
 def _ns(**kw) -> argparse.Namespace:
-    base = dict(action=None, project="demo", notebook=None, from_plan=False, timeout=-1)
+    base = dict(action=None, project="demo", notebook=None, from_plan=False, timeout=-1, resume=False)
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -81,6 +81,10 @@ def test_scaffold_from_plan(tmp_path, monkeypatch, capsys):
     nb1 = nbformat.read(project_dir / "notebooks/01_data_exploration.ipynb", as_version=4)
     assert "1. Data Exploration" in nb1.cells[0].source
     assert "profile the distributions" in nb1.cells[0].source
+    assert (project_dir / "data" / "cache").is_dir()
+    assert (project_dir / "notebooks" / "util.py").is_file()
+    code_sources = "\n".join(c.source for c in nb1.cells if c.cell_type == "code")
+    assert "from util import cache_path, load_json, save_json" in code_sources
 
 
 def test_scaffold_idempotent(tmp_path, monkeypatch, capsys):
@@ -98,6 +102,18 @@ def test_scaffold_idempotent(tmp_path, monkeypatch, capsys):
         "notebooks/01_data_exploration.ipynb",
         "notebooks/02_correlation_analysis.ipynb",
     ]
+
+
+def test_scaffold_does_not_overwrite_util_py(tmp_path, monkeypatch, capsys):
+    project_dir = _project(tmp_path, monkeypatch)
+    (project_dir / "RESEARCH_PLAN.md").write_text(PLAN)
+    notebook_cmd.run_notebook(_ns(action="scaffold", from_plan=True))
+    capsys.readouterr()
+    util = project_dir / "notebooks" / "util.py"
+    util.write_text("# custom helper\n")
+    notebook_cmd.run_notebook(_ns(action="scaffold", from_plan=True))
+    capsys.readouterr()
+    assert util.read_text() == "# custom helper\n"
 
 
 def test_scaffold_default_when_no_plan(tmp_path, monkeypatch, capsys):
@@ -152,12 +168,36 @@ def test_list_reports_cells_and_outputs(tmp_path, monkeypatch, capsys):
         "path": "notebooks/01_with_outputs.ipynb",
         "cells": 2,
         "has_outputs": True,
+        "execution_ok": None,
+        "executed_at": None,
     }
     assert by_path["notebooks/02_no_outputs.ipynb"] == {
         "path": "notebooks/02_no_outputs.ipynb",
         "cells": 2,
         "has_outputs": False,
+        "execution_ok": None,
+        "executed_at": None,
     }
+
+
+def test_list_reports_beril_execution_metadata(tmp_path, monkeypatch, capsys):
+    project_dir = _project(tmp_path, monkeypatch)
+    notebooks_dir = project_dir / "notebooks"
+    notebooks_dir.mkdir()
+
+    import nbformat
+    from nbformat.v4 import new_code_cell, new_notebook
+
+    nb = new_notebook(cells=[new_code_cell("1 + 1")])
+    nb.metadata["beril"] = {"execution": {"ok": True, "executed_at": "2026-06-18T00:00:00Z"}}
+    nbformat.write(nb, (notebooks_dir / "01_done.ipynb").open("w"))
+
+    rc = notebook_cmd.run_notebook(_ns(action="list"))
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    row = payload["notebooks"][0]
+    assert row["execution_ok"] is True
+    assert row["executed_at"] == "2026-06-18T00:00:00Z"
 
 
 # --- run --------------------------------------------------------------------
@@ -192,6 +232,46 @@ def test_run_orchestration_all_ok(tmp_path, monkeypatch, capsys):
         {"notebook": "notebooks/01_a.ipynb", "ok": True, "error": None},
         {"notebook": "notebooks/02_b.ipynb", "ok": True, "error": None},
     ]
+    assert payload["skipped"] == []
+
+
+def test_run_resume_skips_successful_beril_executions(tmp_path, monkeypatch, capsys):
+    project_dir = _project(tmp_path, monkeypatch)
+    notebooks_dir = project_dir / "notebooks"
+    notebooks_dir.mkdir()
+
+    import nbformat
+    from nbformat.v4 import new_code_cell, new_notebook
+
+    done = new_notebook(cells=[new_code_cell("1 + 1")])
+    done.metadata["beril"] = {"execution": {"ok": True, "executed_at": "2026-06-18T00:00:00Z"}}
+    nbformat.write(done, (notebooks_dir / "01_done.ipynb").open("w"))
+    failed = new_notebook(cells=[new_code_cell("raise ValueError('x')")])
+    failed.metadata["beril"] = {"execution": {"ok": False, "executed_at": "2026-06-18T00:00:00Z"}}
+    nbformat.write(failed, (notebooks_dir / "02_failed.ipynb").open("w"))
+    unstamped = new_notebook(cells=[new_code_cell("2 + 2")])
+    nbformat.write(unstamped, (notebooks_dir / "03_unstamped.ipynb").open("w"))
+
+    seen = []
+
+    def fake_run(argv, **kw):
+        seen.append(Path(argv[-3]).name)
+
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setattr(notebook_cmd.subprocess, "run", fake_run)
+    ns = _ns(action="run", timeout=10, resume=True)
+    ns._with_override = []
+    rc = notebook_cmd.run_notebook(ns)
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert seen == ["02_failed.ipynb", "03_unstamped.ipynb"]
+    assert payload["skipped"] == [{"notebook": "notebooks/01_done.ipynb", "reason": "already successful"}]
 
 
 def test_run_uses_uv_runner(tmp_path, monkeypatch, capsys):
@@ -343,11 +423,14 @@ def test_run_executes_and_saves_outputs(tmp_path, monkeypatch, capsys):
     assert payload["executed"] == [
         {"notebook": "notebooks/01_trivial.ipynb", "ok": True, "error": None}
     ]
+    assert payload["skipped"] == []
 
     # Outputs were saved in place.
     executed = nbformat.read(path, as_version=4)
     code_cells = [c for c in executed.cells if c.cell_type == "code"]
     assert any(c.outputs for c in code_cells)
+    assert executed.metadata["beril"]["execution"]["ok"] is True
+    assert "executed_at" in executed.metadata["beril"]["execution"]
 
 
 def test_no_repo_returns_2(monkeypatch, capsys):

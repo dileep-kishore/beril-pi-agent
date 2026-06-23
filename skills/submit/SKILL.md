@@ -21,7 +21,7 @@ A project must be at lifecycle state `reviewed` (report drafted, a current revie
 
 - `exploration` — write the research plan and run analysis before submitting.
 - `proposed` — run the analysis notebooks before submitting.
-- `active` — draft REPORT.md (run `/synthesize <project>`) before submitting.
+- `active` — finish notebooks, draft or approve the paper plan, and draft REPORT.md (run `/paper-plan <project>` then `/synthesize <project>`) before submitting.
 - `analysis` — no current review exists; run `/berdl-review <project>` first.
 - `reviewed` — ready. Proceed to approval.
 - `complete` — already submitted, or approved and awaiting a retried upload (see *After submission*).
@@ -46,7 +46,7 @@ Before approving, confirm the project tells a complete scientific story. These a
 - **Pitfalls documented** — not every project hits a pitfall worth recording, so absence is only a soft warning.
 - **Interpretation** — a `## Interpretation` section: what the findings *mean*, beyond the raw numbers (e.g. what an AMR gene's presence implies, why a COG-category enrichment or GTDB placement matters).
 - **References** — the literature grounding the work (gather via `/literature-review <topic>` or `lit_search`/`lit_fetch` if thin).
-- A **research plan**, a **reproduction guide** (so the analysis can be re-run), **figures** (at least one), notebooks whose **code cells carry outputs** (an executed notebook, not a stale one), and a **dependencies** list.
+- A **research plan**, a **paper plan** when the project used the narrative-planning seam, a **reproduction guide** (so the analysis can be re-run), **figures** (at least one), notebooks whose **code cells carry outputs** (an executed notebook, not a stale one), and a **dependencies** list.
 
 A failing *required* check means the project genuinely is not complete — fix the science. An *expected* check is a prompt to reflect: usually add the missing piece, but the author may approve with it open if they understand the gap.
 
@@ -71,7 +71,7 @@ This currency check also guards already-`complete` projects. If a report, review
 
 ## What the markers attest to
 
-`beril.yaml` is the source of truth for the approval and the submission audit log; the local marker files are a derived, at-a-glance view of it:
+`beril.yaml` is the source of truth for the approval and the submission audit log; `provenance.json` and `TRACE.jsonl` are supporting runtime/session audit artifacts, not approval authority. The local marker files are a derived, at-a-glance view of `beril.yaml`:
 
 - **Approval** (recorded in `beril.yaml` with the approver's ORCID, timestamp, and the content hashes) is the author's standing-behind event. It survives a failed upload.
 - **`SUBMITTED.md`** means the latest approved content reached the lakehouse archive successfully.

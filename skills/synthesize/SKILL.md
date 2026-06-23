@@ -1,13 +1,13 @@
 ---
 name: synthesize
-description: Use when analysis notebooks for a BERDL project have been run and the user wants to interpret the results biologically and draft (or revise) the project's REPORT.md. Reads CSV/figure/notebook outputs, assesses whether the hypothesis was supported, cross-references findings against the literature (organisms/taxa, AMR genes, COG/GTDB/MeSH terms), and writes the Key Findings, Discoveries, Performance Notes, Results, Interpretation, Data, and References narrative. Run via /synthesize <project>. Lifecycle/state changes are handled by the lifecycle_transition tool, not manual edits.
+description: Use when analysis notebooks for a BERDL project have been run and the user wants to interpret the results biologically and draft (or revise) the project's REPORT.md, normally after PAPER_PLAN.md has separated the publication narrative from the mechanical research plan. Reads CSV/figure/notebook outputs, assesses whether the hypothesis was supported, cross-references findings against the literature (organisms/taxa, AMR genes, COG/GTDB/MeSH terms), and writes the Key Findings, Discoveries, Performance Notes, Results, Interpretation, Data, and References narrative. Run via /synthesize <project>. Lifecycle/state changes are handled by the lifecycle_transition tool, not manual edits.
 ---
 
 # Synthesis
 
 Interpret analysis outputs for a BERDL project and draft the findings in `REPORT.md`. This skill holds the scientific judgment — how to read results, assess a hypothesis, compare against the literature, and structure the narrative. The mechanics of state changes, report hashing, and status bookkeeping are delegated to Pi tools and commands.
 
-Invoke via `/synthesize <project>`. The command resolves the project, sets it active, and asks you to move it to `analysis` when the report is complete; this skill supplies the interpretation. Use `/whereami` to orient the scientist before interpreting and `/next` after the report/review seam.
+Invoke via `/synthesize <project>`. The command resolves the project, sets it active, and asks you to move it to `analysis` when the report is complete; this skill supplies the interpretation. In the normal workflow, run after `/paper-plan <project>` and use `PAPER_PLAN.md` as the narrative contract. Use `/whereami` to orient the scientist before interpreting and `/next` after the report/review seam.
 
 ## When to proceed (judgment, not bookkeeping)
 
@@ -17,7 +17,7 @@ Use these judgments to decide what to do when the user invokes you, based on the
 
 - **No research plan, still exploration** → there is nothing to synthesize against yet. Stop. Tell the user: "This project is still in exploration — there's no research plan to synthesize against. Write the plan first (resume via `/berdl-start`), then re-run `/synthesize`."
 - **Plan exists but no analysis (proposed)** → stop. Tell the user: "This project has a research plan but no analysis yet. Run the analysis notebooks first so `/synthesize` has results to interpret. Resume via `/berdl-start`."
-- **`active`** → normal forward path. Proceed; the report drafts and the project moves `active` → `analysis`.
+- **`active`** → normal forward path. Prefer to read `PAPER_PLAN.md` first; if it is absent and the results are complex, tell the scientist that `/paper-plan <project>` is the intended decision seam before synthesis. Proceed only when the narrative path is clear; the report drafts and the project moves `active` → `analysis`.
 - **`analysis`** → re-synthesis on a project still pre-review. Proceed; the transition to `analysis` is idempotent.
 - **`reviewed` or `complete`** → re-synthesis invalidates prior reviews: each review embeds the report's hash, so a rewritten `REPORT.md` makes them stale via hash mismatch, and a prior approval is no longer trustworthy. The `lifecycle_transition` tool performs the legal demote back to `analysis` (archiving any approval). Proceed, but tell the user plainly: "Demoted to `analysis`; existing reviews are now stale — run `/berdl-review` again before `/submit`." For a `complete` project, confirm with the user first, since this overwrites an approved report.
 
@@ -27,7 +27,7 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 
 ### Pass 1 — Read data and draft findings
 
-**Gather context.** Read the research plan (hypothesis, expected outcomes, analysis plan — `RESEARCH_PLAN.md`, or `research_plan.md` for legacy projects), the README (preserve its Research Question and Authors sections), and the existing `references.md`. If no plan file exists, fall back to the README for the research question and hypothesis.
+**Gather context.** Read the paper plan (`PAPER_PLAN.md`) when present, the research plan (hypothesis, expected outcomes, analysis plan — `RESEARCH_PLAN.md`, or `research_plan.md` for legacy projects), the README (preserve its Research Question and Authors sections), and the existing `references.md`. If no plan file exists, fall back to the README for the research question and hypothesis. Follow the paper plan's central claim, evidence backbone, and caveats unless the executed data contradicts it; when it does, say so and revise the narrative rather than forcing the planned story.
 
 **Read analysis outputs:**
 
@@ -77,7 +77,7 @@ For every Key Finding, **actively look for disconfirming evidence**: a `berdl_qu
 
 Write or update `REPORT.md` with these sections. Place figures inline near the finding they support (`![desc](figures/filename.png)` — the UI rewrites these paths for web rendering); every figure in the project's `figures/` directory should appear inline at least once. End each finding subsection with `*(Notebook: filename.ipynb)*` for provenance.
 
-- **Key Findings** — one subsection per finding: the figure, the statistical result with specific numbers, the notebook provenance line.
+- **Key Findings** — one subsection per finding, following `PAPER_PLAN.md` when present: the figure, the statistical result with specific numbers, the notebook provenance line.
 - **Confidence & Caveats** *(not optional)* — for each Key Finding, one line: "Finding: {statement} (**{tier}**: {why}. Caveats: {limitation}. Status: {open|supported|refuted|needs-replication|blocked|needs-evidence})."
 - **Supporting vs Refuting** — per Key Finding, a short `Supports:` / `Refutes:` split, each item a re-openable pointer (notebook cell / query / PMID) + the verbatim source line. If you found no refuting evidence, write "Refutes: none found — searched {what}." Do not omit the Refutes line.
 - **Discoveries** *(optional)* — include only if the analysis surfaced non-trivial insights worth elevating across projects. Each entry is a self-contained one-liner a reader from another project could learn from (e.g., "Pangenome openness correlates with environmental breadth in soil-associated genera (rho=0.38, p<0.01)."). Omit the heading entirely if there's nothing material — an absent section is the natural representation of "no claims of this kind." **Do not write to per-project memory files here.** These entries flow through `/berdl-review` (the reviewer evaluates them as part of the report), and only the approved-and-reviewed content is extracted into the project's `memories/discoveries.md` at approval time (via `/submit`). Writing memories at synthesize time would propagate unvetted claims; the review-gated path keeps promoted memories tied to content that survived review.
@@ -110,7 +110,7 @@ Write or update `REPORT.md` with these sections. Place figures inline near the f
 
 ## Integration
 
-- **Reads from**: `data/*.csv`, `figures/`, `notebooks/*.ipynb`, the research plan, `references.md`, README.
-- **Tools**: `berdl_query` / `berdl_discover` / `berdl_env_check` (re-inspect source tables), `notebook_hash` (provenance), `lit_search` / `lit_fetch` (literature), `lifecycle_transition` (state).
+- **Reads from**: `data/*.csv`, `figures/`, `notebooks/*.ipynb`, `PAPER_PLAN.md`, the research plan, `references.md`, README.
+- **Tools**: `berdl_query` / `berdl_discover` / `berdl_env_check` (re-inspect source tables), `paper_plan` (show the narrative plan when needed), `notebook_hash` (provenance), `lit_search` / `lit_fetch` (literature), `lifecycle_transition` (state).
 - **Produces**: `REPORT.md` (Key Findings, optional Discoveries/Performance Notes, Results, Interpretation, Data, Supporting Evidence, Future Directions, References); updated `README.md` (Status); updated `references.md`.
 - **Consumed by**: `/berdl-review` (the reviewer assesses the findings and the Discoveries/Performance entries) and then `/submit` (extracts approved memories and archives to the lakehouse).

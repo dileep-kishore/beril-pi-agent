@@ -74,7 +74,7 @@ export function sessionName(project: string, state?: string): string {
 }
 
 /**
- * The single most useful next action for a lifecycle state, phrased for a
+ * The single most useful suggested action for a lifecycle state, phrased for a
  * scientist. Kept independent of exact slash-command names where a step has no
  * single command, so the hint stays accurate as the surface grows.
  */
@@ -85,7 +85,7 @@ export function nextAction(state: string): string {
     case "proposed":
       return "scaffold and run the analysis notebooks";
     case "active":
-      return "finish the notebooks, then /synthesize the report";
+      return "finish the notebooks, draft /paper-plan, then /synthesize the report";
     case "analysis":
       return "review the report (/berdl-review), then /submit";
     case "reviewed":

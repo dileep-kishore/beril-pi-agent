@@ -388,7 +388,7 @@ All under `BERIL-research-observatory/tools/`.
 
 ### B4. Lifecycle state machine
 
-**State machine** (`PROJECT.md`): `exploration → proposed → active → analysis → reviewed → complete`. Forward: `active→analysis` (`/synthesize` Step 7b), `analysis→reviewed` (`/berdl-review` Step 5), `reviewed→complete` (`/submit` Phase 2c). Demote: `reviewed→analysis` (synthesize, silent), `complete→analysis` (synthesize y/n | berdl-review hash-mismatch | submit Phase 1a reopen) — moves `approval`→`previous_approvals[]` (+`archived_at`), deletes `REVIEW.md` + both markers, rewrites README `## Status`.
+**State machine** (`PROJECT.md`): `exploration → proposed → active → analysis → reviewed → complete`. Forward: `active→analysis` (`/synthesize` Step 7b); `/paper-plan` writes the reviewable narrative contract before that transition but does not change lifecycle state. `analysis→reviewed` (`/berdl-review` Step 5), `reviewed→complete` (`/submit` Phase 2c). Demote: `reviewed→analysis` (synthesize, silent), `complete→analysis` (synthesize y/n | berdl-review hash-mismatch | submit Phase 1a reopen) — moves `approval`→`previous_approvals[]` (+`archived_at`), deletes `REVIEW.md` + both markers, rewrites README `## Status`.
 
 **`beril.yaml` core fields (on-disk verified):** `project_id`, `status`, `created_at`, `last_session_at`, `branch`, `engine.name`, `authors[]` (`name`/`affiliation`/`orcid`), `artifacts.{readme,research_plan,report,review}` (bool). **Approval block (skill-text only, key ordering UNVERIFIED):**
 ```yaml
@@ -404,6 +404,8 @@ submissions: []          # {status, attempted_at, approved_at (join key), archiv
 ```
 **Hash convention:** all stored hashes carry `sha256:`; never compare directly — `computed_hex == unprefixed(stored)`.
 
+**Project audit artifacts:** `provenance.json` stores the latest runtime/session snapshot, including model/provider/package versions and `research_state`; `TRACE.jsonl` stores append-only local session and interaction trace rows. They are reproducibility artifacts inspected via `/provenance` and `/trace`; `beril.yaml` remains the lifecycle/approval authority.
+
 **Markers (local-only, written after upload):** `SUBMITTED.md` (success), `SUBMISSION_FAILED.md` (failure), `.submit.lock` (advisory, ISO start ts, acquired Phase 0, deleted every exit path). Invariant: exactly one of SUBMITTED/FAILED after Phase 3; **FAILED always wins**.
 
 **`/submit` gating:** Phase 0 lock → checklist → Phase 1a (complete: existence + REPORT/REVIEW/notebook hash compares, reopen prompt on mismatch, marker branching) → Phase 1b (reviewed: latest `REVIEW_N.md` by numeric N, strict footer `<!-- report_hash: sha256:[0-9a-f]{64} -->` as final non-empty line, exactly one) → **Phase 1c ORCID gate** (`beril user --json`; empty orcid → FAIL "No ORCID configured") → Phase 2b TOCTOU re-check → Phase 2c approval write → Phase 3a pre-upload rehash → Phase 3b upload (0/1/2) → Phase 3b.5 post-upload rehash → Phase 3c (write `submissions[]` FIRST, then marker).
@@ -414,6 +416,7 @@ submissions: []          # {status, attempted_at, approved_at (join key), archiv
 | Skill | LIFT to `beril lifecycle` | KEEP as Pi skill |
 |---|---|---|
 | synthesize | status gate, demote transitions, Step 7b manifest write, README rewrite | interpretation, REPORT.md authoring |
+| paper-plan | `paper_plan` display tool and command prompt | narrative/evidence ordering before synthesis |
 | berdl-review | status precondition, hash-compare/demote, `review.sh` invoke, status=reviewed write, footer validation | review reading, fix guidance |
 | submit | lock, status gate, all hash compares, ORCID gate, TOCTOU, approval write, upload bookkeeping | approval-summary wording |
 | pitfall-capture | dedup search, placement, append write | ask-user, draft prose |
@@ -432,10 +435,14 @@ submissions: []          # {status, attempted_at, approved_at (join key), archiv
 | `berdl_discover` | `registerTool` + `pi.exec` | `beril discover` (discover script) | No (writes snapshot file only) |
 | `notebook_hash` | `registerTool` + `pi.exec`, return prefixed JSON | `beril hash` (notebook_hash.py compute-hashes) | No |
 | `lifecycle_transition` | `registerTool`; reads/writes `beril.yaml`; enforce state machine + hash compares | `beril lifecycle` (new subcommand to BUILD) | Mutates state — gate demotes via confirm |
+| `planning_preflight` | `registerTool`; writes `PLANNING_PREFLIGHT.json` before `RESEARCH_PLAN.md` | n/a | No |
+| `project_provenance` / `project_trace` | `registerTool`; read/write `provenance.json` and read `TRACE.jsonl` | n/a | No |
 | `beril_user` | `pi.exec("beril",["user","--json"])`, `JSON.parse` stdout, check exit | `beril user --json` | No |
 | `lakehouse_submit` | `registerTool` + `pi.exec`; **`tool_call` gate**; ORCID gate via `beril_user` first | `beril submit` (lakehouse_upload.py) | **YES** — `mc rm --recursive --force` pre-clear; gate confirm |
 | `lit_search`/`lit_fetch` | `registerTool` + `complete()` from `@earendil-works/pi-ai` fan-out (Promise.all), or `pi.exec` to a lit script | LLM `complete()` / external lit CLI | No |
 | `/synthesize` | `registerCommand` (judgment prose) + `lifecycle_transition` tool for state | `beril lifecycle` for Step 7b | Demote → confirm |
+| `/paper-plan` | `registerCommand` (judgment prose) + `paper_plan` display tool | n/a | No |
+| `/provenance` / `/trace` | `registerCommand` asks agent to call project audit tools | n/a | No |
 | `/berdl-review` | `registerCommand` + `pi.exec` | `beril review` (review.sh) | No (writes REVIEW_N.md) |
 | `/submit` | `registerCommand`; orchestrates ORCID gate, hash compares, `lakehouse_submit` | `beril user --json`, `beril hash`, `beril submit` | **YES** at upload step |
 | `/literature-review` | `registerCommand` + `complete()` fan-out (handoff/summarize pattern) | LLM `complete()` | No (writes references.md) |

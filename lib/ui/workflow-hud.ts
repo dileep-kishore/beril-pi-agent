@@ -7,12 +7,13 @@ import { type SubstepState, substepRail } from "./substeps.ts";
 
 /**
  * The always-visible "workflow HUD" shown above the editor: where the active
- * project sits in `explore → plan → analyze → review → submit`, and what to do
- * next. This is the answer to the scientists' "I've lost track of where we are"
- * — a persistent map of the research arc rather than status buried in the scroll.
+ * project sits in `explore → plan → analyze → review → submit`, and what BERIL
+ * suggests next. This is the answer to the scientists' "I've lost track of where
+ * we are" — a persistent map of the research arc rather than a wizard that locks
+ * them into one path.
  *
  * Connection and project now live in the statusline (`footer.ts`), so the HUD is
- * just the phase rail + the single most useful next action — no longer a second
+ * just the phase rail + the single most useful suggested action — no longer a second
  * copy of the footer. Pure: takes the current state + a theme and returns the
  * widget's lines (the `beril-env` extension owns the state and the `setWidget`
  * call). Unit-tested with a pass-through theme.
@@ -37,7 +38,7 @@ export interface HudState {
 
 type HudTheme = Theme;
 
-/** Build the workflow HUD lines. Always shows a next-action hint; adds the rail once a project exists. */
+/** Build the workflow HUD lines. Always shows a suggested-action hint; adds the rail once a project exists. */
 export function workflowHud(theme: HudTheme, s: HudState): string[] {
   const lines: string[] = [];
 
@@ -53,9 +54,10 @@ export function workflowHud(theme: HudTheme, s: HudState): string[] {
     if (sub) lines.push(`  ${sub}`);
   }
 
-  // The "what's next" hint always shows (a getting-started nudge before any project).
-  lines.push(theme.fg("muted", `Next: ${nextAction(s.state ?? "")}`));
+  // The advisory hint always shows (a getting-started nudge before any project).
+  lines.push(theme.fg("muted", `Suggested: ${nextAction(s.state ?? "")}`));
   const actions = s.actions ?? recommendedActions(s.state, s.project);
-  if (actions.length) lines.push(theme.fg("muted", `Actions: ${actions.slice(0, 3).join("  ")}`));
+  if (actions.length) lines.push(theme.fg("muted", `Available: ${actions.slice(0, 3).join("  ")}`));
+  lines.push(theme.fg("muted", "Explore anytime: /berdl-preview <table>  /literature-review <topic>  /skills"));
   return lines;
 }

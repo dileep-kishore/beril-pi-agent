@@ -1,7 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { berilExec, isConnectivityError } from "../lib/beril-exec.ts";
+import { berilExec, isConnectivityError, isPermissionError, permissionGuidance } from "../lib/beril-exec.ts";
 import { discoverHint, queryHint } from "../lib/hints.ts";
 import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql } from "../lib/peek.ts";
 import { requireReady } from "../lib/readiness.ts";
@@ -69,7 +69,13 @@ export default function berilData(pi: ExtensionAPI) {
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       await requireReady(pi);
       const limit = params.limit ?? 100;
-      const payload = await berilExec<QueryPayload>(pi, ["query", "--query", params.query, "--limit", String(limit)]);
+      let payload: QueryPayload;
+      try {
+        payload = await berilExec<QueryPayload>(pi, ["query", "--query", params.query, "--limit", String(limit)]);
+      } catch (err) {
+        if (isPermissionError(err)) throw new Error(permissionGuidance(err));
+        throw err;
+      }
       const note = payload.limit_applied != null ? ` (limit ${payload.limit_applied})` : "";
       const text = `${payload.returned_rows} row(s)${note}\n${renderTable(payload.rows)}`;
       return { content: [{ type: "text", text }], details: payload };
@@ -136,14 +142,21 @@ export default function berilData(pi: ExtensionAPI) {
       const limit = clampSampleLimit(params.limit);
       // Schema first, then a bounded sample. DESCRIBE can return many rows
       // (columns + partition metadata); cap generously so the schema isn't truncated.
-      const describe = await berilExec<QueryPayload>(pi, ["query", "--query", describeSql(table), "--limit", "500"]);
-      const sample = await berilExec<QueryPayload>(pi, [
-        "query",
-        "--query",
-        sampleSql(table, limit),
-        "--limit",
-        String(limit),
-      ]);
+      let describe: QueryPayload;
+      let sample: QueryPayload;
+      try {
+        describe = await berilExec<QueryPayload>(pi, ["query", "--query", describeSql(table), "--limit", "500"]);
+        sample = await berilExec<QueryPayload>(pi, [
+          "query",
+          "--query",
+          sampleSql(table, limit),
+          "--limit",
+          String(limit),
+        ]);
+      } catch (err) {
+        if (isPermissionError(err)) throw new Error(permissionGuidance(err));
+        throw err;
+      }
       const text = formatPeek(table, describe.rows, sample.rows);
       return { content: [{ type: "text", text }], details: { table, columns: describe.rows, sample: sample.rows } };
     },
@@ -198,6 +211,7 @@ export default function berilData(pi: ExtensionAPI) {
           // scientist their data can't answer the question during an infra outage.
           // Abort and let the tool surface the real connectivity error instead.
           if (isConnectivityError(err)) throw err;
+          if (isPermissionError(err)) throw new Error(permissionGuidance(err));
           // A genuine resolution error (e.g. table not found) is a legitimate
           // feasibility finding — record it as absent and keep probing the rest.
           checked.push({ table, column: c.column, exists: false });
@@ -225,6 +239,7 @@ export default function berilData(pi: ExtensionAPI) {
             // when coverage != null). Surface connectivity errors like the DESCRIBE
             // probe does; tolerate only genuine query failures (coverage undefined).
             if (isConnectivityError(err)) throw err;
+            if (isPermissionError(err)) throw new Error(permissionGuidance(err));
           }
         }
         checked.push({ table, column: c.column, exists, coverage });

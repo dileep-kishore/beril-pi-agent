@@ -91,7 +91,11 @@ export default function berilReview(pi: ExtensionAPI) {
       }
       const projectDir = join(ctx.cwd, "projects", parsed.project);
       if (!existsSync(join(projectDir, "REPORT.md"))) {
-        if (ctx.hasUI) ctx.ui.notify(`REPORT.md not found — run /synthesize first for "${parsed.project}".`, "error");
+        if (ctx.hasUI)
+          ctx.ui.notify(
+            `REPORT.md not found — run /paper-plan ${parsed.project} then /synthesize ${parsed.project}.`,
+            "error",
+          );
         return;
       }
       const task = `Red-team the report for project "${parsed.project}" at ${projectDir} against the rubric. Try to refute its Key Findings. Output the complete refutation markdown.`;
@@ -151,14 +155,15 @@ export default function berilReview(pi: ExtensionAPI) {
       let advanceToReviewed = false;
       if (!plan) {
         if (!existsSync(reportPath)) {
-          if (ctx.hasUI) ctx.ui.notify(`REPORT.md not found — run /synthesize first for "${project}".`, "error");
+          if (ctx.hasUI)
+            ctx.ui.notify(`REPORT.md not found — run /paper-plan ${project} then /synthesize ${project}.`, "error");
           return;
         }
         const proj = await berilExec<{ status?: string }>(pi, ["lifecycle", "status", project]);
         const status = proj.status ?? "";
         if (!REVIEWABLE_STATES.has(status)) {
           if (ctx.hasUI) {
-            ctx.ui.notify(`Project "${project}" is "${status}" — run /synthesize first.`, "error");
+            ctx.ui.notify(`Project "${project}" is "${status}" — run /paper-plan then /synthesize first.`, "error");
           }
           return;
         }
