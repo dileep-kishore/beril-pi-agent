@@ -69,10 +69,66 @@ test("claimStateSummary counts unsupported and empty-refute rows", () => {
     refuted: 0,
     unsupported: 1,
     emptyRefutes: 1,
+    singleSource: 1,
+    tierMismatch: 1,
   });
 });
 
 test("serializeClaimState emits inspectable pretty JSON", () => {
   const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: REPORT });
   assert.match(serializeClaimState(state), /\n {2}"project": "demo"/);
+});
+
+test("each row carries a computed groundedness tier", () => {
+  const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: REPORT });
+  // H1: one notebook support → single-source. H2: no support → ungrounded.
+  assert.equal(state.rows[0].groundedness, "single-source");
+  assert.equal(state.rows[1].groundedness, "ungrounded");
+});
+
+test("tier_mismatch is set when written confidence outruns the evidence", () => {
+  const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: REPORT });
+  // H1 is written `medium` but rests on a single source → mismatch.
+  assert.equal(state.rows[0].tier_mismatch, true);
+});
+
+test("claimStateSummary reports singleSource and tierMismatch counts", () => {
+  const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: REPORT });
+  const summary = claimStateSummary(state.rows);
+  assert.equal(summary.singleSource, 1);
+  assert.equal(summary.tierMismatch, 1);
+});
+
+const WELL_GROUNDED_REPORT = `# Report
+
+## Key Findings
+
+### Finding 1: Soil genomes carry more oxidative-stress genes
+
+Status: supported
+Confidence: high
+Supports: notebooks/01_soil.ipynb — enrichment test
+Supports: notebooks/02_replicate.ipynb — replication
+Refutes: none found — searched marine controls
+
+### Finding 2: Marine genomes carry fewer oxidative-stress genes
+
+Status: needs-evidence
+Confidence: low
+Supports: none
+Refutes: paper PMID:123 — conflicting habitat trend
+`;
+
+test("two distinct supports → well-grounded high claim has no tier_mismatch", () => {
+  const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: WELL_GROUNDED_REPORT });
+  assert.equal(state.rows[0].groundedness, "well-grounded");
+  assert.equal(state.rows[0].tier_mismatch, false);
+});
+
+test("groundedness and tier_mismatch round-trip through claims.json", () => {
+  const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: REPORT });
+  const parsed = JSON.parse(serializeClaimState(state));
+  assert.equal(parsed.rows[0].groundedness, "single-source");
+  assert.equal(parsed.rows[0].tier_mismatch, true);
+  assert.equal(parsed.rows[1].groundedness, "ungrounded");
 });

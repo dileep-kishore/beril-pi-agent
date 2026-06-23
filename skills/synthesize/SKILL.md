@@ -44,6 +44,8 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 
 **Score and ground each finding (calibrated trust):**
 - **Confidence tier** — `high` (≥2 independent artifact-backed results), `medium` (one re-runnable query/notebook result), or `low` (literature-only / no artifact → mark the claim `needs-evidence`). Confidence comes from the *artifacts*, not from how sure you feel.
+- **Grounding ≠ confidence.** A `high` tier needs **≥2 *independent* re-runnable artifacts** — distinct notebooks or distinct queries, not the same notebook cited twice. Two pointers into one notebook are a *single source*: that is at most `medium`, never `high`. Literature/web alone cannot lift a claim above `low`.
+- **Faithfulness** — before you assign a tier, verify the cited number/sentence **actually appears** in the source you point to. Open the cell or rerun the query; if the verbatim quote isn't there, the claim is unverified — fix the pointer or drop the number, don't round up.
 - **Scope-bound** the claim: "in these N samples / under filter X", not a universal.
 - **Provenance** — cite the re-runnable artifact (`*(Notebook: file.ipynb)*`, the query, or `PMID`) AND quote the **exact source sentence or number** behind the claim. Never state a number you cannot trace to a query or notebook output.
 - **Status** — tag each finding `open / supported / refuted / needs-replication / blocked / needs-evidence`.

@@ -21,6 +21,21 @@ export const CLAIM_STATUSES: readonly ClaimStatus[] = [
 /** Computed confidence in a claim, keyed to artifact strength. */
 export type ConfidenceTier = "high" | "medium" | "low";
 
+/**
+ * Computed GROUNDEDNESS — the second axis of calibrated trust, counting the
+ * distinct independent RE-RUNNABLE sources behind a claim (vs `ConfidenceTier`,
+ * which is the writer-assigned strength). A claim can carry a high confidence
+ * yet be `single-source`; that gap is the signal a reviewer watches for.
+ */
+export type GroundednessTier = "well-grounded" | "single-source" | "ungrounded";
+
+/**
+ * Computed FAITHFULNESS of a single pointer — whether the claimed number/sentence
+ * is actually present (a verbatim `exact` quote). Purely an exact-contains check;
+ * no model or stance call is involved.
+ */
+export type FaithfulnessTier = "verified" | "unverified";
+
 /** A typed, re-openable pointer to the artifact behind a claim. */
 export interface EvidencePointer {
   kind: "query" | "notebook" | "figure" | "paper" | "web" | "docs";
@@ -60,4 +75,35 @@ export function tierForEvidence(supports: EvidencePointer[]): ConfidenceTier {
   if (results >= 2) return "high";
   if (results === 1) return "medium";
   return "low";
+}
+
+/**
+ * Map supporting evidence → a groundedness tier (pure, deterministic).
+ *
+ * Counts the DISTINCT independent re-runnable sources: only query/notebook
+ * locators count (`isResult`), deduped by a whitespace-normalized locator, so two
+ * pointers into the same notebook are ONE source and literature/web alone is
+ * `ungrounded`. ≥2 distinct → `well-grounded`; exactly 1 → `single-source`;
+ * 0 → `ungrounded`. Tolerates `[]` and malformed rows (never throws).
+ */
+export function groundednessForEvidence(supports: EvidencePointer[]): GroundednessTier {
+  const locators = new Set<string>();
+  for (const p of supports ?? []) {
+    if (!isResult(p)) continue;
+    const key = `${p.locator ?? ""}`.replace(/\s+/g, "").toLowerCase();
+    if (key) locators.add(key);
+  }
+  if (locators.size >= 2) return "well-grounded";
+  if (locators.size === 1) return "single-source";
+  return "ungrounded";
+}
+
+/**
+ * Map a single pointer → a faithfulness tier (pure, deterministic). A pure
+ * exact-contains check: a non-empty verbatim `exact` quote means the claimed
+ * number/sentence is present → `verified`; otherwise `unverified`. No model or
+ * stance API is consulted. Tolerates a missing/malformed pointer (never throws).
+ */
+export function faithfulnessForPointer(pointer: EvidencePointer): FaithfulnessTier {
+  return `${pointer?.exact ?? ""}`.trim() ? "verified" : "unverified";
 }

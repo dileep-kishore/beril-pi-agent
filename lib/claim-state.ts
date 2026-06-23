@@ -1,12 +1,22 @@
 import { createHash } from "node:crypto";
 import { type ClaimRow, parseClaimLedger, parseEvidence } from "./claim-ledger.ts";
-import type { ClaimStatus, ConfidenceTier, EvidencePointer } from "./science.ts";
+import {
+  type ClaimStatus,
+  type ConfidenceTier,
+  type EvidencePointer,
+  type GroundednessTier,
+  groundednessForEvidence,
+} from "./science.ts";
 
 export interface ClaimStateRow {
   claim_id: string;
   claim: string;
   status: ClaimStatus;
   confidence: ConfidenceTier;
+  /** Computed second axis: distinct re-runnable sources behind the claim. */
+  groundedness: GroundednessTier;
+  /** Set when the WRITTEN confidence (high/medium) outruns the evidence (single-source/ungrounded). */
+  tier_mismatch?: boolean;
   supports: EvidencePointer[];
   refutes: EvidencePointer[];
   refutesSearched?: string;
@@ -35,6 +45,10 @@ export interface ClaimStateSummary {
   refuted: number;
   unsupported: number;
   emptyRefutes: number;
+  /** Claims resting on exactly one re-runnable source. Optional so legacy literals stay valid. */
+  singleSource?: number;
+  /** Claims whose written confidence outruns their evidence. Optional so legacy literals stay valid. */
+  tierMismatch?: number;
 }
 
 function normalizeClaim(text: string): string {
@@ -157,6 +171,15 @@ function parseFindingBlocks(reportMd: string): FindingBlock[] {
   return blocks;
 }
 
+/**
+ * A written confidence outruns its evidence when the claim is asserted high/medium
+ * but the distinct re-runnable sources only support `single-source`/`ungrounded`.
+ * Pure — derived from the artifacts, never a model-supplied field.
+ */
+function tierMismatch(confidence: ConfidenceTier, groundedness: GroundednessTier): boolean {
+  return (confidence === "high" || confidence === "medium") && groundedness !== "well-grounded";
+}
+
 function existingByClaim(existing?: ClaimState): Map<string, ClaimStateRow> {
   const map = new Map<string, ClaimStateRow>();
   for (const row of existing?.rows ?? []) map.set(normalizeClaim(row.claim).toLowerCase(), row);
@@ -186,11 +209,15 @@ function rowToState(
       : prior?.refutes?.length
         ? prior.refutes
         : fallbackPointers("paper", row.refutes);
+  const confidence = block?.confidence ?? row.confidence;
+  const groundedness = groundednessForEvidence(supports);
   return {
     claim_id: prior?.claim_id ?? claimId(row.hypothesis),
     claim,
     status: block?.status ?? row.status,
-    confidence: block?.confidence ?? row.confidence,
+    confidence,
+    groundedness,
+    tier_mismatch: tierMismatch(confidence, groundedness),
     supports,
     refutes,
     refutesSearched:
@@ -221,13 +248,25 @@ export function claimStateSummary(rows: ClaimStateRow[]): ClaimStateSummary {
   let refuted = 0;
   let unsupported = 0;
   let emptyRefutes = 0;
+  let singleSource = 0;
+  let tierMismatchCount = 0;
   for (const row of rows) {
     if (row.status === "supported") supported++;
     else if (row.status === "refuted") refuted++;
     else unsupported++;
     if (row.refutes.length === 0) emptyRefutes++;
+    if (row.groundedness === "single-source") singleSource++;
+    if (row.tier_mismatch) tierMismatchCount++;
   }
-  return { total: rows.length, supported, refuted, unsupported, emptyRefutes };
+  return {
+    total: rows.length,
+    supported,
+    refuted,
+    unsupported,
+    emptyRefutes,
+    singleSource,
+    tierMismatch: tierMismatchCount,
+  };
 }
 
 export function serializeClaimState(state: ClaimState): string {
