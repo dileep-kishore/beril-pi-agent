@@ -45,8 +45,6 @@ export interface ClaimStateSummary {
   refuted: number;
   unsupported: number;
   emptyRefutes: number;
-  /** Claims resting on exactly one re-runnable source. Optional so legacy literals stay valid. */
-  singleSource?: number;
   /** Claims whose written confidence outruns their evidence. Optional so legacy literals stay valid. */
   tierMismatch?: number;
 }
@@ -248,14 +246,12 @@ export function claimStateSummary(rows: ClaimStateRow[]): ClaimStateSummary {
   let refuted = 0;
   let unsupported = 0;
   let emptyRefutes = 0;
-  let singleSource = 0;
   let tierMismatchCount = 0;
   for (const row of rows) {
     if (row.status === "supported") supported++;
     else if (row.status === "refuted") refuted++;
     else unsupported++;
     if (row.refutes.length === 0) emptyRefutes++;
-    if (row.groundedness === "single-source") singleSource++;
     if (row.tier_mismatch) tierMismatchCount++;
   }
   return {
@@ -264,7 +260,6 @@ export function claimStateSummary(rows: ClaimStateRow[]): ClaimStateSummary {
     refuted,
     unsupported,
     emptyRefutes,
-    singleSource,
     tierMismatch: tierMismatchCount,
   };
 }

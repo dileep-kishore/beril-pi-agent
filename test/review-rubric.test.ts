@@ -24,6 +24,13 @@ test("project rubric hunts the four silent failure modes (P0.1)", () => {
   assert.match(PROJECT_REVIEW_RUBRIC, /benchmark\/baseline selection/i);
 });
 
+test("project rubric scopes the ML-leakage half to model/threshold work (P1.4)", () => {
+  // The train/test leakage hunt is conditional on a model/threshold being fit;
+  // selection bias + metric misuse stay universal (apply to plain descriptive SQL).
+  assert.match(PROJECT_REVIEW_RUBRIC, /trains or tunes a model or threshold/i);
+  assert.match(STATS_REVIEW_RUBRIC, /trains or tunes a model or threshold/i);
+});
+
 test("project rubric reads numeric cell outputs + the claim ledger, not just source (P0.1)", () => {
   assert.match(PROJECT_REVIEW_RUBRIC, /report numbers \(metric values/);
   // The old "skip outputs wholesale" steer must be gone.

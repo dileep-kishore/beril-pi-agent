@@ -513,7 +513,9 @@ export function evidenceCard(theme: Theme, v: EvidenceView): Component {
   const mismatch = (v.confidence === "high" || v.confidence === "medium") && grounding !== "well-grounded";
   const body: string[] = [
     `${statusGlyph(theme, v.status)}  ${confidenceFooter(theme, v.confidence)}`,
-    groundingFooter(theme, grounding, mismatch),
+    // Only surface grounding when it DISAGREES with the written confidence — the
+    // mismatch case. When they agree, the confidence footer already conveys it.
+    ...(mismatch ? [groundingFooter(theme, grounding, mismatch)] : []),
     theme.fg("text", v.claim),
   ];
   const supportLines = v.supports.length ? evidenceLines(theme, v.supports) : [theme.fg("muted", "  (none)")];
@@ -697,26 +699,16 @@ export function claimStateCard(
     `${roleStyle(theme, "refutes")("Refuted    ")}${theme.fg("text", String(summary.refuted))}`,
     `${theme.fg("muted", "Unsupported")}${theme.fg(summary.unsupported ? "warning" : "text", String(summary.unsupported).padStart(2))}`,
     `${theme.fg("muted", "Empty refutes")}${theme.fg(summary.emptyRefutes ? "warning" : "text", String(summary.emptyRefutes).padStart(1))}`,
-    `${theme.fg("muted", "Single-source")}${theme.fg(summary.singleSource ? "warning" : "text", String(summary.singleSource ?? 0).padStart(1))}`,
-    `${theme.fg("muted", "Tier mismatch")}${theme.fg(summary.tierMismatch ? "warning" : "text", String(summary.tierMismatch ?? 0).padStart(1))}`,
     `${theme.fg("muted", "Persisted  ")}${persisted ? theme.fg("success", "claims.json") : theme.fg("dim", "no")}`,
     "",
-    ...rows.slice(0, 8).map((r) => {
-      const mismatch = r.tier_mismatch
-        ? `  ${theme.fg("warning", `${r.groundedness} — written tier outruns evidence`)}`
-        : "";
-      return `${statusTag(theme, r.status)}  ${theme.fg("text", r.claim)}${mismatch}`;
-    }),
+    ...rows.slice(0, 8).map((r) => `${statusTag(theme, r.status)}  ${theme.fg("text", r.claim)}`),
     "",
     verifyLine(theme, "open projects/<id>/claims.json, then inspect claim_ledger / evidence"),
   ];
   return linesCard(theme, {
     title: cardHeader(theme, { title: `Claim state ${GLYPH.bullet} ${summary.total}` }),
     accentStyle,
-    state:
-      summary.unsupported || summary.emptyRefutes || summary.singleSource || summary.tierMismatch
-        ? "warning"
-        : "settled",
+    state: summary.unsupported || summary.emptyRefutes ? "warning" : "settled",
     lines,
     maxBodyLines: 24,
   });
@@ -731,8 +723,6 @@ export function reviewPreflightCard(theme: Theme, v: ReviewPreflightView): Compo
     `${theme.fg("muted", "Claims        ")}${theme.fg("text", String(v.claims.total))} ${theme.fg("dim", "total")}  ${roleStyle(theme, "supports")(`${v.claims.supported} supported`)}  ${roleStyle(theme, "refutes")(`${v.claims.refuted} refuted`)}`,
     `${theme.fg("muted", "Unsupported   ")}${theme.fg(v.claims.unsupported ? "warning" : "text", String(v.claims.unsupported))}`,
     `${theme.fg("muted", "Empty refutes ")}${theme.fg(v.claims.emptyRefutes ? "warning" : "text", String(v.claims.emptyRefutes))}`,
-    `${theme.fg("muted", "Single-source ")}${theme.fg(v.claims.singleSource ? "warning" : "text", String(v.claims.singleSource ?? 0))}`,
-    `${theme.fg("muted", "Tier mismatch ")}${theme.fg(v.claims.tierMismatch ? "warning" : "text", String(v.claims.tierMismatch ?? 0))}`,
     `${theme.fg("muted", "Red-team      ")}${v.redTeam ? theme.fg("success", GLYPH.ok) : theme.fg("warning", GLYPH.warn)}`,
     `${theme.fg("muted", "Review        ")}${v.review ? theme.fg("success", GLYPH.ok) : theme.fg("warning", GLYPH.warn)}`,
     `${theme.fg("muted", "Review ready  ")}${v.reviewReady ? theme.fg("success", "review ready") : theme.fg("warning", "not ready")}`,

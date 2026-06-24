@@ -75,6 +75,8 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 - balanced → **mixed evidence** (say so plainly; do not pick a side the data doesn't support).
 For every Key Finding, **actively look for disconfirming evidence**: a `berdl_query` phrased to break it and a paper that disagrees. Show the refuting slot even when empty ("none found — searched X").
 
+When weighing competing explanations, rank them by **survival of a disconfirming check** — `/berdl-refute` already runs them and lifts surviving checks into finding status. An unfalsified hypothesis is not a survived one; never rank by how novel or clever an idea sounds (idea-stage novelty doesn't survive execution).
+
 ## REPORT.md structure
 
 Write or update `REPORT.md` with these sections. Place figures inline near the finding they support (`![desc](figures/filename.png)` — the UI rewrites these paths for web rendering); every figure in the project's `figures/` directory should appear inline at least once. End each finding subsection with `*(Notebook: filename.ipynb)*` for provenance.

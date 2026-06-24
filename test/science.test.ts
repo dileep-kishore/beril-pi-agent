@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  type EvidencePointer,
-  faithfulnessForPointer,
-  groundednessForEvidence,
-  tierForEvidence,
-} from "../lib/science.ts";
+import { type EvidencePointer, groundednessForEvidence, tierForEvidence } from "../lib/science.ts";
 
 const ptr = (kind: EvidencePointer["kind"]): EvidencePointer => ({
   kind,
@@ -76,13 +71,4 @@ test("groundednessForEvidence: web/paper pointers are ungrounded, never well-gro
 
 test("groundednessForEvidence: one result + a paper → single-source (paper does not count)", () => {
   assert.equal(groundednessForEvidence([at("query", "q:abc"), at("paper", "PMID:1")]), "single-source");
-});
-
-test("faithfulnessForPointer: a non-empty exact quote → verified", () => {
-  assert.equal(faithfulnessForPointer(at("notebook", "nb/01.ipynb", "rho=0.38")), "verified");
-});
-
-test("faithfulnessForPointer: empty or whitespace exact → unverified", () => {
-  assert.equal(faithfulnessForPointer(at("notebook", "nb/01.ipynb", "")), "unverified");
-  assert.equal(faithfulnessForPointer(at("notebook", "nb/01.ipynb", "   ")), "unverified");
 });

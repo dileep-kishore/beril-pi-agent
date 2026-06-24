@@ -29,13 +29,6 @@ export type ConfidenceTier = "high" | "medium" | "low";
  */
 export type GroundednessTier = "well-grounded" | "single-source" | "ungrounded";
 
-/**
- * Computed FAITHFULNESS of a single pointer — whether the claimed number/sentence
- * is actually present (a verbatim `exact` quote). Purely an exact-contains check;
- * no model or stance call is involved.
- */
-export type FaithfulnessTier = "verified" | "unverified";
-
 /** A typed, re-openable pointer to the artifact behind a claim. */
 export interface EvidencePointer {
   kind: "query" | "notebook" | "figure" | "paper" | "web" | "docs";
@@ -96,14 +89,4 @@ export function groundednessForEvidence(supports: EvidencePointer[]): Groundedne
   if (locators.size >= 2) return "well-grounded";
   if (locators.size === 1) return "single-source";
   return "ungrounded";
-}
-
-/**
- * Map a single pointer → a faithfulness tier (pure, deterministic). A pure
- * exact-contains check: a non-empty verbatim `exact` quote means the claimed
- * number/sentence is present → `verified`; otherwise `unverified`. No model or
- * stance API is consulted. Tolerates a missing/malformed pointer (never throws).
- */
-export function faithfulnessForPointer(pointer: EvidencePointer): FaithfulnessTier {
-  return `${pointer?.exact ?? ""}`.trim() ? "verified" : "unverified";
 }

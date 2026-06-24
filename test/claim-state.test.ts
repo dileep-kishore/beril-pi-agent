@@ -69,7 +69,6 @@ test("claimStateSummary counts unsupported and empty-refute rows", () => {
     refuted: 0,
     unsupported: 1,
     emptyRefutes: 1,
-    singleSource: 1,
     tierMismatch: 1,
   });
 });
@@ -92,10 +91,9 @@ test("tier_mismatch is set when written confidence outruns the evidence", () => 
   assert.equal(state.rows[0].tier_mismatch, true);
 });
 
-test("claimStateSummary reports singleSource and tierMismatch counts", () => {
+test("claimStateSummary reports the tierMismatch count", () => {
   const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: REPORT });
   const summary = claimStateSummary(state.rows);
-  assert.equal(summary.singleSource, 1);
   assert.equal(summary.tierMismatch, 1);
 });
 
