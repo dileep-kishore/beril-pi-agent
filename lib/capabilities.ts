@@ -32,7 +32,7 @@ export const CAPABILITIES: Capability[] = [
     tools: ["berdl_env_check", "berdl_discover"],
     when: "New session, returning to old work, or lost context.",
     next: "/whereami or /next",
-    aliases: [/start|continue|where am i|lost|status/i],
+    aliases: [/\bstart|\bcontinue|\bwhere am i|\blost/i],
   },
   {
     id: "world-model",
@@ -59,7 +59,7 @@ export const CAPABILITIES: Capability[] = [
     tools: ["berdl_discover", "berdl_peek", "berdl_feasibility", "berdl_query"],
     when: "The question depends on unknown tables, joins, coverage, or schema.",
     next: "/research-plan <project>",
-    aliases: [/discover|explore|schema|table|coverage|query|data/i],
+    aliases: [/\bdiscover|\bexplore|\bschema|\bcoverage/i],
   },
   {
     id: "plan",
@@ -71,7 +71,7 @@ export const CAPABILITIES: Capability[] = [
     tools: ["berdl_feasibility", "research_plan", "request_checkpoint"],
     when: "A candidate question has enough data support to become a project.",
     next: "/analyze <project> --first-result",
-    aliases: [/plan|hypothesis|falsif|study design|question/i],
+    aliases: [/\bplan|\bhypothesis|\bfalsif|\bstudy design/i],
   },
   {
     id: "analyze",
@@ -107,7 +107,7 @@ export const CAPABILITIES: Capability[] = [
     tools: ["lit_search", "lit_fetch", "lit_abstract", "lit_stance"],
     when: "You need prior work, novelty, citations, or contradictions.",
     next: "add supports/refutes to claims.json and REPORT.md",
-    aliases: [/literature|paper|citation|pubmed|has anyone|novel|contradict/i],
+    aliases: [/\bliterature|\bpaper|\bcitation|\bpubmed|\bhas anyone|\bcontradict/i],
   },
   {
     id: "synthesize",
@@ -143,7 +143,7 @@ export const CAPABILITIES: Capability[] = [
     tools: ["notebook_hash", "claim_ledger", "evidence"],
     when: "REPORT.md and claims.json are ready for external scrutiny.",
     next: "/submit <project>",
-    aliases: [/review|critic|panel|audit|hash/i],
+    aliases: [/\breview|\bcritic|\bpanel/i],
   },
   {
     id: "submit",
@@ -189,10 +189,14 @@ const LANE_ORDER: Capability["lane"][] = ["explore", "study", "check"];
 export function matchCapability(text: string): Capability | undefined {
   const clean = text.trim();
   if (!clean || clean.startsWith("/")) return undefined;
+  // `routeOrder` is precedence: the first matching pattern wins. The per-capability
+  // `aliases` below are the fallback scorer (highest hit-count wins). Both anchor
+  // their tokens with `\b` and avoid generic words (data, query, table, status,
+  // novel, question, audit, hash) to curb false positives.
   const routeOrder: Array<[RegExp, string]> = [
     [/\b(paper plan|paper story|publication story|publication narrative)\b/i, "paper"],
     [/\b(refute|red.?team|stress test|disconfirm|skeptic)\b/i, "refute"],
-    [/\b(papers?|literature|citation|pubmed|novel|contradict)\b/i, "literature"],
+    [/\b(papers?|literature|citation|pubmed|contradict)\b/i, "literature"],
     [/\b(submit|approve|archive|publish|lakehouse)\b/i, "submit"],
   ];
   for (const [rx, id] of routeOrder) {
