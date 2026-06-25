@@ -6,6 +6,7 @@ import {
   type EvidencePointer,
   type GroundednessTier,
   groundednessForEvidence,
+  tierMismatch,
 } from "./science.ts";
 
 export interface ClaimStateRow {
@@ -167,15 +168,6 @@ function parseFindingBlocks(reportMd: string): FindingBlock[] {
   }
   flush();
   return blocks;
-}
-
-/**
- * A written confidence outruns its evidence when the claim is asserted high/medium
- * but the distinct re-runnable sources only support `single-source`/`ungrounded`.
- * Pure — derived from the artifacts, never a model-supplied field.
- */
-function tierMismatch(confidence: ConfidenceTier, groundedness: GroundednessTier): boolean {
-  return (confidence === "high" || confidence === "medium") && groundedness !== "well-grounded";
 }
 
 function existingByClaim(existing?: ClaimState): Map<string, ClaimStateRow> {

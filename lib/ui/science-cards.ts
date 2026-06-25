@@ -11,6 +11,7 @@ import {
   type EvidenceView,
   type GroundednessTier,
   groundednessForEvidence,
+  tierMismatch,
 } from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
@@ -510,7 +511,7 @@ function evidenceState(status: ClaimStatus): CardState {
 export function evidenceCard(theme: Theme, v: EvidenceView): Component {
   const evState = evidenceState(v.status);
   const grounding = groundednessForEvidence(v.supports);
-  const mismatch = (v.confidence === "high" || v.confidence === "medium") && grounding !== "well-grounded";
+  const mismatch = tierMismatch(v.confidence, grounding);
   const body: string[] = [
     `${statusGlyph(theme, v.status)}  ${confidenceFooter(theme, v.confidence)}`,
     // Only surface grounding when it DISAGREES with the written confidence — the

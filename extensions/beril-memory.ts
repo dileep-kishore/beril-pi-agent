@@ -3,7 +3,12 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type ClaimTally, parseClaimLedger, tallyClaims } from "../lib/claim-ledger.ts";
-import { type ResearchStateSnapshot, buildSnapshot, formatReinjection } from "../lib/session-state.ts";
+import {
+  type ResearchStateSnapshot,
+  buildSnapshot,
+  formatReinjection,
+  readResearchState,
+} from "../lib/session-state.ts";
 
 /**
  * Cross-session research-state memory.
@@ -42,21 +47,6 @@ export default function berilMemory(pi: ExtensionAPI) {
     lastCheckpoint = `${title} -> ${choice}`;
   });
 
-  /** Re-read the stored research_state snapshot (best-effort; {} when none/error). */
-  async function readSnapshot(project: string): Promise<Partial<ResearchStateSnapshot>> {
-    try {
-      const res = await berilExec<ResearchStateSnapshot | Record<string, never>>(pi, [
-        "lifecycle",
-        "session-state",
-        project,
-        "--get",
-      ]);
-      return res && typeof res === "object" ? (res as Partial<ResearchStateSnapshot>) : {};
-    } catch {
-      return {};
-    }
-  }
-
   /** Parse a project's plan + report into a claim tally (best-effort; never throws). */
   async function readClaimTally(cwd: string, project: string): Promise<ClaimTally> {
     try {
@@ -85,13 +75,16 @@ export default function berilMemory(pi: ExtensionAPI) {
     try {
       const cur = await berilExec<{ project?: string; status?: string }>(pi, ["lifecycle", "current"]);
       if (!cur.project) return undefined;
-      const claims = await readClaimTally(ctx.cwd, cur.project);
       // READ-MODIFY-WRITE MERGE: the Python --set REPLACES the whole research_state
       // block, so re-stamping only the count/identifier core would WIPE the
       // world-model orientation (question/openQuestions/assumptions/deadEnds) the
       // agent set mid-arc via world_model. Re-read the snapshot first and carry
-      // those sections through buildSnapshot (which re-clamps/bounds them).
-      const prev = await readSnapshot(cur.project);
+      // those sections through buildSnapshot (which re-clamps/bounds them). The
+      // tally (file reads) and the snapshot (a CLI subprocess) are independent.
+      const [claims, prev] = await Promise.all([
+        readClaimTally(ctx.cwd, cur.project),
+        readResearchState(pi, cur.project),
+      ]);
       const snap = buildSnapshot({
         project: cur.project,
         phase: cur.status ?? "",

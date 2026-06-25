@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } f
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
 import { projectCompletions } from "../lib/project-completions.ts";
-import { type ResearchStateSnapshot, buildSnapshot } from "../lib/session-state.ts";
+import { buildSnapshot, readResearchState } from "../lib/session-state.ts";
 import { linesCard } from "../lib/ui/card.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import { domainStyle } from "../lib/ui/palette.ts";
@@ -30,21 +30,6 @@ import { callLine, errorCard, partialLine, toolErrorText } from "../lib/ui/scien
  */
 
 const WORLD_MODES = ["read", "update"] as const;
-
-/** Re-read the current research_state snapshot (best-effort; {} when none/error). */
-async function readSnapshot(pi: ExtensionAPI, project: string): Promise<Partial<ResearchStateSnapshot>> {
-  try {
-    const res = await berilExec<ResearchStateSnapshot | Record<string, never>>(pi, [
-      "lifecycle",
-      "session-state",
-      project,
-      "--get",
-    ]);
-    return res && typeof res === "object" ? (res as Partial<ResearchStateSnapshot>) : {};
-  } catch {
-    return {};
-  }
-}
 
 const EMPTY = "(nothing recorded yet)";
 
@@ -91,7 +76,7 @@ export default function berilWorld(pi: ExtensionAPI) {
         };
       }
 
-      const current = await readSnapshot(pi, params.project);
+      const current = await readResearchState(pi, params.project);
 
       if (params.mode === "read") {
         return {

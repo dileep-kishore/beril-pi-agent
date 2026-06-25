@@ -90,3 +90,13 @@ export function groundednessForEvidence(supports: EvidencePointer[]): Groundedne
   if (locators.size === 1) return "single-source";
   return "ungrounded";
 }
+
+/**
+ * A written confidence outruns its evidence when the claim is asserted high/medium
+ * but the distinct re-runnable sources only support `single-source`/`ungrounded`.
+ * Pure — derived from the artifacts, never a model-supplied field. The single
+ * source of this rule, shared by the claim ledger and the science cards.
+ */
+export function tierMismatch(confidence: ConfidenceTier, groundedness: GroundednessTier): boolean {
+  return (confidence === "high" || confidence === "medium") && groundedness !== "well-grounded";
+}

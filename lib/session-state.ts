@@ -10,10 +10,14 @@
  *
  * The snapshot carries ONLY counts + identifiers — never a claim's hypothesis
  * text or a verdict — so an unverified claim can never be laundered back in as
- * settled fact (calibrated trust / `tierForEvidence` stay untouched). PURE: no
- * fs, no UI, no throwing.
+ * settled fact (calibrated trust / `tierForEvidence` stay untouched). The
+ * shaping/rendering core (`buildSnapshot`, `formatReinjection`) is PURE: no fs,
+ * no UI, no throwing. The one I/O helper (`readResearchState`) reads the snapshot
+ * back through the CLI and is the single loader both world-model and memory share.
  */
 
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { berilExec } from "./beril-exec.ts";
 import type { ClaimTally } from "./claim-ledger.ts";
 import { currentStep } from "./research-steps.ts";
 
@@ -143,4 +147,27 @@ export function formatReinjection(s: ResearchStateSnapshot): string {
     "re-run checks before asserting any result as settled.",
   );
   return lines.join("\n");
+}
+
+/**
+ * Re-read a project's stored research_state snapshot via the CLI (best-effort;
+ * `{}` when there is none or the read errors). The single loader shared by the
+ * world-model tool and the memory flush so the `beril lifecycle session-state
+ * --get` contract lives in exactly one place.
+ */
+export async function readResearchState(
+  pi: Pick<ExtensionAPI, "exec">,
+  project: string,
+): Promise<Partial<ResearchStateSnapshot>> {
+  try {
+    const res = await berilExec<ResearchStateSnapshot | Record<string, never>>(pi, [
+      "lifecycle",
+      "session-state",
+      project,
+      "--get",
+    ]);
+    return res && typeof res === "object" ? (res as Partial<ResearchStateSnapshot>) : {};
+  } catch {
+    return {};
+  }
 }
