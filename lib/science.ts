@@ -21,6 +21,14 @@ export const CLAIM_STATUSES: readonly ClaimStatus[] = [
 /** Computed confidence in a claim, keyed to artifact strength. */
 export type ConfidenceTier = "high" | "medium" | "low";
 
+/**
+ * Computed GROUNDEDNESS — the second axis of calibrated trust, counting the
+ * distinct independent RE-RUNNABLE sources behind a claim (vs `ConfidenceTier`,
+ * which is the writer-assigned strength). A claim can carry a high confidence
+ * yet be `single-source`; that gap is the signal a reviewer watches for.
+ */
+export type GroundednessTier = "well-grounded" | "single-source" | "ungrounded";
+
 /** A typed, re-openable pointer to the artifact behind a claim. */
 export interface EvidencePointer {
   kind: "query" | "notebook" | "figure" | "paper" | "web" | "docs";
@@ -60,4 +68,35 @@ export function tierForEvidence(supports: EvidencePointer[]): ConfidenceTier {
   if (results >= 2) return "high";
   if (results === 1) return "medium";
   return "low";
+}
+
+/**
+ * Map supporting evidence → a groundedness tier (pure, deterministic).
+ *
+ * Counts the DISTINCT independent re-runnable sources: only query/notebook
+ * locators count (`isResult`), deduped by a whitespace-normalized locator, so two
+ * pointers into the same notebook are ONE source and literature/web alone is
+ * `ungrounded`. ≥2 distinct → `well-grounded`; exactly 1 → `single-source`;
+ * 0 → `ungrounded`. Tolerates `[]` and malformed rows (never throws).
+ */
+export function groundednessForEvidence(supports: EvidencePointer[]): GroundednessTier {
+  const locators = new Set<string>();
+  for (const p of supports ?? []) {
+    if (!isResult(p)) continue;
+    const key = `${p.locator ?? ""}`.replace(/\s+/g, "").toLowerCase();
+    if (key) locators.add(key);
+  }
+  if (locators.size >= 2) return "well-grounded";
+  if (locators.size === 1) return "single-source";
+  return "ungrounded";
+}
+
+/**
+ * A written confidence outruns its evidence when the claim is asserted high/medium
+ * but the distinct re-runnable sources only support `single-source`/`ungrounded`.
+ * Pure — derived from the artifacts, never a model-supplied field. The single
+ * source of this rule, shared by the claim ledger and the science cards.
+ */
+export function tierMismatch(confidence: ConfidenceTier, groundedness: GroundednessTier): boolean {
+  return (confidence === "high" || confidence === "medium") && groundedness !== "well-grounded";
 }

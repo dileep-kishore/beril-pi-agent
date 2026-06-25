@@ -4,7 +4,15 @@ import type { ClaimRow } from "../claim-ledger.ts";
 import type { ClaimStateRow, ClaimStateSummary } from "../claim-state.ts";
 import type { LitRecord } from "../lit.ts";
 import type { ReviewPreflightView } from "../review-preflight.ts";
-import type { ClaimStatus, ConfidenceTier, EvidencePointer, EvidenceView } from "../science.ts";
+import {
+  type ClaimStatus,
+  type ConfidenceTier,
+  type EvidencePointer,
+  type EvidenceView,
+  type GroundednessTier,
+  groundednessForEvidence,
+  tierMismatch,
+} from "../science.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
 import { GLYPH } from "./glyphs.ts";
@@ -449,6 +457,23 @@ export function confidenceFooter(theme: Theme, tier: ConfidenceTier, caveat?: st
   return c + (caveat ? theme.fg("dim", ` — ${caveat}`) : "");
 }
 
+/**
+ * A quiet GROUNDEDNESS footer — the second calibrated-trust axis, rendered exactly
+ * like `confidenceFooter`: a filled-to-empty meter glyph + WORD (never a number).
+ * `mismatch` appends a plain-word caveat when the written confidence outruns the
+ * evidence, so the gap reads as one phrase, not two competing numbers.
+ */
+export function groundingFooter(theme: Theme, g: GroundednessTier, mismatch?: boolean): string {
+  const m: Record<GroundednessTier, [string, ThemeColor]> = {
+    "well-grounded": [GLYPH.meterFull, "text"],
+    "single-source": [GLYPH.meterHalf, "warning"],
+    ungrounded: [GLYPH.meterLow, "dim"],
+  };
+  const [glyphChar, color] = m[g];
+  const line = `${glyphChar} ${theme.fg(color, `grounding: ${g}`)}`;
+  return line + (mismatch ? theme.fg("warning", " — written tier outruns evidence") : "");
+}
+
 /** Standard verification footer: one concrete way to check the artifact behind a card. */
 export function verifyLine(theme: Theme, action: string): string {
   return `${theme.fg("muted", "Verify     ")}${theme.fg("text", action)}`;
@@ -485,8 +510,13 @@ function evidenceState(status: ClaimStatus): CardState {
 /** A claim with its supporting AND refuting evidence, each a re-openable pointer. */
 export function evidenceCard(theme: Theme, v: EvidenceView): Component {
   const evState = evidenceState(v.status);
+  const grounding = groundednessForEvidence(v.supports);
+  const mismatch = tierMismatch(v.confidence, grounding);
   const body: string[] = [
     `${statusGlyph(theme, v.status)}  ${confidenceFooter(theme, v.confidence)}`,
+    // Only surface grounding when it DISAGREES with the written confidence — the
+    // mismatch case. When they agree, the confidence footer already conveys it.
+    ...(mismatch ? [groundingFooter(theme, grounding, mismatch)] : []),
     theme.fg("text", v.claim),
   ];
   const supportLines = v.supports.length ? evidenceLines(theme, v.supports) : [theme.fg("muted", "  (none)")];

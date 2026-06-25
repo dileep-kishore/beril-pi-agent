@@ -3,7 +3,12 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { berilExec } from "../lib/beril-exec.ts";
 import { type ClaimTally, parseClaimLedger, tallyClaims } from "../lib/claim-ledger.ts";
-import { type ResearchStateSnapshot, buildSnapshot, formatReinjection } from "../lib/session-state.ts";
+import {
+  type ResearchStateSnapshot,
+  buildSnapshot,
+  formatReinjection,
+  readResearchState,
+} from "../lib/session-state.ts";
 
 /**
  * Cross-session research-state memory.
@@ -70,12 +75,25 @@ export default function berilMemory(pi: ExtensionAPI) {
     try {
       const cur = await berilExec<{ project?: string; status?: string }>(pi, ["lifecycle", "current"]);
       if (!cur.project) return undefined;
-      const claims = await readClaimTally(ctx.cwd, cur.project);
+      // READ-MODIFY-WRITE MERGE: the Python --set REPLACES the whole research_state
+      // block, so re-stamping only the count/identifier core would WIPE the
+      // world-model orientation (question/openQuestions/assumptions/deadEnds) the
+      // agent set mid-arc via world_model. Re-read the snapshot first and carry
+      // those sections through buildSnapshot (which re-clamps/bounds them). The
+      // tally (file reads) and the snapshot (a CLI subprocess) are independent.
+      const [claims, prev] = await Promise.all([
+        readClaimTally(ctx.cwd, cur.project),
+        readResearchState(pi, cur.project),
+      ]);
       const snap = buildSnapshot({
         project: cur.project,
         phase: cur.status ?? "",
         claims,
         lastCheckpoint,
+        question: prev.question,
+        openQuestions: prev.openQuestions,
+        assumptions: prev.assumptions,
+        deadEnds: prev.deadEnds,
       });
       // The Python CLI owns provenance.json; it server-stamps `updated_at`.
       // TS preserves the existing CLI contract and never writes lifecycle YAML.

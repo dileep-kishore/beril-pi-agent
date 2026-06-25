@@ -163,9 +163,26 @@ test("evidenceCard renders the new glyphs/words with empty refutes (shows 'none 
   // palette's hexFg, so an ANSI escape sits between glyph and word — assert each).
   assert.ok(text.includes(GLYPH.supports) && text.includes("supported"), "status glyph + word");
   assert.ok(text.includes(`${GLYPH.meterFull} confidence: high`), "high confidence meter glyph");
+  // High confidence on a single notebook source disagrees with the grounding tier,
+  // so the grounding footer surfaces the gap.
+  assert.ok(text.includes("grounding: single-source"), "grounding footer renders on tier disagreement");
   // Each pointer is prefixed by its kind glyph (notebook here).
   assert.ok(text.includes(`${GLYPH.kindNotebook} 02.ipynb`), "notebook kind glyph on the pointer");
   assert.ok(text.includes("none found"), "auditable 'none found' on empty refutes");
+});
+
+test("evidenceCard omits the grounding footer when grounding agrees with the written tier", () => {
+  // `low` confidence on no support: grounding is `ungrounded` too — they agree, so the
+  // grounding line is noise and the confidence footer already conveys it.
+  const card = evidenceCard(theme, {
+    claim: "open question",
+    status: "needs-evidence",
+    confidence: "low",
+    supports: [],
+    refutes: [],
+  });
+  const text = card.render(60).join("\n");
+  assert.ok(!text.includes("grounding:"), "no grounding line when the tiers agree");
 });
 
 test("evidenceCard renders width-exact for populated and empty inputs", () => {

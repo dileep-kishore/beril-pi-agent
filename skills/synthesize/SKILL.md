@@ -44,6 +44,8 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 
 **Score and ground each finding (calibrated trust):**
 - **Confidence tier** — `high` (≥2 independent artifact-backed results), `medium` (one re-runnable query/notebook result), or `low` (literature-only / no artifact → mark the claim `needs-evidence`). Confidence comes from the *artifacts*, not from how sure you feel.
+- **Grounding ≠ confidence.** A `high` tier needs **≥2 *independent* re-runnable artifacts** — distinct notebooks or distinct queries, not the same notebook cited twice. Two pointers into one notebook are a *single source*: that is at most `medium`, never `high`. Literature/web alone cannot lift a claim above `low`.
+- **Faithfulness** — before you assign a tier, verify the cited number/sentence **actually appears** in the source you point to. Open the cell or rerun the query; if the verbatim quote isn't there, the claim is unverified — fix the pointer or drop the number, don't round up.
 - **Scope-bound** the claim: "in these N samples / under filter X", not a universal.
 - **Provenance** — cite the re-runnable artifact (`*(Notebook: file.ipynb)*`, the query, or `PMID`) AND quote the **exact source sentence or number** behind the claim. Never state a number you cannot trace to a query or notebook output.
 - **Status** — tag each finding `open / supported / refuted / needs-replication / blocked / needs-evidence`.
@@ -72,6 +74,8 @@ Do **not** hand-edit `beril.yaml`, status fields, or approval blocks. Use `lifec
 - (refuting ≥ strong) → **H0 not rejected**.
 - balanced → **mixed evidence** (say so plainly; do not pick a side the data doesn't support).
 For every Key Finding, **actively look for disconfirming evidence**: a `berdl_query` phrased to break it and a paper that disagrees. Show the refuting slot even when empty ("none found — searched X").
+
+When weighing competing explanations, rank them by **survival of a disconfirming check** — `/berdl-refute` already runs them and lifts surviving checks into finding status. An unfalsified hypothesis is not a survived one; never rank by how novel or clever an idea sounds (idea-stage novelty doesn't survive execution).
 
 ## REPORT.md structure
 

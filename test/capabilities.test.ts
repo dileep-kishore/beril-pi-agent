@@ -53,6 +53,17 @@ test("a bare story/narrative prompt does not route to the paper plan", () => {
   assert.notEqual(matchCapability("What is the narrative here?")?.command, "/paper-plan <project>");
 });
 
+test("the world model is discoverable in the catalog and routes from orientation prompts", () => {
+  const guide = capabilityCatalogMarkdown();
+  assert.match(guide, /Track investigation state/);
+  assert.match(guide, /\/world-model <project>/);
+  const all = capabilityCatalogMarkdown(undefined, { mode: "all" });
+  assert.match(all, /`world_model`/);
+  // Routes from a distinctive orientation prompt, without stealing /berdl-start.
+  assert.equal(matchCapability("what is still open in this investigation?")?.command, "/world-model <project>");
+  assert.notEqual(matchCapability("where am i?")?.command, "/world-model <project>");
+});
+
 test("runtimeSurfaceSummary counts runtime commands and tools defensively", () => {
   const summary = runtimeSurfaceSummary(
     [{ name: "whereami" }, { name: "skills" }],

@@ -79,6 +79,11 @@ export async function collectReviewPreflight(
   const warnings: string[] = [];
   if (!Object.keys(hashes).length) warnings.push("No notebook hashes returned");
   if (!review) warnings.push("No REVIEW_N.md found yet; submit is not ready");
+  // Calibrated trust: a high/medium claim resting on a single (or no) re-runnable
+  // source — a warning, never a blocker; reviewers decide whether the gap is fatal.
+  const tierMismatch = state.rows.filter((row) => row.tier_mismatch).length;
+  if (tierMismatch)
+    warnings.push(`${tierMismatch} claim(s) assert high/medium confidence on a single/no re-runnable source`);
   const view: ReviewPreflightView = {
     project,
     status: lifecycle.status,

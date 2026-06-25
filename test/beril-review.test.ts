@@ -42,20 +42,33 @@ async function makeProject(id: string, files: Record<string, string>) {
   return { root, dir };
 }
 
-function cmdCtx(root: string, subagent: (ctx: unknown, req: unknown) => Promise<string>) {
+function cmdCtx(
+  root: string,
+  subagent: (ctx: unknown, req: unknown) => Promise<string>,
+  opts: { hasUI?: boolean; trusted?: boolean; confirm?: boolean } = {},
+) {
   const notes: string[] = [];
+  const confirms: [string, string][] = [];
   const ctx: any = {
-    hasUI: true,
+    hasUI: opts.hasUI ?? true,
     mode: "tui",
     cwd: root,
     isIdle: () => true,
+    isProjectTrusted: () => opts.trusted ?? true,
     model: { id: "m" },
     modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k" }) },
     signal: undefined,
-    ui: { notify: (m: string) => notes.push(m), setStatus: () => {} },
+    ui: {
+      notify: (m: string) => notes.push(m),
+      setStatus: () => {},
+      confirm: async (title: string, body: string) => {
+        confirms.push([title, body]);
+        return opts.confirm ?? true;
+      },
+    },
     __reviewSubagent: subagent,
   };
-  return { ctx, notes };
+  return { ctx, notes, confirms };
 }
 
 test("registers the review command family", () => {
@@ -70,6 +83,14 @@ test("project review writes REVIEW_1.md with a single footer and marks reviewed"
     const calls: string[][] = [];
     const { commands } = harness(async (_c, args) => {
       calls.push(args);
+      if (args[0] === "user") {
+        return {
+          stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001-2345-6789" }),
+          stderr: "",
+          code: 0,
+          killed: false,
+        };
+      }
       if (args[0] === "lifecycle" && args[1] === "status") {
         return { stdout: JSON.stringify({ status: "analysis" }), stderr: "", code: 0, killed: false };
       }
@@ -89,11 +110,86 @@ test("project review writes REVIEW_1.md with a single footer and marks reviewed"
     assert.equal(reqs.length, 1);
     assert.match(reqs[0].task, /demo|review/i);
 
-    // Lifecycle advanced to reviewed.
-    assert.ok(
-      calls.find((a) => a[0] === "lifecycle" && a[1] === "set" && a[2] === "demo" && a[3] === "reviewed"),
-      "lifecycle set demo reviewed",
-    );
+    // Lifecycle advanced to reviewed — only via the ORCID-signed gate call.
+    const setCall = calls.find((a) => a[0] === "lifecycle" && a[1] === "set" && a[2] === "demo" && a[3] === "reviewed");
+    assert.ok(setCall, "lifecycle set demo reviewed");
+    assert.ok(setCall?.includes("--orcid") && setCall?.includes("0000-0001-2345-6789"), "carries the ORCID sign-off");
+    const rh = setCall?.[setCall.indexOf("--report-hash") + 1];
+    assert.match(rh ?? "", /^sha256:[0-9a-f]{64}$/, "report-hash is sha256:-prefixed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project review does NOT advance to reviewed when the human declines sign-off", async () => {
+  const { root, dir } = await makeProject("demo", { "REPORT.md": "report body\n" });
+  try {
+    const calls: string[][] = [];
+    const { commands } = harness(async (_c, args) => {
+      calls.push(args);
+      if (args[0] === "user") {
+        return { stdout: JSON.stringify({ orcid: "0000-0001-2345-6789" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "analysis" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+    });
+    const { fn } = fakeSubagent("---\nreviewer: x\n---\n\n# Review\nLGTM\n");
+    const { ctx, notes, confirms } = cmdCtx(root, fn, { confirm: false });
+    await commands["berdl-review"].handler("demo", ctx);
+
+    await readFile(join(dir, "REVIEW_1.md"), "utf8"); // the review IS written
+    assert.equal(confirms.length, 1, "the human was asked to sign off");
+    assert.ok(!calls.find((a) => a[0] === "lifecycle" && a[1] === "set"), "declined → no advance");
+    assert.match(notes.join(" "), /sign-off needed/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project review writes the review but does NOT auto-advance headless (fail-closed)", async () => {
+  const { root, dir } = await makeProject("demo", { "REPORT.md": "report body\n" });
+  try {
+    const calls: string[][] = [];
+    const { commands } = harness(async (_c, args) => {
+      calls.push(args);
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "analysis" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+    });
+    const { fn } = fakeSubagent("---\nreviewer: x\n---\n\n# Review\nLGTM\n");
+    const { ctx, confirms } = cmdCtx(root, fn, { hasUI: false });
+    await commands["berdl-review"].handler("demo", ctx);
+
+    await readFile(join(dir, "REVIEW_1.md"), "utf8"); // written
+    assert.ok(!calls.find((a) => a[0] === "lifecycle" && a[1] === "set"), "headless → no advance");
+    assert.ok(!calls.find((a) => a[0] === "user"), "headless → no ORCID fetch");
+    assert.equal(confirms.length, 0, "headless → no confirm dialog");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project review does NOT auto-advance on an untrusted project (fail-closed)", async () => {
+  const { root, dir } = await makeProject("demo", { "REPORT.md": "report body\n" });
+  try {
+    const calls: string[][] = [];
+    const { commands } = harness(async (_c, args) => {
+      calls.push(args);
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "analysis" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+    });
+    const { fn } = fakeSubagent("---\nreviewer: x\n---\n\n# Review\nLGTM\n");
+    const { ctx, confirms } = cmdCtx(root, fn, { trusted: false });
+    await commands["berdl-review"].handler("demo", ctx);
+
+    await readFile(join(dir, "REVIEW_1.md"), "utf8"); // written
+    assert.ok(!calls.find((a) => a[0] === "lifecycle" && a[1] === "set"), "untrusted → no advance");
+    assert.equal(confirms.length, 0, "untrusted → no confirm dialog");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

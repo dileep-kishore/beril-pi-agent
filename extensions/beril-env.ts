@@ -21,6 +21,11 @@ const STATUS_KEY = "beril-connection";
 // The workflow HUD above the editor: the explore→plan→analyze→review→submit rail
 // with the current step marked, plus the single most useful next action.
 const WIDGET_KEY = "beril-workflow";
+// Startup BERDL detection can race cold tunnels / pproxy / uv setup. Keep the UI
+// in a non-scary pending state while we retry; only explicit status commands or
+// exhausted retries surface "unknown".
+const CHECKING_LABEL = "BERDL checking…";
+const STARTUP_RETRY_DELAYS_MS = [1_500, 3_000, 6_000] as const;
 
 // Display-only event payloads pushed by beril-governance on the shared bus.
 interface LifecycleEvent {
@@ -41,7 +46,7 @@ interface ClaimsEvent {
 function connectionLabel(env: BerdlEnv): string {
   // Reachable-but-not-ready shows the warning mark (△), matching the footer
   // connection chip — not the hard-down (✗) mark, which is reserved for the
-  // status-unknown error state in refreshStatus.
+  // final status-unknown error state after startup retries are exhausted.
   return `BERDL ${env.location}${env.ready ? ` ${GLYPH.ok} ready` : ` ${GLYPH.warn} not ready`}`;
 }
 
@@ -72,8 +77,10 @@ export default function berilEnv(pi: ExtensionAPI) {
   let tipIndex = 0;
   // The last phase a banner was shown for, so a banner fires only on a change.
   let lastPhase: string | undefined;
-  // One-shot: re-probe readiness on first input if the session-start probe failed.
+  // One-shot: re-probe readiness on first input if the session-start probe is still pending.
   let connectionHealTried = false;
+  let statusRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  let shuttingDown = false;
 
   function pushFooterRender(): void {
     tuiHandle?.requestRender();
@@ -224,21 +231,61 @@ export default function berilEnv(pi: ExtensionAPI) {
   // tool refreshes readiness via `requireReady` → `setCachedEnv`, so a connection
   // that comes up after a failed session-start probe (cold SSH tunnels / pproxy)
   // still surfaces — the chip self-heals the moment any tool confirms BERDL is up,
-  // instead of staying stuck on "BERDL ?".
+  // instead of staying stuck in a startup pending/unknown state.
   const unsubscribeEnv = onEnvChange(applyEnvToHud);
 
+  function clearStatusRetry(): void {
+    if (!statusRetryTimer) return;
+    clearTimeout(statusRetryTimer);
+    statusRetryTimer = undefined;
+  }
+
+  function setCheckingStatus(ctx: ExtensionContext): void {
+    hud.connection = CHECKING_LABEL;
+    hud.location = CHECKING_LABEL;
+    hud.ready = false;
+    if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("muted", CHECKING_LABEL));
+    renderHud();
+  }
+
+  function setUnknownStatus(ctx: ExtensionContext): void {
+    hud.connection = "BERDL status unknown";
+    hud.location = "BERDL status unknown";
+    hud.ready = false;
+    if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("error", "BERDL status unknown"));
+    renderHud();
+  }
+
+  function scheduleStartupRetry(ctx: ExtensionContext, attempt = 0): void {
+    if (shuttingDown || attempt >= STARTUP_RETRY_DELAYS_MS.length) {
+      setUnknownStatus(ctx);
+      return;
+    }
+    clearStatusRetry();
+    const timer = setTimeout(() => {
+      statusRetryTimer = undefined;
+      void refreshStatus(ctx, { markUnknownOnFailure: attempt === STARTUP_RETRY_DELAYS_MS.length - 1 }).then((env) => {
+        if (!env && !shuttingDown && attempt < STARTUP_RETRY_DELAYS_MS.length - 1)
+          scheduleStartupRetry(ctx, attempt + 1);
+      });
+    }, STARTUP_RETRY_DELAYS_MS[attempt]);
+    timer.unref?.();
+    statusRetryTimer = timer;
+  }
+
   /** Re-run the readiness check, update the connection chip + HUD + footer. Returns the env. */
-  async function refreshStatus(ctx: ExtensionContext): Promise<BerdlEnv | undefined> {
+  async function refreshStatus(
+    ctx: ExtensionContext,
+    opts: { markUnknownOnFailure?: boolean } = {},
+  ): Promise<BerdlEnv | undefined> {
     try {
       const env = await berilExec<BerdlEnv>(pi, ["env", "--json"]);
+      clearStatusRetry();
       setCachedEnv(env); // fires onEnvChange → applyEnvToHud (chip + HUD + footer)
       return env;
     } catch {
-      hud.connection = "BERDL status unknown";
-      hud.location = "BERDL ?";
-      hud.ready = false;
-      if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("error", "BERDL status unknown"));
-      renderHud();
+      if (opts.markUnknownOnFailure) setUnknownStatus(ctx);
+      else setCheckingStatus(ctx);
       return undefined;
     }
   }
@@ -427,8 +474,11 @@ export default function berilEnv(pi: ExtensionAPI) {
 
   pi.on("session_start", async (event, ctx) => {
     uiCtx = ctx;
+    shuttingDown = false;
     brand = brandForTheme(process.env.BERIL_THEME);
-    await refreshStatus(ctx);
+    setCheckingStatus(ctx);
+    const env = await refreshStatus(ctx, { markUnknownOnFailure: false });
+    if (!env && ctx.hasUI) scheduleStartupRetry(ctx);
     identity = await fetchIdentity();
     // Seed project state only when restoring a session. A fresh `beril start` or
     // Pi `/new` must not display the last lifecycle project as if it were active.
@@ -455,17 +505,19 @@ export default function berilEnv(pi: ExtensionAPI) {
       headerActive = false;
       ctx.ui.setHeader(undefined);
     }
-    // If the session-start probe failed (chip stuck on "BERDL ?"), re-check once
-    // now that the user is interacting — by now the remote tunnels/pproxy are up.
-    // One-shot so a genuinely-disconnected session doesn't re-exec on every input.
-    if (!connectionHealTried && hud.location === "BERDL ?" && ctx.hasUI) {
+    // If the session-start probe is still pending, re-check once now that the user
+    // is interacting — by now the remote tunnels/pproxy are often up. One-shot so a
+    // genuinely-disconnected session doesn't re-exec on every input.
+    if (!connectionHealTried && hud.location === CHECKING_LABEL && ctx.hasUI) {
       connectionHealTried = true;
-      void refreshStatus(ctx);
+      void refreshStatus(ctx, { markUnknownOnFailure: false });
     }
     return { action: "continue" } as const;
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    shuttingDown = true;
+    clearStatusRetry();
     unsubscribeEnv();
     if (ctx.hasUI) {
       ctx.ui.setStatus(STATUS_KEY, undefined);

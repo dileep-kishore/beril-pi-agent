@@ -147,10 +147,13 @@ def _validate_analysis_gate(project_dir: Path) -> None:
             raise LifecycleError("claims.json rows require supports and refutes arrays")
 
 
-def _validate_approval(project_dir: Path, args: argparse.Namespace) -> None:
-    proj = load_project(project_dir)
-    if proj.get("status") != "reviewed":
-        raise LifecycleError("approval requires project status reviewed")
+def _validate_signoff_artifacts(project_dir: Path, args: argparse.Namespace) -> None:
+    """Validate the ORCID sign-off artifacts (REPORT.md + review file + their hashes).
+
+    Status-agnostic on purpose: the caller decides WHEN it runs — inline on the
+    ``analysis → reviewed`` edge (while status is still ``analysis``) or via the
+    standalone ``approve`` action (once ``reviewed``).
+    """
     if not args.orcid:
         raise LifecycleError("approval requires --orcid")
     report = project_dir / "REPORT.md"
@@ -170,6 +173,33 @@ def _validate_approval(project_dir: Path, args: argparse.Namespace) -> None:
     current_review_hash = _sha256_file(review_path)
     if args.review_hash != current_review_hash:
         raise LifecycleError("approval review_hash is stale or incorrect")
+
+
+def _validate_approval(project_dir: Path, args: argparse.Namespace) -> None:
+    if load_project(project_dir).get("status") != "reviewed":
+        raise LifecycleError("approval requires project status reviewed")
+    _validate_signoff_artifacts(project_dir, args)
+
+
+def _write_approval(project_dir: Path, args: argparse.Namespace) -> dict:
+    """Write the canonical ``approval`` block to beril.yaml (archiving any prior
+    approval) and append a trace row. Shared by the standalone ``approve`` action
+    and the inline ``analysis → reviewed`` sign-off gate."""
+    proj = load_project(project_dir)
+    # Canonical approval key order: by, at, report_hash, review, review_hash.
+    approval = {
+        "by": args.orcid,
+        "at": _now(),
+        "report_hash": args.report_hash,
+        "review": args.review,
+        "review_hash": args.review_hash,
+    }
+    if proj.get("approval"):
+        proj.setdefault("previous_approvals", []).append(proj["approval"])
+    proj["approval"] = approval
+    save_project(project_dir, proj)
+    _append_trace(project_dir, "lifecycle.approve", {"approval": approval})
+    return approval
 
 
 def _find_current_project(projects_dir: Path) -> dict[str, str] | None:
@@ -279,31 +309,27 @@ def run_lifecycle(args: argparse.Namespace) -> int:
                     print(f"project not found: {project_dir}", file=sys.stderr)
                     return 2
                 _init_exploration(project_dir)
-            if load_project(project_dir).get("status") == "active" and args.state == "analysis":
+            current_status = load_project(project_dir).get("status")
+            if current_status == "active" and args.state == "analysis":
                 _validate_analysis_gate(project_dir)
+            # analysis → reviewed is gated on an explicit ORCID sign-off, validated
+            # and written INLINE on the transition so the generic lifecycle_transition
+            # tool path cannot reach `reviewed` without a recorded human approval.
+            sign_off = current_status == "analysis" and args.state == "reviewed"
+            if sign_off:
+                _validate_signoff_artifacts(project_dir, args)
             new_status = set_status(project_dir, args.state)
             _append_trace(project_dir, "lifecycle.set", {"status": new_status})
-            json.dump({"status": new_status}, sys.stdout)
+            result = {"status": new_status}
+            if sign_off:
+                result["approval"] = _write_approval(project_dir, args)
+            json.dump(result, sys.stdout, default=str)
             sys.stdout.write("\n")
             return 0
 
         if args.action == "approve":
             _validate_approval(project_dir, args)
-            proj = load_project(project_dir)
-            # Canonical approval key order: by, at, report_hash, review, review_hash.
-            approval = {
-                "by": args.orcid,
-                "at": _now(),
-                "report_hash": args.report_hash,
-                "review": args.review,
-                "review_hash": args.review_hash,
-            }
-            # Keep history of any prior approval.
-            if proj.get("approval"):
-                proj.setdefault("previous_approvals", []).append(proj["approval"])
-            proj["approval"] = approval
-            save_project(project_dir, proj)
-            _append_trace(project_dir, "lifecycle.approve", {"approval": approval})
+            approval = _write_approval(project_dir, args)
             json.dump({"approval": approval}, sys.stdout, default=str)
             sys.stdout.write("\n")
             return 0

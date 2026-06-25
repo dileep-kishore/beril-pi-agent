@@ -49,15 +49,74 @@ def test_status_emits_yaml_as_json(monkeypatch, capsys, tmp_path):
 
 
 def test_set_emits_new_status(monkeypatch, capsys, tmp_path):
+    # An un-gated transition (proposed → active) still works flag-free.
+    d = _proj(tmp_path, "proposed")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="active"))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["status"] == "active"
+    assert load_project(d)["status"] == "active"
+    rows = [json.loads(line) for line in (d / "TRACE.jsonl").read_text().splitlines()]
+    assert rows[-1]["event"] == "lifecycle.set"
+    assert rows[-1]["status"] == "active"
+
+
+def test_set_analysis_to_reviewed_requires_signoff(monkeypatch, capsys, tmp_path):
+    # No silent auto-advance: analysis → reviewed without the ORCID sign-off is refused.
     d = _proj(tmp_path, "analysis")
     monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
     rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="reviewed"))
+    assert rc == 2
+    assert "orcid" in capsys.readouterr().err.lower()
+    assert load_project(d)["status"] == "analysis"  # unchanged
+
+
+def test_set_analysis_to_reviewed_with_signoff_writes_approval(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "analysis")
+    report_hash = _write_reviewed_report(d)
+    review_hash = _write_review(d, report_hash)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(
+        _ns(
+            action="set",
+            state="reviewed",
+            orcid="0000-0001-2345-6789",
+            report_hash=report_hash,
+            review="projects/demo/REVIEW_1.md",
+            review_hash=review_hash,
+        )
+    )
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["status"] == "reviewed"
-    assert load_project(d)["status"] == "reviewed"
-    rows = [json.loads(line) for line in (d / "TRACE.jsonl").read_text().splitlines()]
-    assert rows[-1]["event"] == "lifecycle.set"
-    assert rows[-1]["status"] == "reviewed"
+    proj = load_project(d)
+    assert proj["status"] == "reviewed"
+    approval = proj["approval"]
+    assert list(approval.keys()) == ["by", "at", "report_hash", "review", "review_hash"]
+    assert approval["by"] == "0000-0001-2345-6789"
+    assert approval["review"] == "projects/demo/REVIEW_1.md"
+    # The inline gate writes both the transition and the approval to the trace.
+    events = [json.loads(line)["event"] for line in (d / "TRACE.jsonl").read_text().splitlines()]
+    assert "lifecycle.set" in events and "lifecycle.approve" in events
+
+
+def test_set_analysis_to_reviewed_rejects_stale_report_hash(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "analysis")
+    report_hash = _write_reviewed_report(d)
+    review_hash = _write_review(d, report_hash)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(
+        _ns(
+            action="set",
+            state="reviewed",
+            orcid="0000-0001-2345-6789",
+            report_hash="sha256:" + "0" * 64,
+            review="projects/demo/REVIEW_1.md",
+            review_hash=review_hash,
+        )
+    )
+    assert rc == 2
+    assert "report_hash" in capsys.readouterr().err
+    assert load_project(d)["status"] == "analysis"  # unchanged
 
 
 def test_illegal_set_returns_2(monkeypatch, capsys, tmp_path):

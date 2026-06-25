@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { berilExec } from "../lib/beril-exec.ts";
 import { projectCompletions } from "../lib/project-completions.ts";
@@ -56,6 +56,58 @@ export function parseRefuteArgs(raw: string): RefuteArgs | undefined {
     else if (!project) project = parts[i];
   }
   return project ? { project, model } : undefined;
+}
+
+/**
+ * Advance `analysis → reviewed` only behind an explicit human ORCID sign-off.
+ * The AI review is advisory; auto-advancing on it would be an AI-reviews-AI gate.
+ * Fail-closed: no advance on an untrusted project or headless (no human / no
+ * trusted dialog), if no ORCID is configured, or if the human declines — the
+ * review file is still written, the project just stays in `analysis`. Returns
+ * true iff the project was advanced (with the ORCID approval recorded by the CLI
+ * gate). The hash args are `sha256:`-prefixed to match the Python gate, which
+ * compares against `_sha256_file` (prefixed) — `sha256File` returns bare hex.
+ */
+async function promoteWithSignoff(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  project: string,
+  reviewAbsPath: string,
+  reportHashHex: string,
+): Promise<boolean> {
+  if (!ctx.isProjectTrusted() || !ctx.hasUI) return false;
+  const res = await pi.exec("beril", ["user", "--json"], { timeout: 30_000 });
+  let orcid = "";
+  try {
+    orcid = (JSON.parse(res.stdout) as { orcid?: string }).orcid ?? "";
+  } catch {
+    orcid = "";
+  }
+  if (!orcid) {
+    ctx.ui.notify("No ORCID configured — review stays in analysis. Run `beril setup` to sign off.", "error");
+    return false;
+  }
+  const ok = await ctx.ui.confirm(
+    `Sign off review of "${project}"?`,
+    `You (ORCID ${orcid}) become the human reviewer of record advancing "${project}" to "reviewed". The AI review is advisory input. Proceed?`,
+  );
+  if (!ok) return false;
+  const result = await berilExec<{ status: string }>(pi, [
+    "lifecycle",
+    "set",
+    project,
+    "reviewed",
+    "--orcid",
+    orcid,
+    "--report-hash",
+    `sha256:${reportHashHex}`,
+    "--review",
+    relative(ctx.cwd, reviewAbsPath),
+    "--review-hash",
+    `sha256:${sha256File(reviewAbsPath)}`,
+  ]);
+  pi.events.emit("beril:lifecycle", { project, state: result.status });
+  return true;
 }
 
 /**
@@ -191,12 +243,15 @@ export default function berilReview(pi: ExtensionAPI) {
         const merged = mergePanelReviews(project, results, new Date().toISOString().slice(0, 10));
         const path = nextReviewPath(projectDir, "REVIEW");
         await writeFile(path, appendReportHashFooter(merged, reportHashPre as string), "utf8");
-        if (advanceToReviewed) {
-          const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
-          pi.events.emit("beril:lifecycle", { project, state: result.status });
-        }
+        const panelAdvanced = advanceToReviewed
+          ? await promoteWithSignoff(pi, ctx, project, path, reportHashPre as string)
+          : false;
         if (ctx.hasUI) {
-          const suffix = advanceToReviewed ? "; project marked reviewed." : "";
+          const suffix = panelAdvanced
+            ? "; project marked reviewed."
+            : advanceToReviewed
+              ? "; written — human ORCID sign-off needed to mark reviewed."
+              : "";
           ctx.ui.notify(`Panel review written: ${path}${suffix}`, "info");
         }
         pi.sendUserMessage(
@@ -230,13 +285,16 @@ export default function berilReview(pi: ExtensionAPI) {
       const body = plan ? text : appendReportHashFooter(text, reportHashPre as string);
       await writeFile(path, body, "utf8");
 
-      if (advanceToReviewed) {
-        const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", project, "reviewed"]);
-        pi.events.emit("beril:lifecycle", { project, state: result.status });
-      }
+      const advanced = advanceToReviewed
+        ? await promoteWithSignoff(pi, ctx, project, path, reportHashPre as string)
+        : false;
 
       if (ctx.hasUI) {
-        const suffix = advanceToReviewed ? "; project marked reviewed." : "";
+        const suffix = advanced
+          ? "; project marked reviewed."
+          : advanceToReviewed
+            ? "; written — human ORCID sign-off needed to mark reviewed."
+            : "";
         ctx.ui.notify(`Review written: ${path}${suffix}`, "info");
       }
       pi.sendUserMessage(

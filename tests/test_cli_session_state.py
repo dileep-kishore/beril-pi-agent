@@ -59,6 +59,49 @@ def test_set_writes_provenance_and_round_trips(monkeypatch, capsys, tmp_path):
     assert provenance["updated_at"] == stored["updated_at"]
 
 
+def test_set_round_trips_world_model_sections(monkeypatch, capsys, tmp_path):
+    # The widened world-model block (question/openQuestions/assumptions/deadEnds)
+    # round-trips through --set/--get unchanged: the Python verb stores arbitrary
+    # JSON, so no Python source change is needed to carry the new sections. It must
+    # still server-stamp updated_at and leave beril.yaml untouched.
+    d = _proj(tmp_path)
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    block = {
+        "project": "demo",
+        "phase": "analysis",
+        "step": "review",
+        "claims": {"total": 3, "supported": 1, "refuted": 1},
+        "question": "Does iron limitation drive the bloom?",
+        "openQuestions": ["which depth horizon dominates?", "is nitrate co-limiting?"],
+        "assumptions": ["nitrate is non-limiting in spring"],
+        "deadEnds": ["salinity gradient was a dead end"],
+    }
+    rc = lifecycle_cmd.run_lifecycle(_ns(state_json=json.dumps(block)))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    stored = out["research_state"]
+    assert stored["question"] == "Does iron limitation drive the bloom?"
+    assert stored["openQuestions"] == ["which depth horizon dominates?", "is nitrate co-limiting?"]
+    assert stored["assumptions"] == ["nitrate is non-limiting in spring"]
+    assert stored["deadEnds"] == ["salinity gradient was a dead end"]
+    # Server-stamped, not client-trusted.
+    assert "updated_at" in stored
+
+    # --get returns the same widened block verbatim.
+    rc = lifecycle_cmd.run_lifecycle(_ns(get_state=True))
+    got = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert got["question"] == block["question"]
+    assert got["openQuestions"] == block["openQuestions"]
+    assert got["assumptions"] == block["assumptions"]
+    assert got["deadEnds"] == block["deadEnds"]
+
+    # beril.yaml stays canonical lifecycle state — the world model never lands there.
+    proj = load_project(d)
+    assert "research_state" not in proj
+    assert proj["status"] == "analysis"
+
+
 def test_set_keeps_lifecycle_yaml_canonical(monkeypatch, capsys, tmp_path):
     d = _proj(
         tmp_path,

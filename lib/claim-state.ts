@@ -1,12 +1,23 @@
 import { createHash } from "node:crypto";
 import { type ClaimRow, parseClaimLedger, parseEvidence } from "./claim-ledger.ts";
-import type { ClaimStatus, ConfidenceTier, EvidencePointer } from "./science.ts";
+import {
+  type ClaimStatus,
+  type ConfidenceTier,
+  type EvidencePointer,
+  type GroundednessTier,
+  groundednessForEvidence,
+  tierMismatch,
+} from "./science.ts";
 
 export interface ClaimStateRow {
   claim_id: string;
   claim: string;
   status: ClaimStatus;
   confidence: ConfidenceTier;
+  /** Computed second axis: distinct re-runnable sources behind the claim. */
+  groundedness: GroundednessTier;
+  /** Set when the WRITTEN confidence (high/medium) outruns the evidence (single-source/ungrounded). */
+  tier_mismatch?: boolean;
   supports: EvidencePointer[];
   refutes: EvidencePointer[];
   refutesSearched?: string;
@@ -35,6 +46,8 @@ export interface ClaimStateSummary {
   refuted: number;
   unsupported: number;
   emptyRefutes: number;
+  /** Claims whose written confidence outruns their evidence. Optional so legacy literals stay valid. */
+  tierMismatch?: number;
 }
 
 function normalizeClaim(text: string): string {
@@ -186,11 +199,15 @@ function rowToState(
       : prior?.refutes?.length
         ? prior.refutes
         : fallbackPointers("paper", row.refutes);
+  const confidence = block?.confidence ?? row.confidence;
+  const groundedness = groundednessForEvidence(supports);
   return {
     claim_id: prior?.claim_id ?? claimId(row.hypothesis),
     claim,
     status: block?.status ?? row.status,
-    confidence: block?.confidence ?? row.confidence,
+    confidence,
+    groundedness,
+    tier_mismatch: tierMismatch(confidence, groundedness),
     supports,
     refutes,
     refutesSearched:
@@ -221,13 +238,22 @@ export function claimStateSummary(rows: ClaimStateRow[]): ClaimStateSummary {
   let refuted = 0;
   let unsupported = 0;
   let emptyRefutes = 0;
+  let tierMismatchCount = 0;
   for (const row of rows) {
     if (row.status === "supported") supported++;
     else if (row.status === "refuted") refuted++;
     else unsupported++;
     if (row.refutes.length === 0) emptyRefutes++;
+    if (row.tier_mismatch) tierMismatchCount++;
   }
-  return { total: rows.length, supported, refuted, unsupported, emptyRefutes };
+  return {
+    total: rows.length,
+    supported,
+    refuted,
+    unsupported,
+    emptyRefutes,
+    tierMismatch: tierMismatchCount,
+  };
 }
 
 export function serializeClaimState(state: ClaimState): string {

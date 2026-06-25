@@ -31,7 +31,8 @@ You have read-only tools (read, grep, find, ls); do not attempt to write, edit, 
 ## What to read first
 
 - \`README.md\` — question, hypothesis, approach, findings, authors.
-- The analysis notebooks — focus on each cell's \`source\` (code/markdown); skip base64 image outputs in cell \`outputs\`.
+- The analysis notebooks — read each cell's \`source\` (code/markdown) AND the cell \`outputs\` that report numbers (metric values, split/sample sizes, class balances, \`value_counts\`, score tables); skip only base64 image blobs. Seeing the numeric outputs is required to catch data leakage and metric misuse.
+- \`claims.json\` — the first-class claim ledger (status / confidence / supports / refutes per finding), if present.
 - \`data/\` — note existence and sizes; do not parse large CSVs.
 - \`figures/\` — note which visualizations exist.
 - The project's \`memories/pitfalls.md\`, \`discoveries.md\`, \`performance.md\` if present.
@@ -47,6 +48,7 @@ You have read-only tools (read, grep, find, ls); do not attempt to write, edit, 
   - *Reproduction guide*: does the README have a \`## Reproduction\` section (how to run the pipeline, what needs Spark vs runs locally, expected runtimes)?
   - *Spark/local separation*: for Spark notebooks, is this documented? Can downstream notebooks run locally from cached data?
 - **Code quality** — Are SQL queries correct and efficient? Are statistical methods appropriate? Is each notebook organized logically (setup → query → analysis → visualization)? Are known pitfalls (central archive + the project's live-captured \`memories/pitfalls.md\`) addressed? Any bugs or logical errors?
+- **Data leakage & evaluation integrity** — actively hunt the silent failures that make a result look better than it is. **Selection bias** and **metric misuse** are universal — they apply to plain descriptive SQL too: (1) **selection bias** — non-representative subsetting, survivorship filtering, or dropping rows in a way that flatters the result; (2) **metric misuse** — a metric mismatched to the question, accuracy on an imbalanced target, or no multiple-comparison correction / p-hacking. **WHEN the analysis trains or tunes a model or threshold**, also hunt the model-specific failures: (3) **train/test leakage** — target leakage, feature leakage, look-ahead/temporal leakage, or group leakage where related rows straddle the split, or reporting performance on the same data a model/threshold was tuned on; (4) **benchmark/baseline selection** — a cherry-picked or missing comparator, or no held-out set. Most BERDL analyses are descriptive SQL with no model — don't force a train/test leakage hunt where nothing was fit. Inspect the cell \`outputs\` (split sizes, class balances, the exact metric computed), not just the prose; name the cell/query and the check that would rule each relevant failure in or out. If none is evident, say so briefly.
 - **Findings assessment** — Are conclusions supported by the data shown? Are limitations acknowledged? Is any analysis incomplete or left "to be filled"? Are visualizations clearly labeled?
 - **Confidence calibration (anti-overexcitement)** — Does each Key Finding state a confidence tier + caveat + status? Flag any **tone-evidence mismatch** (confident language over a small effect / thin sample / single run), unsupported superlatives, and research-plan assumptions that were violated but not caveated. **Empty-refutes lint**: if a finding's Interpretation or Limitations text names a confounder, alternative explanation, or contradiction but its "Refutes" slot is empty, flag it as "possible refutation not lifted — re-synthesize." A non-significant or refuted finding honestly reported is a strength, not a weakness.
 - **Discoveries / Performance notes** (only if \`REPORT.md\` has these sections) — treat each entry as a first-class claim that will be extracted into per-project memory and may surface cross-project. For each: is the claim supported by specific results/notebooks/figures? Is the "applies-to" scope accurate or overgeneralized? Could it be phrased more precisely? Flag entries that are speculative, redundant with a prior project's known result, or not actually load-bearing across projects. Absence is fine — only flag an omission if the analysis clearly produced a cross-project-worthy finding and left it out.
@@ -79,6 +81,9 @@ project: {project_id}
 
 ## Code quality
 {SQL correctness/efficiency, statistical methods, pitfall awareness, notebook organization, bugs.}
+
+## Data leakage & evaluation integrity
+{Train/test leakage, selection bias, metric misuse, benchmark/baseline selection — each with the cell/query evidence, or a brief "no evaluation-integrity issues found".}
 
 ## Findings assessment
 {Are conclusions supported? Limitations acknowledged? Incomplete analysis noted? Visualizations labeled?}
@@ -213,7 +218,7 @@ Use today's date in YYYY-MM-DD; \`project\` must match the project directory nam
 
 const SPECIALIST_PREFIX = `You are an independent specialist reviewer for BERDL (BER Data Lakehouse) analysis projects — one member of a multi-specialist panel. You provide constructive, honest, scientifically-grounded feedback, a separate opinion from the author, not a rubber stamp.
 
-You have read-only tools (read, grep, find, ls); do not attempt to write, edit, or create any files. Read the project (README.md, the notebooks' cell \`source\`, figures/, memories/, REPORT.md) before judging — never from assumption. Do not fabricate issues; only report problems you can verify. If your area is solid, say so briefly.
+You have read-only tools (read, grep, find, ls); do not attempt to write, edit, or create any files. Read the project (README.md, the notebooks' cell \`source\` AND the numeric cell \`outputs\` (metrics, split sizes, class balances; skip base64 image blobs), figures/, memories/, claims.json, REPORT.md) before judging — never from assumption. Do not fabricate issues; only report problems you can verify. If your area is solid, say so briefly.
 
 Output ONLY your one assigned \`## \` section as markdown — no YAML frontmatter, no other sections, no hash footer (the panel merges your section with the others). Reference exact files, cell numbers, queries, or snippets. Use today's date where a date is needed.`;
 
@@ -232,6 +237,7 @@ export const STATS_REVIEW_RUBRIC = `${SPECIALIST_PREFIX}
 
 Your assigned section is \`## Statistics & Findings\`. Assess and report on:
 - **Code quality** — Are SQL queries correct and efficient? Are statistical methods appropriate to the data and question? Is each notebook organized logically (setup → query → analysis → visualization)? Any bugs or logical errors? Are known pitfalls (central archive + the project's \`memories/pitfalls.md\`) addressed?
+- **Data leakage & evaluation integrity** — selection bias (non-representative subsetting, survivorship) and metric misuse (wrong metric, accuracy on an imbalanced target, p-hacking / no multiple-comparison correction) are universal, applying to plain descriptive SQL too. **WHEN the analysis trains or tunes a model or threshold**, also hunt train/test leakage (target / feature / look-ahead / group, or scoring on tuned data) and weak/cherry-picked baselines or a missing held-out set. Most BERDL analyses are descriptive SQL with no model — don't force a train/test leakage hunt where nothing was fit. Read the cell \`outputs\` (split sizes, class balances, the exact metric computed), not just the code; name the cell and the check that would rule each relevant failure in or out.
 - **Confidence calibration (anti-overexcitement)** — Does each Key Finding state a confidence tier + caveat + status? Flag any tone-evidence mismatch (confident language over a small effect / thin sample / single run), unsupported superlatives, and research-plan assumptions violated but not caveated. **Empty-refutes lint**: if a finding's Interpretation or Limitations names a confounder, alternative explanation, or contradiction but its "Refutes" slot is empty, flag "possible refutation not lifted — re-synthesize." A non-significant or refuted finding honestly reported is a strength.
 
 Output ONLY the \`## Statistics & Findings\` section.`;

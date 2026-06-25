@@ -120,7 +120,7 @@ test("session_start sets the connection chip, the HUD, and the rich footer when 
   berilEnv(h.pi);
   const { ctx, set, widgets, renderFooter } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
-  const chip = set.find(([k]) => k === "beril-connection");
+  const chip = [...set].reverse().find(([k]) => k === "beril-connection");
   assert.equal(chip?.[1], "BERDL off-cluster ✓ ready", "connection chip (RPC fallback)");
   assert.ok(
     widgets.find(([k]) => k === "beril-workflow"),
@@ -134,10 +134,26 @@ test("session_start sets the connection chip, the HUD, and the rich footer when 
   assert.match(footer, /1\.0k\/200\.0k/, "footer shows tokens/context window");
 });
 
+test("startup probe failures show a pending state, never BERDL question-mark", async () => {
+  resetReadinessCache();
+  const h = harness(() => {
+    throw new Error("cold startup race");
+  });
+  berilEnv(h.pi);
+  const { ctx, set, renderFooter } = uiCtx(true);
+  await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
+
+  const chip = [...set].reverse().find(([k]) => k === "beril-connection")?.[1] ?? "";
+  assert.equal(chip, "BERDL checking…", "startup failure stays pending while retries run");
+  assert.doesNotMatch(chip, /\?/);
+  assert.doesNotMatch(renderFooter(), /BERDL \?/);
+  h.handlers.session_shutdown({ type: "session_shutdown", reason: "quit" }, ctx);
+});
+
 test("the statusline self-heals when a later env check confirms BERDL is up", async () => {
-  // The reported bug: a failed session-start probe leaves the chip stuck on
-  // "BERDL ?" even after the remote connection comes up. The chip now tracks the
-  // SHARED env cache, so any tool's requireReady → setCachedEnv updates it.
+  // The reported bug: a failed session-start probe leaves the chip stuck in an
+  // unhelpful state even after the remote connection comes up. The chip now tracks
+  // the SHARED env cache, so any tool's requireReady → setCachedEnv updates it.
   resetReadinessCache(); // drop listeners leaked by earlier tests so only ours fires
   const h = harness();
   berilEnv(h.pi);
@@ -249,9 +265,9 @@ test("session_shutdown clears the chip, the widget, the footer, and the header",
   const { ctx, set, widgets, headerCalls } = uiCtx(true);
   await h.handlers.session_start({ type: "session_start", reason: "startup" }, ctx);
   h.handlers.session_shutdown({ type: "session_shutdown", reason: "quit" }, ctx);
-  assert.deepEqual(
-    set.find(([k]) => k === "beril-connection" && k),
-    ["beril-connection", "BERDL off-cluster ✓ ready"],
+  assert.ok(
+    set.some(([k, v]) => k === "beril-connection" && v === "BERDL off-cluster ✓ ready"),
+    "chip was ready before shutdown",
   );
   assert.deepEqual([...set].reverse()[0], ["beril-connection", undefined], "chip cleared last");
   assert.deepEqual([...widgets].reverse()[0], ["beril-workflow", undefined], "widget cleared");
