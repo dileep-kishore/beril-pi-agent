@@ -215,3 +215,78 @@ def test_filter_user_facing_snapshot_uses_denylist():
     # Whole globalusers tenant drops out because none of its collections survive.
     assert "globalusers" not in tenant_ids
     assert filtered["visibility_filter"] == "user_facing_v2"
+
+
+def test_cap_snapshot_collections_caps_total_and_drops_empty_tenants():
+    """cap_snapshot_collections keeps the first N collections across tenants in
+    order, drops any tenant left empty, and treats None as a no-op."""
+    from scripts.discover_berdl_collections import cap_snapshot_collections
+
+    snap = {
+        "schema_version": 1,
+        "tenants": [
+            {"id": "a", "name": "A", "collections": [{"id": "a.1"}, {"id": "a.2"}]},
+            {"id": "b", "name": "B", "collections": [{"id": "b.1"}, {"id": "b.2"}]},
+        ],
+    }
+    capped = cap_snapshot_collections(snap, 3)
+    assert [c["id"] for t in capped["tenants"] for c in t["collections"]] == ["a.1", "a.2", "b.1"]
+    # A cap smaller than the first tenant drops the second tenant entirely.
+    capped1 = cap_snapshot_collections(snap, 1)
+    assert [t["id"] for t in capped1["tenants"]] == ["a"]
+    # None is a no-op; the original snapshot is never mutated.
+    assert cap_snapshot_collections(snap, None)["tenants"] == snap["tenants"]
+    assert len(snap["tenants"][1]["collections"]) == 2
+
+
+def test_max_databases_caps_visible_not_hidden():
+    """Regression: hidden globalusers.* scratch DBs that sort first must NOT
+    consume the --max-databases budget. The cap is applied AFTER user-facing
+    curation, so it keeps N VISIBLE collections, not N raw backend rows."""
+    from scripts.discover_berdl_collections import cap_snapshot_collections, filter_user_facing_snapshot
+
+    # The exact field failure: 8 hidden globalusers.* sort before the real tenants.
+    raw = {
+        "schema_version": 1,
+        "tenants": [
+            {
+                "id": "globalusers",
+                "name": "Development/Test",
+                "collections": [{"id": f"globalusers.scratch{i}", "name": f"S{i}"} for i in range(8)],
+            },
+            {"id": "enigma", "name": "ENIGMA", "collections": [{"id": "enigma.coral"}, {"id": "enigma.geochem"}]},
+            {"id": "kbase", "name": "KBase", "collections": [{"id": "kbase.uniref100"}, {"id": "kbase.gtdb"}]},
+        ],
+    }
+    visible = cap_snapshot_collections(filter_user_facing_snapshot(raw), 3)
+    ids = [c["id"] for t in visible["tenants"] for c in t["collections"]]
+    # 3 VISIBLE collections survive — the 8 hidden globalusers.* did not eat the cap.
+    assert len(ids) == 3
+    assert all(not i.startswith("globalusers") for i in ids)
+    assert "enigma.coral" in ids and "enigma.geochem" in ids
+
+
+def test_main_caps_after_curation(monkeypatch, tmp_path):
+    """main() curates the user-facing set BEFORE applying --max-databases, so the
+    written snapshot caps visible collections, not raw backend order."""
+    from scripts import discover_berdl_collections as disc
+
+    raw = {
+        "schema_version": 1,
+        "tenants": [
+            {
+                "id": "globalusers",
+                "name": "Development/Test",
+                "collections": [{"id": f"globalusers.scratch{i}"} for i in range(8)],
+            },
+            {"id": "enigma", "name": "ENIGMA", "collections": [{"id": "enigma.coral"}, {"id": "enigma.geochem"}]},
+            {"id": "kbase", "name": "KBase", "collections": [{"id": "kbase.uniref100"}, {"id": "kbase.gtdb"}]},
+        ],
+    }
+    monkeypatch.setattr(disc, "discover_collections", lambda **kwargs: dict(raw))
+    out = tmp_path / "snap.json"
+    rc = disc.main(["--output", str(out), "--max-databases", "3", "--env-file", str(tmp_path / "none.env")])
+    assert rc == 0
+    ids = [c["id"] for t in json.loads(out.read_text())["tenants"] for c in t["collections"]]
+    assert len(ids) == 3
+    assert all(not i.startswith("globalusers") for i in ids)

@@ -137,7 +137,6 @@ def _load_berdl_helpers() -> Any | None:
 def discover_collections(
     *,
     database: str | None = None,
-    max_databases: int | None = None,
     token: str | None = None,
     base_url: str = DEFAULT_BASE_URL,
     timeout: float = 30.0,
@@ -207,8 +206,6 @@ def discover_collections(
 
     databases = _dedupe_namespace_aliases(_get_databases())
     databases = sorted(databases, key=lambda item: item["id"])
-    if max_databases is not None:
-        databases = databases[:max_databases]
 
     tenants: dict[str, dict[str, Any]] = {}
     for db in databases:
@@ -310,6 +307,30 @@ def filter_user_facing_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "pass through automatically."
     )
     return filtered
+
+
+def cap_snapshot_collections(snapshot: dict[str, Any], max_databases: int | None) -> dict[str, Any]:
+    """Cap a snapshot to its first ``max_databases`` VISIBLE collections.
+
+    Applied AFTER user-facing curation so hidden scratch/test/personal namespaces
+    never consume the cap. (The bug this guards: a backend-order cap let the first
+    8 ``globalusers.*`` scratch databases crowd out every visible database past the
+    first two.) Walks tenants in order, keeps collections until the budget is spent,
+    and drops any tenant left empty. ``None`` is a no-op; the input is not mutated.
+    """
+    if max_databases is None:
+        return snapshot
+    remaining = max(max_databases, 0)
+    capped_tenants: list[dict[str, Any]] = []
+    for tenant in snapshot.get("tenants", []):
+        if remaining <= 0:
+            break
+        collections = tenant.get("collections", [])[:remaining]
+        if not collections:
+            continue
+        remaining -= len(collections)
+        capped_tenants.append({**tenant, "collections": collections})
+    return {**snapshot, "tenants": capped_tenants}
 
 
 def infer_tenant_id(database_id: str) -> str:
@@ -522,7 +543,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-databases",
         type=int,
-        help="Optional debugging cap on discovered databases (inventory only).",
+        help="Optional debugging cap on the number of VISIBLE collections "
+        "(applied AFTER user-facing curation; inventory only).",
     )
     parser.add_argument(
         "--include-non-user-facing",
@@ -539,7 +561,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         snapshot = discover_collections(
             database=args.database,
-            max_databases=args.max_databases,
             token=token,
             base_url=args.base_url,
             timeout=args.timeout,
@@ -548,10 +569,13 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    # The user-facing curation applies to the broad inventory only; an explicit
-    # --database request is honored verbatim.
-    if args.database is None and not args.include_non_user_facing:
-        snapshot = filter_user_facing_snapshot(snapshot)
+    # Broad inventory only: curate the user-facing set, THEN cap — so hidden
+    # scratch/test namespaces never consume the --max-databases budget. An
+    # explicit --database request is honored verbatim (no curation, no cap).
+    if args.database is None:
+        if not args.include_non_user_facing:
+            snapshot = filter_user_facing_snapshot(snapshot)
+        snapshot = cap_snapshot_collections(snapshot, args.max_databases)
     write_snapshot_atomic(snapshot, args.output)
     if args.database is not None:
         table_count = sum(
