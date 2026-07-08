@@ -13,9 +13,11 @@ import {
   groundednessForEvidence,
   tierMismatch,
 } from "../science.ts";
+import { classifySysError } from "../syserror.ts";
 import { linesCard, markdownCard, textCard } from "./card.ts";
 import { type DiscoverSnapshot, discoverLines, discoverTitle } from "./discover.ts";
 import { GLYPH } from "./glyphs.ts";
+import { sysErrorCard } from "./koros-cards.ts";
 import { hyperlink } from "./links.ts";
 import { domainStyle, roleStyle } from "./palette.ts";
 import { type CardState, statusIcon } from "./render-utils.ts";
@@ -63,8 +65,15 @@ export function toolErrorText(result: { content?: { type: string; text?: string 
  * empty `{}` and shows "undefined / (schema unavailable)" instead of the error.
  * The message is shown verbatim (width-aware wrapped, no markdown) so SQL,
  * identifiers, and stderr aren't mangled.
+ *
+ * One deliberate divert: an INFRASTRUCTURE failure (rate limit, auth, billing,
+ * transport outage — matched conservatively on structured tokens only) renders
+ * as the neutral `sysErrorCard` instead, so plumbing trouble can never be read
+ * as a scientific result ("the data can't answer this").
  */
 export function errorCard(theme: Theme, message: string): Component {
+  const infra = classifySysError(message);
+  if (infra) return sysErrorCard(theme, infra);
   return textCard(theme, {
     title: `${GLYPH.bad} Error`,
     // `state: "error"` paints the BORDER red (the title is red via accentStyle); a

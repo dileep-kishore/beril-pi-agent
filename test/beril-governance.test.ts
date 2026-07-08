@@ -15,8 +15,10 @@ function harness(execImpl: any) {
   const pi: any = {
     registerTool: (t: any) => (tools[t.name] = t),
     registerCommand: (n: string, o: any) => (commands[n] = o),
+    registerMessageRenderer: () => {},
     on: (event: string, h: any) => (handlers[event] = h),
     sendUserMessage: () => {},
+    sendMessage: () => {},
     exec: execImpl,
     events: { emit: (channel: string, data: any) => emitted.push([channel, data]), on: () => () => {} },
   };
@@ -180,6 +182,7 @@ test("/synthesize prompt requires claim_state and refutation checks before lifec
     ...pi,
     registerTool: () => {},
     registerCommand: (n: string, o: any) => (commands2[n] = o),
+    registerMessageRenderer: () => {},
     on: () => {},
     exec: async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }),
     events: { emit: () => {}, on: () => () => {} },

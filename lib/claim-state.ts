@@ -2,16 +2,26 @@ import { createHash } from "node:crypto";
 import { type ClaimRow, parseClaimLedger, parseEvidence } from "./claim-ledger.ts";
 import {
   type ClaimStatus,
+  type ClaimType,
   type ConfidenceTier,
   type EvidencePointer,
   type GroundednessTier,
+  claimTypeForEvidence,
   groundednessForEvidence,
   tierMismatch,
 } from "./science.ts";
 
 export interface ClaimStateRow {
   claim_id: string;
+  /**
+   * Content-addressed claim identity: sha256 of the normalized claim text + its
+   * sorted support locators. Stable across plan re-parses; CHANGES when the claim
+   * or its evidence set changes — tamper-evidence (nanopub Trusty-URI idea).
+   */
+  claim_uid: string;
   claim: string;
+  /** Where the evidence comes from (data / literature / synthesis). */
+  claim_type: ClaimType;
   status: ClaimStatus;
   confidence: ConfidenceTier;
   /** Computed second axis: distinct re-runnable sources behind the claim. */
@@ -80,6 +90,23 @@ function claimId(text: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 56);
   return slug || "claim";
+}
+
+/** Normalize for the claim UID: collapse whitespace, trim, lowercase (spec contract 9). */
+function claimUidNormalize(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Content-addressed claim UID = sha256 of `normalize(claim) + "\n" + sorted
+ * support locators joined by "\n"`. Deterministic in the (claim, evidence-set)
+ * pair, so the same claim over the same supports always hashes the same, and any
+ * change to either shifts the hash.
+ */
+function claimUid(claim: string, supports: EvidencePointer[]): string {
+  const locators = (supports ?? []).map((p) => p.locator ?? "").sort();
+  const material = `${claimUidNormalize(claim)}\n${locators.join("\n")}`;
+  return `sha256:${createHash("sha256").update(material).digest("hex")}`;
 }
 
 function reportHash(reportMd: string): string | undefined {
@@ -203,7 +230,9 @@ function rowToState(
   const groundedness = groundednessForEvidence(supports);
   return {
     claim_id: prior?.claim_id ?? claimId(row.hypothesis),
+    claim_uid: claimUid(claim, supports),
     claim,
+    claim_type: claimTypeForEvidence(supports),
     status: block?.status ?? row.status,
     confidence,
     groundedness,
