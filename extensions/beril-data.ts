@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -7,6 +11,7 @@ import { clampSampleLimit, describeSql, formatPeek, isPlausibleTable, sampleSql 
 import { requireReady } from "../lib/readiness.ts";
 import { renderTable } from "../lib/render.ts";
 import { type DiscoverSnapshot, discoverSummary } from "../lib/ui/discover.ts";
+import { type ValidationResult, validationCard } from "../lib/ui/koros-cards.ts";
 import {
   type QueryView,
   callLine,
@@ -280,6 +285,71 @@ export default function berilData(pi: ExtensionAPI) {
         opportunities: [],
         checked: d.checked,
       });
+    },
+  });
+
+  pi.registerTool({
+    name: "berdl_validate",
+    label: "Check data validity",
+    description:
+      "Profile rows for the data-validity traps that silently corrupt analyses: zero-as-missing sentinels (0 ≠ measured), numbers stored as strings (lexicographic ordering inverts comparisons), near-constant columns, sparse coverage, and pseudoreplication (rows collapsing to few independent groups — pass group_col). Run it on the data feeding an analysis BEFORE building on it (pass sql to sample, or rows_json from a prior query). This is the data-validity JUDGMENT gate: report the findings, let the scientist decide, then record the verdict with gate_record.",
+    parameters: Type.Object({
+      sql: Type.Optional(Type.String({ description: "SELECT whose result rows are profiled (sampled, capped)." })),
+      rows_json: Type.Optional(
+        Type.String({ description: "A JSON array of flat row objects (e.g. from a prior berdl_query)." }),
+      ),
+      group_col: Type.Optional(
+        Type.String({ description: "Independence-group column to check for pseudoreplication." }),
+      ),
+      axis: Type.Optional(Type.String({ description: "Categorical axis column to check group coverage on." })),
+    }),
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
+      let rows: unknown;
+      if (params.sql) {
+        await requireReady(pi);
+        let payload: QueryPayload;
+        try {
+          payload = await berilExec<QueryPayload>(pi, ["query", "--query", params.sql, "--limit", "1000"]);
+        } catch (err) {
+          if (isPermissionError(err)) throw new Error(permissionGuidance(err));
+          throw err;
+        }
+        rows = payload.rows;
+      } else if (params.rows_json) {
+        try {
+          rows = JSON.parse(params.rows_json);
+        } catch {
+          throw new Error("rows_json is not valid JSON.");
+        }
+      } else {
+        throw new Error("berdl_validate needs either sql or rows_json.");
+      }
+      if (!Array.isArray(rows) || rows.length === 0) throw new Error("No rows to validate.");
+      const file = join(tmpdir(), `beril-validate-${randomUUID()}.json`);
+      await writeFile(file, JSON.stringify(rows), "utf8");
+      let result: ValidationResult;
+      try {
+        const args = ["validate", "--rows-json", file];
+        if (params.group_col) args.push("--group-col", params.group_col);
+        if (params.axis) args.push("--axis", params.axis);
+        result = await berilExec<ValidationResult>(pi, args);
+      } finally {
+        await unlink(file).catch(() => {});
+      }
+      const findings = result.findings ?? [];
+      const text = findings.length
+        ? `${result.verdict}: ${findings.map((f) => `[${f.severity}] ${f.column ? `${f.column}: ` : ""}${f.detail}`).join("; ")}`
+        : `pass: ${result.n_rows} rows profiled, no data-validity traps found.`;
+      return { content: [{ type: "text", text }], details: result };
+    },
+    renderCall(args, theme) {
+      const scope = args.sql ? sqlPreview(args.sql) : "rows from a prior query";
+      return callLine(theme, `validate · ${scope}`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Profiling data validity…");
+      return validationCard(theme, result.details as ValidationResult);
     },
   });
 

@@ -124,15 +124,23 @@ intent; `/capabilities --all` shows the full command/skill/tool inventory.
   `/berdl-status`, `/berdl-welcome`) + the workflow HUD, custom footer, and
   first-launch welcome panel.
 - `beril-data` — `berdl_query` (bounded read-only SQL), `berdl_discover`,
-  `berdl_peek`, `berdl_feasibility`, `berdl_export` (destructive);
-  `/berdl-preview`; advisory next-step hints on successful data results.
+  `berdl_peek`, `berdl_feasibility`, `berdl_validate` (data-validity judgment
+  gate — zero-sentinel / numeric-as-string / pseudoreplication traps),
+  `berdl_export` (destructive); `/berdl-preview`; advisory next-step hints.
+- `beril-commons` — the cross-project knowledge commons (KOROS Agora): `commons_check`
+  (reuse-framed anti-redundancy query at project framing — novel/related/overlap,
+  gaps surfaced distinctly) and `commons_land` (findings/lessons/gaps, dedup'd by
+  content hash); `/commons`. Findings land automatically at `/submit`. Store is
+  local + keyless (`~/.beril/agora` or `$BERIL_COMMONS_DIR`).
 - `beril-web` — read-only `web_read` (local fetch → readable-article extract
   behind an SSRF/private-IP + size + timeout guard) and `docs_lookup` (current
   library docs via Context7's no-key tier). Both free/keyless; never destructive.
   Web/docs evidence stays LOW tier (cannot lift a claim on its own).
-- `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list` and
-  `/analyze` (split into a first-result checkpoint and a resume-aware
-  continuation pass).
+- `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list`,
+  `/analyze` (first-result checkpoint + resume-aware continuation), and
+  `/figures` — `notebook_run` surfaces figures written during the run as an
+  inline image (Kitty/iTerm2, via `lib/ui/figure-image.ts`) with a clickable
+  link fallback; `/figures [project]` opens the newest in the OS viewer.
 - `beril-capabilities` — `/skills`, `/capabilities`, `/capabilities --all`, the
   capability palette, and conservative route nudges from plain-language
   scientific intent.
@@ -148,7 +156,12 @@ intent; `/capabilities --all` shows the full command/skill/tool inventory.
   stance, verify-on-write of PMIDs and DOIs to drop fabrications).
 - `beril-governance` — lifecycle + reproducibility + identity: `notebook_hash`,
   `lifecycle_transition`, `claim_ledger`, `claim_state`, `evidence`,
-  `beril_user`, `lakehouse_submit` (destructive); `/synthesize`, `/submit`.
+  `gate_record` (record a judgment-gate verdict), `beril_user`, `lakehouse_submit`
+  (destructive); `/synthesize`, `/submit`, `/gates`. The `reviewed → complete`
+  edge runs the `coherence` AUTO gate (record-currency, filesystem-only via
+  `beril lifecycle coherence`); a block is crossable only by a conscious,
+  ORCID-attributed override confirmed in `lifecycle_transition`. `/submit`
+  regenerates the RO-Crate (`beril crate`) and lands commons knowledge.
 - `beril-review` — `/berdl-review` (independent read-only reviewer subagent;
   advances `analysis → reviewed`, TOCTOU-guarded by report hash) and
   `/berdl-refute` (red-team subagent; writes `REFUTATION_N.md`, changes no
@@ -175,7 +188,17 @@ intent; `/capabilities --all` shows the full command/skill/tool inventory.
 - Confidence is **computed, never verbalized** (`lib/science.ts`): high = ≥2
   independent re-runnable results, medium = exactly 1, low = literature-only.
   Claims must not sound more certain than their artifacts support; every claim
-  carries a verbatim source pointer and, when found, refuting evidence.
+  carries a verbatim source pointer and, when found, refuting evidence. Claims
+  are also typed (`claimTypeForEvidence`: data / literature / synthesis) and a
+  synthesis claim is held to a higher bar (`synthesisBar`) — synthesis is the
+  empirically weakest layer, so it cannot self-certify.
+- **Gates are legible, typed, and never silent walls** (`lib/gates.ts`,
+  `GATE_CATALOG`): each lifecycle-edge gate is `auto` (re-derived live — a
+  recorded verdict never clears it, fix the inputs), `judgment` (a recorded
+  `gate_record` verdict clears it), or `human` (only the scientist's ORCID
+  sign-off). `/gates` prints the catalog from the live registry so it cannot
+  drift from what is enforced; overrides are recorded and attributed, never
+  granted by the agent.
 
 Design specs, the implementation plan, and the **verified Pi API reference** live
 under `docs/superpowers/`. Consult `specs/pi-api-reference.md` before using a Pi
@@ -223,7 +246,22 @@ These are gotchas that have tripped up agents in the past:
 - **Two distinct SHA-256 primitives — never conflate.** `notebook_hash.py`
   computes a *canonical-JSON* hash (tolerates JupyterLab autosave, detects real
   content drift) for reproducibility; review footers use a *raw-file* hash for
-  TOCTOU integrity. They are not interchangeable.
+  TOCTOU integrity. They are not interchangeable. (A third, unrelated hash: the
+  commons store and `claim_uid` content-address bodies/claims for dedup +
+  tamper-evidence — not a reproducibility hash.)
+
+- **The knowledge commons is a SEPARATE store from a project.** It lives outside
+  `projects/` (`~/.beril/agora` or `$BERIL_COMMONS_DIR`), is append-only +
+  content-addressed, and is shared across projects. Tests MUST set
+  `$BERIL_COMMONS_DIR` to a tmp dir so they never touch the real store. Nothing
+  with `visibility: private` ever lands; entries are ORCID-attributed.
+
+- **`errorCard` diverts infra failures to `sysErrorCard`.** `lib/ui/science-cards.ts`
+  runs `classifySysError` (conservative, structured-token match only — a science
+  sentence mentioning "rate"/"429"/"credit" stays a normal error) and renders a
+  neutral *Infrastructure* card for rate-limit/auth/billing/connectivity, so
+  plumbing trouble is never dressed as a scientific result. Don't broaden the
+  matcher to loose phrases.
 
 - **BERDL Spark Connect routing.** The catalog REST plane and the per-user Spark
   Connect plane are separate. "I can see the tables but can't query them" usually
