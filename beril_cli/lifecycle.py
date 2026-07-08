@@ -53,6 +53,7 @@ _KEY_ORDER = [
     "engine",
     "authors",
     "artifacts",
+    "gates",
     "approval",
     "previous_approvals",
     "submissions",
