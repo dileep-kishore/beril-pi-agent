@@ -1,6 +1,14 @@
 ---
 name: data-validity
-description: Use before an analysis consumes lakehouse data, or when a result looks suspiciously clean, strong, or strange — to profile the rows for silent traps that invert conclusions: zero-as-missing sentinels (0 ≠ measured), numbers stored as strings (lexicographic ordering flips comparisons), near-constant columns, sparse coverage, and pseudoreplication (rows collapsing to a few independent groups). Applies whenever data quality or the unit of analysis could be wrong. This is the data-validity judgment gate; it informs, the scientist decides.
+description: >-
+  Use before an analysis consumes lakehouse data, or when a result looks
+  suspiciously clean, strong, or strange — to profile the rows for silent traps
+  that invert conclusions: zero-as-missing sentinels (0 ≠ measured), numbers
+  stored as strings (lexicographic ordering flips comparisons), near-constant
+  columns, sparse coverage, and pseudoreplication (rows collapsing to a few
+  independent groups). Applies whenever data quality or the unit of analysis
+  could be wrong. This is the data-validity judgment gate; it informs, the
+  scientist decides.
 ---
 
 # Data Validity
