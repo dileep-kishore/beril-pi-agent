@@ -16,7 +16,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
 
     # doctor
-    sub.add_parser("doctor", help="Check environment health")
+    doctor_parser = sub.add_parser("doctor", help="Check environment health")
+    doctor_parser.add_argument(
+        "--json", action="store_true", default=False, help="Emit machine-readable JSON"
+    )
 
     # setup
     sub.add_parser("setup", help="Interactive onboarding wizard")
@@ -117,7 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     # lifecycle
     lifecycle_parser = sub.add_parser("lifecycle", help="Command the project lifecycle state machine")
     lifecycle_parser.add_argument(
-        "action", choices=["status", "set", "approve", "marker", "current", "session-state"]
+        "action",
+        choices=["status", "set", "approve", "marker", "current", "session-state", "gate", "coherence"],
     )
     lifecycle_parser.add_argument(
         "project", nargs="?", default=None, help="Project directory name under projects/ (omit for 'current')"
@@ -134,6 +138,52 @@ def main(argv: list[str] | None = None) -> int:
     lifecycle_parser.add_argument(
         "--get", dest="get_state", action="store_true", default=False, help="Emit research_state (for 'session-state')"
     )
+    # gate / coherence (for 'gate' and reviewed → complete override)
+    lifecycle_parser.add_argument("--record", default=None, metavar="GATE_ID", help="Record a verdict for this gate")
+    lifecycle_parser.add_argument("--override", default=None, metavar="GATE_ID", help="Record an override for this gate")
+    lifecycle_parser.add_argument("--verdict", choices=["pass", "fail"], default=None, help="Verdict (for gate --record)")
+    lifecycle_parser.add_argument("--note", default=None, help="Note (for gate --record)")
+    lifecycle_parser.add_argument("--by", default=None, help="Recording ORCID (required for an override)")
+    lifecycle_parser.add_argument("--reason", default=None, help="Reason (for an override)")
+    lifecycle_parser.add_argument(
+        "--list", action="store_true", default=False, help="List recorded gates (for 'gate')"
+    )
+    lifecycle_parser.add_argument(
+        "--override-coherence",
+        dest="override_coherence",
+        action="store_true",
+        default=False,
+        help="Override a failing coherence check on reviewed → complete (requires --reason and --by)",
+    )
+
+    # validate
+    validate_parser = sub.add_parser("validate", help="Profile query rows for data-validity traps")
+    validate_parser.add_argument(
+        "--rows-json", dest="rows_json", required=True, help="Path to a JSON array of flat row objects"
+    )
+    validate_parser.add_argument("--group-col", dest="group_col", default=None, help="Column to check for pseudoreplication")
+    validate_parser.add_argument("--axis", default=None, help="Categorical column to check for group coverage")
+
+    # commons
+    commons_parser = sub.add_parser("commons", help="Land / query / list the knowledge commons")
+    commons_parser.add_argument("verb", choices=["land", "query", "list"])
+    commons_parser.add_argument("project", nargs="?", default=None, help="Project id (for 'land')")
+    commons_parser.add_argument("--kind", choices=["finding", "lesson", "gap"], default=None)
+    commons_parser.add_argument("--text", default=None, help="Body text (for 'land')")
+    commons_parser.add_argument("--tag", action="append", default=None, help="Tag (repeatable, for 'land')")
+    commons_parser.add_argument(
+        "--from-report", dest="from_report", action="store_true", default=False,
+        help="Extract findings/gaps/lessons from the project's report artifacts",
+    )
+    commons_parser.add_argument("--q", default=None, help="Query text (for 'query')")
+    commons_parser.add_argument("--k", type=int, default=5, help="Max matches (for 'query')")
+    commons_parser.add_argument(
+        "--project", dest="filter_project", default=None, help="Filter by project id (for 'list')"
+    )
+
+    # crate
+    crate_parser = sub.add_parser("crate", help="Write an RO-Crate metadata file for a project")
+    crate_parser.add_argument("project", help="Project directory name under projects/")
 
     # user
     user_parser = sub.add_parser(
@@ -156,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         from beril_cli.doctor import run_doctor
 
-        return run_doctor()
+        return run_doctor(as_json=args.json)
 
     if args.command == "setup":
         from beril_cli.setup_cmd import run_setup
@@ -211,6 +261,21 @@ def main(argv: list[str] | None = None) -> int:
         from beril_cli.lifecycle_cmd import run_lifecycle
 
         return run_lifecycle(args)
+
+    if args.command == "validate":
+        from beril_cli.validate_cmd import run_validate
+
+        return run_validate(args)
+
+    if args.command == "commons":
+        from beril_cli.commons_cmd import run_commons
+
+        return run_commons(args)
+
+    if args.command == "crate":
+        from beril_cli.crate_cmd import run_crate
+
+        return run_crate(args)
 
     if args.command == "user":
         from beril_cli.user_cmd import run_user

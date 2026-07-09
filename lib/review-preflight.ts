@@ -84,6 +84,9 @@ export async function collectReviewPreflight(
   const tierMismatch = state.rows.filter((row) => row.tier_mismatch).length;
   if (tierMismatch)
     warnings.push(`${tierMismatch} claim(s) assert high/medium confidence on a single/no re-runnable source`);
+  const synthesisBar = state.rows.filter((row) => row.synthesis_bar).length;
+  if (synthesisBar)
+    warnings.push(`${synthesisBar} synthesis claim(s) need more grounding or a recorded disconfirmation search`);
   const view: ReviewPreflightView = {
     project,
     status: lifecycle.status,

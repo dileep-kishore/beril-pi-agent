@@ -100,3 +100,58 @@ export function groundednessForEvidence(supports: EvidencePointer[]): Groundedne
 export function tierMismatch(confidence: ConfidenceTier, groundedness: GroundednessTier): boolean {
   return (confidence === "high" || confidence === "medium") && groundedness !== "well-grounded";
 }
+
+/**
+ * The kind of thing a claim rests on. Separate from confidence: it says WHERE the
+ * evidence comes from, not how strong it is. Kosmos found synthesis claims (which
+ * weave data + literature into a new conclusion) empirically the weakest — 57.9%
+ * accuracy vs ~85% for the direct kinds — so surfacing the type lets a reviewer
+ * spend their scrutiny where it is most warranted.
+ */
+export type ClaimType = "data" | "literature" | "synthesis";
+
+/** A literature/web pointer — the two kinds that make a claim "literature". */
+function isLiterature(p: EvidencePointer): boolean {
+  return p.kind === "paper" || p.kind === "web";
+}
+
+/**
+ * Classify a claim by its supporting evidence (pure, deterministic):
+ * - `data`       — ≥1 re-runnable result and no paper/web.
+ * - `literature` — no result and ≥1 paper/web.
+ * - `synthesis`  — both kinds together, or nothing at all (a bare assertion is,
+ *   for scrutiny purposes, the weakest synthesis case). Tolerates `[]`.
+ */
+export function claimTypeForEvidence(supports: EvidencePointer[]): ClaimType {
+  let results = 0;
+  let literature = 0;
+  for (const p of supports ?? []) {
+    if (isResult(p)) results++;
+    else if (isLiterature(p)) literature++;
+  }
+  if (results >= 1 && literature === 0) return "data";
+  if (results === 0 && literature >= 1) return "literature";
+  return "synthesis";
+}
+
+/**
+ * The Kosmos synthesis bar: a SYNTHESIS claim asserted high/medium must clear a
+ * higher grounding threshold before we let its written tier stand unflagged. It
+ * is flagged (returns `true`) unless it BOTH rests on ≥2 distinct re-runnable
+ * sources (`well-grounded`) AND has actively looked for disconfirming evidence
+ * (a recorded refute, or a recorded search that found none). Pure and additive:
+ * a flag rendered ALONGSIDE `tierMismatch`, never a change to the tiers themselves.
+ */
+export function synthesisBar(view: {
+  confidence: ConfidenceTier;
+  supports: EvidencePointer[];
+  refutes: EvidencePointer[];
+  refutesSearched?: string;
+}): boolean {
+  if (claimTypeForEvidence(view.supports) !== "synthesis") return false;
+  if (view.confidence !== "high" && view.confidence !== "medium") return false;
+  const wellGrounded = groundednessForEvidence(view.supports) === "well-grounded";
+  const searchNote = (view.refutesSearched ?? "").trim().toLowerCase();
+  const soughtDisconfirmation = (view.refutes ?? []).length > 0 || Boolean(searchNote && searchNote !== "not recorded");
+  return !(wellGrounded && soughtDisconfirmation);
+}

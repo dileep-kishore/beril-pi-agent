@@ -1,7 +1,12 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { basename, join } from "node:path";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Container } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { berilExec } from "../lib/beril-exec.ts";
+import { newFigures, openCommand } from "../lib/figures.ts";
 import { projectCompletions } from "../lib/project-completions.ts";
+import { inlineImages } from "../lib/ui/figure-image.ts";
+import { figuresCard } from "../lib/ui/koros-cards.ts";
 import {
   type NotebookInfo,
   type NotebookRun,
@@ -128,8 +133,9 @@ export default function berilAnalysis(pi: ExtensionAPI) {
         }),
       ),
     }),
-    async execute(_id, params, signal, onUpdate) {
+    async execute(_id, params, signal, onUpdate, ctx?: ExtensionContext) {
       onUpdate?.({ content: [{ type: "text", text: "Executing notebooks (this can take a while)…" }], details: {} });
+      const startedAt = Date.now();
       const args = ["notebook", "run", params.project];
       if (params.notebook) args.push(params.notebook);
       if (params.resume) args.push("--resume");
@@ -154,12 +160,16 @@ export default function berilAnalysis(pi: ExtensionAPI) {
       } catch {
         throw new Error(`notebook run: unexpected output: ${res.stdout.slice(0, 200)}${res.stderr}`);
       }
+      // The workshop's #1 ask: after a run, surface the plots — figures written
+      // during THIS execution render inline (Kitty/iTerm2) with link fallback.
+      const figures = ctx?.cwd ? newFigures(join(ctx.cwd, "projects", params.project), startedAt) : [];
       const failed = payload.executed.filter((e) => !e.ok).length;
       const skipped = payload.skipped?.length ?? 0;
+      const figNote = figures.length ? ` New figure(s): ${figures.map((f) => basename(f)).join(", ")}.` : "";
       const text = payload.ok
-        ? `Executed ${payload.executed.length} notebook(s); skipped ${skipped}; all cells ran.`
-        : `Executed ${payload.executed.length} notebook(s); skipped ${skipped}; ${failed} failed — see errors.`;
-      return { content: [{ type: "text", text }], details: payload };
+        ? `Executed ${payload.executed.length} notebook(s); skipped ${skipped}; all cells ran.${figNote}`
+        : `Executed ${payload.executed.length} notebook(s); skipped ${skipped}; ${failed} failed — see errors.${figNote}`;
+      return { content: [{ type: "text", text }], details: { ...payload, figures } };
     },
     renderCall(args, theme) {
       return callLine(theme, `notebook run · ${args.project}${args.notebook ? ` · ${args.notebook}` : ""}`);
@@ -167,7 +177,41 @@ export default function berilAnalysis(pi: ExtensionAPI) {
     renderResult(result, { isPartial }, theme, context) {
       if (context?.isError) return errorCard(theme, toolErrorText(result));
       if (isPartial) return partialLine(theme, "Executing notebooks…");
-      return notebookRunCard(theme, result.details as { executed: NotebookRun[]; ok: boolean });
+      const d = result.details as { executed: NotebookRun[]; ok: boolean; figures?: string[] };
+      const run = notebookRunCard(theme, d);
+      if (!d.figures?.length) return run;
+      const stack = new Container();
+      stack.addChild(run);
+      stack.addChild(figuresCard(theme, d.figures));
+      for (const img of inlineImages(theme, d.figures)) stack.addChild(img);
+      return stack;
+    },
+  });
+
+  pi.registerCommand("figures", {
+    description: "Open a project's newest figure in the OS image viewer (read-only).",
+    getArgumentCompletions: projectCompletions,
+    async handler(args: string, ctx: ExtensionCommandContext) {
+      let project = args.trim();
+      if (!project) {
+        const current = await berilExec<{ project?: string }>(pi, ["lifecycle", "current"]).catch(() => undefined);
+        project = current?.project ?? "";
+      }
+      if (!project) {
+        if (ctx.hasUI) ctx.ui.notify("Usage: /figures <project> (no active project found)", "warning");
+        return;
+      }
+      // All figures, newest last (mtime 0 baseline = every figure qualifies).
+      const figures = newFigures(join(ctx.cwd, "projects", project), 0);
+      if (!figures.length) {
+        if (ctx.hasUI) ctx.ui.notify(`No figures under projects/${project}/figures yet.`, "info");
+        return;
+      }
+      const { statSync } = await import("node:fs");
+      const newest = figures.reduce((a, b) => (statSync(a).mtimeMs >= statSync(b).mtimeMs ? a : b));
+      const [cmd, ...cmdArgs] = openCommand(newest);
+      await pi.exec(cmd, cmdArgs, { timeout: 15_000 });
+      if (ctx.hasUI) ctx.ui.notify(`Opened ${basename(newest)}.`, "info");
     },
   });
 

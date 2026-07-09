@@ -11,11 +11,22 @@ test("every GLYPH key has an ASCII fallback entry", () => {
       assert.ok(glyph(key).length > 0, `missing ASCII entry for ${key}`);
     }
   } finally {
-    if (prev === undefined) process.env.BERIL_GLYPHS = undefined;
+    if (prev === undefined) Reflect.deleteProperty(process.env, "BERIL_GLYPHS");
     else process.env.BERIL_GLYPHS = prev;
   }
 });
 
 test("glyph() returns the unicode mark by default", () => {
-  assert.equal(glyph("ok"), GLYPH.ok);
+  const prevNoColor = process.env.NO_COLOR;
+  const prevGlyphs = process.env.BERIL_GLYPHS;
+  try {
+    Reflect.deleteProperty(process.env, "NO_COLOR");
+    Reflect.deleteProperty(process.env, "BERIL_GLYPHS");
+    assert.equal(glyph("ok"), GLYPH.ok);
+  } finally {
+    if (prevNoColor === undefined) Reflect.deleteProperty(process.env, "NO_COLOR");
+    else process.env.NO_COLOR = prevNoColor;
+    if (prevGlyphs === undefined) Reflect.deleteProperty(process.env, "BERIL_GLYPHS");
+    else process.env.BERIL_GLYPHS = prevGlyphs;
+  }
 });

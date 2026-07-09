@@ -2,22 +2,35 @@ import { createHash } from "node:crypto";
 import { type ClaimRow, parseClaimLedger, parseEvidence } from "./claim-ledger.ts";
 import {
   type ClaimStatus,
+  type ClaimType,
   type ConfidenceTier,
   type EvidencePointer,
   type GroundednessTier,
+  claimTypeForEvidence,
   groundednessForEvidence,
+  synthesisBar,
   tierMismatch,
 } from "./science.ts";
 
 export interface ClaimStateRow {
   claim_id: string;
+  /**
+   * Content-addressed claim identity: sha256 of the normalized claim text + its
+   * sorted support locators. Stable across plan re-parses; CHANGES when the claim
+   * or its evidence set changes — tamper-evidence (nanopub Trusty-URI idea).
+   */
+  claim_uid: string;
   claim: string;
+  /** Where the evidence comes from (data / literature / synthesis). */
+  claim_type: ClaimType;
   status: ClaimStatus;
   confidence: ConfidenceTier;
   /** Computed second axis: distinct re-runnable sources behind the claim. */
   groundedness: GroundednessTier;
   /** Set when the WRITTEN confidence (high/medium) outruns the evidence (single-source/ungrounded). */
   tier_mismatch?: boolean;
+  /** Set when a high/medium synthesis claim lacks grounding or a real disconfirmation search. */
+  synthesis_bar?: boolean;
   supports: EvidencePointer[];
   refutes: EvidencePointer[];
   refutesSearched?: string;
@@ -48,6 +61,8 @@ export interface ClaimStateSummary {
   emptyRefutes: number;
   /** Claims whose written confidence outruns their evidence. Optional so legacy literals stay valid. */
   tierMismatch?: number;
+  /** High/medium synthesis claims that do not clear the synthesis bar. */
+  synthesisBar?: number;
 }
 
 function normalizeClaim(text: string): string {
@@ -80,6 +95,23 @@ function claimId(text: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 56);
   return slug || "claim";
+}
+
+/** Normalize for the claim UID: collapse whitespace, trim, lowercase (spec contract 9). */
+function claimUidNormalize(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Content-addressed claim UID = sha256 of `normalize(claim) + "\n" + sorted
+ * support locators joined by "\n"`. Deterministic in the (claim, evidence-set)
+ * pair, so the same claim over the same supports always hashes the same, and any
+ * change to either shifts the hash.
+ */
+function claimUid(claim: string, supports: EvidencePointer[]): string {
+  const locators = (supports ?? []).map((p) => p.locator ?? "").sort();
+  const material = `${claimUidNormalize(claim)}\n${locators.join("\n")}`;
+  return `sha256:${createHash("sha256").update(material).digest("hex")}`;
 }
 
 function reportHash(reportMd: string): string | undefined {
@@ -115,16 +147,33 @@ function confidenceFrom(text: string): ConfidenceTier | undefined {
   return m?.[1].toLowerCase() as ConfidenceTier | undefined;
 }
 
-function pointerFromLine(line: string, kind: EvidencePointer["kind"]): EvidencePointer | undefined {
-  const body = line.replace(/^.*?:/, "").trim();
+function pointerKind(body: string, fallback: EvidencePointer["kind"]): EvidencePointer["kind"] {
+  const tag = body.match(/\[(query|notebook|figure|paper|web|docs)\]/i);
+  if (tag) return tag[1].toLowerCase() as EvidencePointer["kind"];
+  if (/\bPMID[:\s]/i.test(body) || /^\s*paper\b/i.test(body)) return "paper";
+  if (/\bhttps?:\/\//i.test(body)) return "web";
+  if (/\.(?:png|jpg|jpeg|gif|webp|svg)\b/i.test(body)) return "figure";
+  if (/\.ipynb\b/i.test(body)) return "notebook";
+  if (/^\s*query:/i.test(body) || /\bsha256:[0-9a-f]{12,64}\b/i.test(body)) return "query";
+  return fallback;
+}
+
+function pointerFromLine(line: string, fallback: EvidencePointer["kind"]): EvidencePointer | undefined {
+  const body = line.replace(/^\s*(?:supports?|refutes?)\s*:/i, "").trim();
   if (!body || /^none\b/i.test(body)) return undefined;
   const [locatorRaw, relevanceRaw] = body.split(/\s+[—-]\s+/, 2);
   return {
-    kind,
+    kind: pointerKind(body, fallback),
     locator: locatorRaw.trim(),
     exact: body,
     relevance: relevanceRaw?.trim() || "parsed from REPORT.md",
   };
+}
+
+function realRefuteSearch(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.toLowerCase() === "not recorded") return undefined;
+  return trimmed;
 }
 
 function parseFindingBlocks(reportMd: string): FindingBlock[] {
@@ -154,7 +203,7 @@ function parseFindingBlocks(reportMd: string): FindingBlock[] {
       confidence: confidenceFrom(body),
       supports,
       refutes,
-      refutesSearched: searched,
+      refutesSearched: realRefuteSearch(searched),
     });
   };
   for (const line of lines) {
@@ -201,20 +250,24 @@ function rowToState(
         : fallbackPointers("paper", row.refutes);
   const confidence = block?.confidence ?? row.confidence;
   const groundedness = groundednessForEvidence(supports);
+  const refutesSearched =
+    realRefuteSearch(block?.refutesSearched) ??
+    realRefuteSearch(view?.refutesSearched) ??
+    realRefuteSearch(prior?.refutesSearched);
+  const synthesis_bar = synthesisBar({ confidence, supports, refutes, refutesSearched });
   return {
     claim_id: prior?.claim_id ?? claimId(row.hypothesis),
+    claim_uid: claimUid(claim, supports),
     claim,
+    claim_type: claimTypeForEvidence(supports),
     status: block?.status ?? row.status,
     confidence,
     groundedness,
     tier_mismatch: tierMismatch(confidence, groundedness),
+    synthesis_bar,
     supports,
     refutes,
-    refutesSearched:
-      block?.refutesSearched ??
-      view?.refutesSearched ??
-      prior?.refutesSearched ??
-      (refutes.length === 0 ? "not recorded" : undefined),
+    refutesSearched,
     stale: row.stale,
     reviewer_notes: prior?.reviewer_notes,
   };
@@ -239,12 +292,14 @@ export function claimStateSummary(rows: ClaimStateRow[]): ClaimStateSummary {
   let unsupported = 0;
   let emptyRefutes = 0;
   let tierMismatchCount = 0;
+  let synthesisBarCount = 0;
   for (const row of rows) {
     if (row.status === "supported") supported++;
     else if (row.status === "refuted") refuted++;
     else unsupported++;
     if (row.refutes.length === 0) emptyRefutes++;
     if (row.tier_mismatch) tierMismatchCount++;
+    if (row.synthesis_bar) synthesisBarCount++;
   }
   return {
     total: rows.length,
@@ -253,6 +308,7 @@ export function claimStateSummary(rows: ClaimStateRow[]): ClaimStateSummary {
     unsupported,
     emptyRefutes,
     tierMismatch: tierMismatchCount,
+    synthesisBar: synthesisBarCount,
   };
 }
 

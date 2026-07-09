@@ -50,6 +50,19 @@ export const CAPABILITIES: Capability[] = [
     ],
   },
   {
+    id: "commons",
+    title: "Check prior work",
+    lane: "explore",
+    intent:
+      "Query the cross-project knowledge commons — findings, negative-result lessons, and open gaps — before starting new work (reuse-framed, never 'don't redo').",
+    command: "/commons <question>",
+    skill: "commons-check",
+    tools: ["commons_check", "commons_land"],
+    when: "A new question is framed, or you wonder whether a prior project already touched this ground.",
+    next: "/research-plan <project>",
+    aliases: [/\bcommons|prior work|already (done|answered|tried)|been done|open gap/i],
+  },
+  {
     id: "discover",
     title: "Explore data",
     lane: "explore",
@@ -84,6 +97,19 @@ export const CAPABILITIES: Capability[] = [
     when: "A plan is approved and the next move is empirical execution.",
     next: "/analyze <project> --continue",
     aliases: [/analy[sz]e|notebook|first result|run result|figure/i],
+  },
+  {
+    id: "validate",
+    title: "Validate the data",
+    lane: "study",
+    intent:
+      "Profile the rows feeding an analysis for silent traps: zero-as-missing sentinels, numbers stored as strings, near-constant columns, pseudoreplication.",
+    command: "berdl_validate (tool; ask to validate the data)",
+    skill: "data-validity",
+    tools: ["berdl_validate", "gate_record"],
+    when: "Data is about to feed an analysis, or a result looks too clean/too strange to trust.",
+    next: "gate_record data-validity, then /analyze <project> --first-result",
+    aliases: [/\bvalidat|\bsentinel|pseudorepl|stored as string|data quality|missing.?value/i],
   },
   {
     id: "paper",
@@ -144,6 +170,19 @@ export const CAPABILITIES: Capability[] = [
     when: "REPORT.md and claims.json are ready for external scrutiny.",
     next: "/submit <project>",
     aliases: [/\breview|\bcritic|\bpanel/i],
+  },
+  {
+    id: "gates",
+    title: "See the gates",
+    lane: "check",
+    intent:
+      "Show every lifecycle gate in plain language — what it checks, whose call it is (auto / judgment / human) — with recorded verdicts and overrides.",
+    command: "/gates [project]",
+    skill: "lifecycle-gates",
+    tools: ["gate_record"],
+    when: "You want to know what stands between the project and its next phase, or whether a check was recorded.",
+    next: "/next",
+    aliases: [/\bgates?\b|verdict|override|sign.?off|what('| i)s blocking/i],
   },
   {
     id: "submit",

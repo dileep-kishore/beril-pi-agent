@@ -5,6 +5,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { GLYPH } from "../lib/ui/glyphs.ts";
 import {
   claimLedgerCard,
+  claimStateCard,
   confidenceFooter,
   discoverCard,
   envCard,
@@ -123,6 +124,13 @@ test("errorCard frames the real error message (width-exact), not a success card"
   assert.ok(text.includes("429"), "carries the real message, not 'undefined'");
 });
 
+test("errorCard routes BERIL-normalized infrastructure failures to the infrastructure card", () => {
+  const card = errorCard(theme, "the BERDL Spark Connect server is unreachable (retries exhausted)");
+  const text = card.render(70).join("\n");
+  assert.ok(text.includes("Infrastructure"));
+  assert.ok(text.includes("connectivity"));
+});
+
 test("errorCard degrades to a generic message when the error text is empty", () => {
   const text = errorCard(theme, "").render(60).join("\n");
   assert.ok(text.includes("failed"), "shows a fallback rather than a blank card");
@@ -215,6 +223,18 @@ test("evidenceCard renders width-exact for populated and empty inputs", () => {
   }
   // The populated card surfaces its Unresolved section.
   assert.ok(populated.render(60).join("\n").includes("Unresolved (1)"), "unresolved section label");
+});
+
+test("claimStateCard surfaces synthesis-bar warnings", () => {
+  const card = claimStateCard(
+    theme,
+    [],
+    { total: 1, supported: 1, refuted: 0, unsupported: 0, emptyRefutes: 0, tierMismatch: 0, synthesisBar: 1 },
+    true,
+  );
+  const text = card.render(70).join("\n");
+  assert.ok(/Synthesis bar/.test(text));
+  assert.ok(/1/.test(text));
 });
 
 test("confidenceFooter pairs a meter glyph with the tier word", () => {

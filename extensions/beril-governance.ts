@@ -3,15 +3,17 @@ import { join } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { berilExec } from "../lib/beril-exec.ts";
+import { BerilError, berilExec } from "../lib/beril-exec.ts";
 import { type ClaimRow, parseClaimLedger, parseEvidence, tallyClaims } from "../lib/claim-ledger.ts";
 import { type ClaimState, buildClaimState, claimStateSummary, serializeClaimState } from "../lib/claim-state.ts";
+import { GATE_CATALOG, type GateRecord } from "../lib/gates.ts";
 import { projectCompletions } from "../lib/project-completions.ts";
 import { requireReady } from "../lib/readiness.ts";
 import { collectReviewPreflight, submitReadinessProblems } from "../lib/review-preflight.ts";
 import type { EvidenceView } from "../lib/science.ts";
 import { linesCard } from "../lib/ui/card.ts";
 import { GLYPH } from "../lib/ui/glyphs.ts";
+import { gateReferenceCard } from "../lib/ui/koros-cards.ts";
 import {
   callLine,
   claimLedgerCard,
@@ -237,7 +239,44 @@ export default function berilGovernance(pi: ExtensionAPI) {
       state: StringEnum([...LIFECYCLE_STATES], { description: "Target lifecycle state." }),
     }),
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      const result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", params.project, params.state]);
+      let result: { status: string };
+      try {
+        result = await berilExec<{ status: string }>(pi, ["lifecycle", "set", params.project, params.state]);
+      } catch (err) {
+        // The reviewed → complete edge is guarded by the coherence AUTO gate
+        // (record-currency, filesystem-only). Overriding it is a HUMAN act:
+        // confirm interactively, capture a reason, attribute it to the ORCID —
+        // never silently, never headless (fail-closed like every beril gate).
+        const coherenceBlock =
+          err instanceof BerilError && params.state === "complete" && /blocked by coherence checks/.test(err.message);
+        if (!coherenceBlock || !ctx.hasUI) throw err;
+        const ok = await ctx.ui.confirm(
+          "Coherence gate",
+          `${err.message}\n\nThe project record is behind the work products. Override and complete anyway? (The override is recorded, attributed to your ORCID.)`,
+        );
+        if (!ok) throw new Error(`Completion stopped at the coherence gate: ${err.message}`);
+        const reason = ((await ctx.ui.input("Override reason", "why is the record acceptable as-is?")) ?? "").trim();
+        if (!reason) throw new Error("Coherence override cancelled: no reason given.");
+        const who = await pi.exec("beril", ["user", "--json"], { timeout: 30_000 });
+        let orcid = "";
+        try {
+          orcid = (JSON.parse(who.stdout) as Identity).orcid ?? "";
+        } catch {
+          orcid = "";
+        }
+        if (!orcid) throw new Error("Coherence override requires an ORCID — run `beril setup` to add one.");
+        result = await berilExec<{ status: string }>(pi, [
+          "lifecycle",
+          "set",
+          params.project,
+          params.state,
+          "--override-coherence",
+          "--reason",
+          reason,
+          "--by",
+          orcid,
+        ]);
+      }
       setActiveProject(ctx, params.project);
       // Broadcast the state the machine RETURNED (not the requested target) for the footer.
       pi.events.emit("beril:lifecycle", { project: params.project, state: result.status });
@@ -251,6 +290,83 @@ export default function berilGovernance(pi: ExtensionAPI) {
       if (isPartial) return partialLine(theme, "Updating lifecycle…");
       const d = res.details as { status: string };
       return lifecycleCard(theme, ctx.args.project, d.status);
+    },
+  });
+
+  pi.registerTool({
+    name: "gate_record",
+    label: "Record a gate verdict",
+    description:
+      "Record a pass/fail verdict for a JUDGMENT gate (data-validity, feasibility, independent-review, commons-landed) in the project's beril.yaml gate ledger, with a one-line note saying why. Verdicts are append-only and auditable. Overrides are NOT available here — overriding a gate is a human act done at the gate itself. See /gates for the catalog.",
+    parameters: Type.Object({
+      project: Type.String({ description: "Project id." }),
+      gate: StringEnum(GATE_CATALOG.filter((g) => g.type === "judgment").map((g) => g.id) as [string, ...string[]], {
+        description: "The judgment gate to record.",
+      }),
+      verdict: StringEnum(["pass", "fail"], { description: "The recorded verdict." }),
+      note: Type.String({ description: "One line: what the verdict rests on." }),
+    }),
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
+      const res = await berilExec<{ gate: GateRecord }>(pi, [
+        "lifecycle",
+        "gate",
+        params.project,
+        "--record",
+        params.gate,
+        "--verdict",
+        params.verdict,
+        "--note",
+        params.note,
+      ]);
+      return {
+        content: [{ type: "text", text: `Recorded ${params.gate}: ${params.verdict} — ${params.note}` }],
+        details: res,
+      };
+    },
+    renderCall(args, theme) {
+      return callLine(theme, `gate · ${args.gate} → ${args.verdict}`);
+    },
+    renderResult(result, { isPartial }, theme, context) {
+      if (context?.isError) return errorCard(theme, toolErrorText(result));
+      if (isPartial) return partialLine(theme, "Recording gate verdict…");
+      const d = result.details as { gate: GateRecord };
+      return linesCard(theme, {
+        title: "Gate recorded",
+        lines: kvLines(theme, d.gate as unknown as Record<string, unknown>),
+      });
+    },
+  });
+
+  pi.registerMessageRenderer<{ recorded?: GateRecord[] }>("beril-gates", (message, _opts, theme) =>
+    gateReferenceCard(theme, message.details?.recorded),
+  );
+
+  pi.registerCommand("gates", {
+    description: "Show the lifecycle gate catalog in plain language, with recorded verdicts and overrides.",
+    getArgumentCompletions: projectCompletions,
+    async handler(args: string, ctx: ExtensionCommandContext) {
+      let project = args.trim();
+      if (!project) {
+        const current = await berilExec<{ project?: string }>(pi, ["lifecycle", "current"]).catch(() => undefined);
+        project = current?.project ?? "";
+      }
+      let recorded: GateRecord[] = [];
+      if (project) {
+        const listed = await berilExec<{ gates: GateRecord[] }>(pi, ["lifecycle", "gate", project, "--list"]).catch(
+          () => undefined,
+        );
+        recorded = listed?.gates ?? [];
+      }
+      pi.sendMessage(
+        {
+          customType: "beril-gates",
+          content: project ? `Gate reference for ${project}` : "Gate reference",
+          display: true,
+          details: { recorded },
+        },
+        { triggerTurn: false, deliverAs: "nextTurn" },
+      );
+      if (ctx.hasUI && !project) ctx.ui.notify("No active project — showing the catalog only.", "info");
     },
   });
 
@@ -379,6 +495,16 @@ export default function berilGovernance(pi: ExtensionAPI) {
         ctx.ui.notify("Submission cancelled.", "info");
         return;
       }
+      // Regenerate derived local artifacts before the irreversible upload. If
+      // either fails, stop here rather than submitting an archive without its
+      // provenance crate or cumulative-memory landing.
+      await berilExec(pi, ["crate", project]);
+      const landed = await berilExec<{ landed: number; skipped_duplicates: number }>(pi, [
+        "commons",
+        "land",
+        project,
+        "--from-report",
+      ]);
       try {
         const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", project]);
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "submitted"]);
@@ -386,7 +512,8 @@ export default function berilGovernance(pi: ExtensionAPI) {
         pi.events.emit("beril:submitted", { project });
         if (ctx.hasUI) {
           const files = manifest.file_count != null ? ` (${manifest.file_count} files)` : "";
-          ctx.ui.notify(`Submitted ${project}${files}.`, "info");
+          const commons = landed.landed != null ? ` Commons: ${landed.landed} entr(ies) landed.` : "";
+          ctx.ui.notify(`Submitted ${project}${files}.${commons}`, "info");
         }
       } catch (err) {
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "failed"]).catch(() => {});

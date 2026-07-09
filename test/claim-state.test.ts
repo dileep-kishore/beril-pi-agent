@@ -70,6 +70,7 @@ test("claimStateSummary counts unsupported and empty-refute rows", () => {
     unsupported: 1,
     emptyRefutes: 1,
     tierMismatch: 1,
+    synthesisBar: 0,
   });
 });
 
@@ -95,6 +96,59 @@ test("claimStateSummary reports the tierMismatch count", () => {
   const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: REPORT });
   const summary = claimStateSummary(state.rows);
   assert.equal(summary.tierMismatch, 1);
+});
+
+const SYNTHESIS_REPORT = `# Report
+
+## Key Findings
+
+### Finding 1: Soil genomes carry more oxidative-stress genes
+
+Status: supported
+Confidence: high
+Supports: notebooks/01_soil.ipynb — enrichment test
+Supports: query:soil-oxidative-stress — independent query
+Supports: paper PMID:12345 — prior mechanism
+Refutes:
+`;
+
+test("synthesis_bar is set when a high synthesis claim lacks a real refutation search", () => {
+  const state = buildClaimState({ project: "demo", planMd: PLAN, reportMd: SYNTHESIS_REPORT });
+  assert.equal(state.rows[0].claim_type, "synthesis");
+  assert.equal(state.rows[0].groundedness, "well-grounded");
+  assert.equal(state.rows[0].tier_mismatch, false);
+  assert.equal(state.rows[0].refutesSearched, undefined);
+  assert.equal(state.rows[0].synthesis_bar, true);
+  assert.equal(claimStateSummary(state.rows).synthesisBar, 1);
+});
+
+test("buildClaimState normalizes legacy 'not recorded' refute search placeholders", () => {
+  const existing = {
+    project: "demo",
+    updated_at: "old",
+    rows: [
+      {
+        claim_id: "h1",
+        claim: "Soil genomes carry more oxidative-stress genes",
+        status: "supported",
+        confidence: "high",
+        supports: [
+          { kind: "notebook", locator: "notebooks/01.ipynb", exact: "", relevance: "" },
+          { kind: "query", locator: "query:soil", exact: "", relevance: "" },
+          { kind: "paper", locator: "PMID:123", exact: "", relevance: "" },
+        ],
+        refutes: [],
+        refutesSearched: "not recorded",
+      },
+    ],
+  } as any;
+  const state = buildClaimState({
+    project: "demo",
+    planMd: "- **H1:** Soil genomes carry more oxidative-stress genes\n",
+    reportMd: "# Report\n",
+    existing,
+  });
+  assert.equal(state.rows[0].refutesSearched, undefined);
 });
 
 const WELL_GROUNDED_REPORT = `# Report

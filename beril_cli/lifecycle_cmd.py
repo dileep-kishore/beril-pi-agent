@@ -7,6 +7,9 @@ Actions:
   marker <project> --kind ..  Write SUBMITTED.md or SUBMISSION_FAILED.md.
   current                     Emit {project, status} of the active project, or {} if none.
   session-state <project>     Store (--set <json>) or read (--get) the research_state snapshot.
+  gate <project> ...          Record (--record/--verdict/--note) or override (--override/--reason/--by)
+                              a gate verdict in beril.yaml `gates:`, or --list them.
+  coherence <project>         Emit the filesystem-only record-currency report.
 """
 
 from __future__ import annotations
@@ -24,12 +27,14 @@ from beril_cli.lifecycle import LifecycleError, load_project, save_project, set_
 from beril_cli.paths import find_repo_root
 
 _MARKER_FILES = {"submitted": "SUBMITTED.md", "failed": "SUBMISSION_FAILED.md"}
+_REPORT_REQUIRED_STATES = {"analysis", "reviewed", "complete"}
 _AUTHOR_FIELDS = ("name", "affiliation", "orcid")
 _HASH_PREFIX = "sha256:"
 _PROVENANCE_FILE = "provenance.json"
 _TRACE_FILE = "TRACE.jsonl"
 # Mirror lib/project-audit.ts redactForTrace: redact values whose KEY names a secret.
 _SECRET_KEY = re.compile(r"(token|secret|password|authorization|api[_-]?key|credential)", re.IGNORECASE)
+_ORCID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 
 def _redact(value: object) -> object:
@@ -202,6 +207,106 @@ def _write_approval(project_dir: Path, args: argparse.Namespace) -> dict:
     return approval
 
 
+def _record_gate(project_dir: Path, entry: dict) -> None:
+    """Append a gate verdict/override to the `gates:` list and the trace (append-only)."""
+    proj = load_project(project_dir)
+    gates = proj.get("gates")
+    if not isinstance(gates, list):
+        gates = []
+    gates.append(entry)
+    proj["gates"] = gates
+    save_project(project_dir, proj)
+    _append_trace(project_dir, "lifecycle.gate", {"gate": entry})
+
+
+def _validate_override_args(reason: str | None, by: str | None, label: str) -> tuple[str, str]:
+    """Validate the human-attributed override fields shared by gate/coherence paths."""
+    clean_reason = (reason or "").strip()
+    clean_by = (by or "").strip()
+    if not clean_reason:
+        raise LifecycleError(f"{label} requires --reason")
+    if not clean_by:
+        raise LifecycleError(f"{label} requires --by <orcid>")
+    if not _ORCID_RE.fullmatch(clean_by):
+        raise LifecycleError(f"{label} --by must be an ORCID iD")
+    return clean_reason, clean_by
+
+
+def _coherence_report(project_dir: Path, status: str) -> dict:
+    """Filesystem-only record-currency check (never trusts agent bookkeeping).
+
+    Reads mtimes off disk to decide whether the recorded artifacts (claims,
+    provenance, trace) are current with the report and generated run artifacts.
+    """
+    checks: list[dict] = []
+    report = project_dir / "REPORT.md"
+    claims = project_dir / "claims.json"
+
+    if status in _REPORT_REQUIRED_STATES:
+        present = report.is_file()
+        checks.append(
+            {
+                "id": "report-present",
+                "ok": present,
+                "detail": "REPORT.md exists" if present else "REPORT.md missing",
+            }
+        )
+    else:
+        checks.append(
+            {"id": "report-present", "ok": True, "detail": f"REPORT.md not required at {status or 'unknown'}"}
+        )
+
+    claims_required = status in _REPORT_REQUIRED_STATES and report.is_file()
+    if report.is_file() and claims.is_file():
+        current = claims.stat().st_mtime >= report.stat().st_mtime
+        checks.append(
+            {
+                "id": "claims-current",
+                "ok": current,
+                "detail": "claims.json current with REPORT.md" if current else "claims.json older than REPORT.md",
+            }
+        )
+    elif claims_required:
+        checks.append({"id": "claims-current", "ok": False, "detail": "claims.json missing for REPORT.md"})
+    else:
+        checks.append({"id": "claims-current", "ok": True, "detail": "no claims.json/REPORT.md pair to compare"})
+
+    record_mtime = 0.0
+    for name in (_PROVENANCE_FILE, _TRACE_FILE):
+        artifact = project_dir / name
+        if artifact.is_file():
+            record_mtime = max(record_mtime, artifact.stat().st_mtime)
+    artifacts: list[Path] = []
+    notebooks_dir = project_dir / "notebooks"
+    if notebooks_dir.is_dir():
+        artifacts += sorted(notebooks_dir.glob("*.ipynb"))
+    figures_dir = project_dir / "figures"
+    if figures_dir.is_dir():
+        artifacts += [p for p in sorted(figures_dir.iterdir()) if p.is_file()]
+    newer = [p for p in artifacts if p.stat().st_mtime > record_mtime]
+    record_behind = len(newer)
+    if record_behind:
+        newest = max(newer, key=lambda p: p.stat().st_mtime)
+        detail = f"provenance {record_behind} artifact(s) behind (newest: {newest.relative_to(project_dir).as_posix()})"
+    elif not artifacts:
+        detail = "no run artifacts to track"
+    else:
+        detail = "record current with run artifacts"
+    checks.append({"id": "record-current", "ok": record_behind == 0, "detail": detail})
+
+    trace = project_dir / _TRACE_FILE
+    has_rows = trace.is_file() and any(line.strip() for line in trace.read_text().splitlines())
+    checks.append(
+        {
+            "id": "trace-present",
+            "ok": has_rows,
+            "detail": "TRACE.jsonl has rows" if has_rows else "TRACE.jsonl missing or empty",
+        }
+    )
+
+    return {"ok": all(c["ok"] for c in checks), "checks": checks, "record_behind": record_behind}
+
+
 def _find_current_project(projects_dir: Path) -> dict[str, str] | None:
     """The active project: the most-recently-touched one not yet `complete`.
 
@@ -258,6 +363,54 @@ def run_lifecycle(args: argparse.Namespace) -> int:
             json.dump(proj, sys.stdout, default=str)
             sys.stdout.write("\n")
             return 0
+
+        if args.action == "coherence":
+            proj = load_project(project_dir)  # no beril.yaml -> LifecycleError -> rc 2
+            report = _coherence_report(project_dir, str(proj.get("status", "")))
+            json.dump(report, sys.stdout, default=str)
+            sys.stdout.write("\n")
+            return 0
+
+        if args.action == "gate":
+            load_project(project_dir)  # no beril.yaml -> LifecycleError -> rc 2
+            if getattr(args, "list", False):
+                gates = load_project(project_dir).get("gates")
+                json.dump({"gates": gates if isinstance(gates, list) else []}, sys.stdout, default=str)
+                sys.stdout.write("\n")
+                return 0
+            override_id = getattr(args, "override", None)
+            record_id = getattr(args, "record", None)
+            if override_id:
+                reason, by = _validate_override_args(
+                    getattr(args, "reason", None), getattr(args, "by", None), "gate --override"
+                )
+                entry = {
+                    "gate": override_id,
+                    "override": True,
+                    "reason": reason,
+                    "by": by,
+                    "at": _now(),
+                }
+                _record_gate(project_dir, entry)
+                json.dump({"gate": entry}, sys.stdout, default=str)
+                sys.stdout.write("\n")
+                return 0
+            if record_id:
+                verdict = getattr(args, "verdict", None)
+                if verdict not in ("pass", "fail"):
+                    print("gate --record requires --verdict pass|fail.", file=sys.stderr)
+                    return 2
+                entry = {"gate": record_id, "verdict": verdict, "note": getattr(args, "note", None) or ""}
+                by = getattr(args, "by", None)
+                if by:
+                    entry["by"] = by
+                entry["at"] = _now()
+                _record_gate(project_dir, entry)
+                json.dump({"gate": entry}, sys.stdout, default=str)
+                sys.stdout.write("\n")
+                return 0
+            print("gate requires --record <id> --verdict ..., --override <id> --by ..., or --list.", file=sys.stderr)
+            return 2
 
         if args.action == "session-state":
             # Persist / read the small, tool-derived research-state snapshot the
@@ -318,6 +471,22 @@ def run_lifecycle(args: argparse.Namespace) -> int:
             sign_off = current_status == "analysis" and args.state == "reviewed"
             if sign_off:
                 _validate_signoff_artifacts(project_dir, args)
+            if current_status == "reviewed" and args.state == "complete":
+                report = _coherence_report(project_dir, current_status)
+                if not report["ok"]:
+                    if not getattr(args, "override_coherence", False):
+                        failing = ", ".join(c["id"] for c in report["checks"] if not c["ok"])
+                        raise LifecycleError(
+                            f"reviewed → complete blocked by coherence checks: {failing}. "
+                            "Re-run with --override-coherence --reason ... --by ... to proceed."
+                        )
+                    reason, by = _validate_override_args(
+                        getattr(args, "reason", None), getattr(args, "by", None), "--override-coherence"
+                    )
+                    _record_gate(
+                        project_dir,
+                        {"gate": "coherence", "override": True, "reason": reason, "by": by, "at": _now()},
+                    )
             new_status = set_status(project_dir, args.state)
             _append_trace(project_dir, "lifecycle.set", {"status": new_status})
             result = {"status": new_status}
