@@ -28,6 +28,17 @@ test("classifies gRPC connectivity status codes", () => {
   assert.equal(classifySysError("RETRIES_EXCEEDED after 5 attempts")?.kind, "connectivity");
 });
 
+test("classifies BERIL-normalized infrastructure failures", () => {
+  assert.equal(
+    classifySysError("BERDL authentication is missing or expired. Stop here and refresh credentials")?.kind,
+    "auth",
+  );
+  assert.equal(
+    classifySysError("the BERDL Spark Connect server is unreachable (retries exhausted)")?.kind,
+    "connectivity",
+  );
+});
+
 test("bare English/numbers do not match", () => {
   assert.equal(classifySysError("the reaction rate was high"), null);
   assert.equal(classifySysError("we saw 429 colonies"), null);

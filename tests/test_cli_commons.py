@@ -129,6 +129,22 @@ def test_from_report_extracts_findings_gaps_lessons(monkeypatch, capsys, tmp_pat
     assert out["by_kind"].get("lesson") == 1
 
 
+def test_from_report_treats_future_directions_as_gaps(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("BERIL_COMMONS_DIR", str(tmp_path / "agora"))
+    monkeypatch.setattr(commons_cmd.config, "load", lambda: {})
+    repo, pdir = _project(tmp_path)
+    monkeypatch.setattr(commons_cmd, "find_repo_root", lambda: repo)
+    (pdir / "REPORT.md").write_text(
+        "# Report\n\n## Findings\n\n- Finding one\n\n"
+        "## Future Directions\n\n- Test this signal in marine genomes.\n"
+    )
+    rc = commons_cmd.run_commons(_ns(verb="land", project="demo", from_report=True))
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["by_kind"].get("finding") == 1
+    assert out["by_kind"].get("gap") == 1
+
+
 def test_from_report_falls_back_to_supported_claims(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("BERIL_COMMONS_DIR", str(tmp_path / "agora"))
     monkeypatch.setattr(commons_cmd.config, "load", lambda: {})

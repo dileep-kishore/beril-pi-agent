@@ -34,6 +34,7 @@ _PROVENANCE_FILE = "provenance.json"
 _TRACE_FILE = "TRACE.jsonl"
 # Mirror lib/project-audit.ts redactForTrace: redact values whose KEY names a secret.
 _SECRET_KEY = re.compile(r"(token|secret|password|authorization|api[_-]?key|credential)", re.IGNORECASE)
+_ORCID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 
 def _redact(value: object) -> object:
@@ -218,6 +219,19 @@ def _record_gate(project_dir: Path, entry: dict) -> None:
     _append_trace(project_dir, "lifecycle.gate", {"gate": entry})
 
 
+def _validate_override_args(reason: str | None, by: str | None, label: str) -> tuple[str, str]:
+    """Validate the human-attributed override fields shared by gate/coherence paths."""
+    clean_reason = (reason or "").strip()
+    clean_by = (by or "").strip()
+    if not clean_reason:
+        raise LifecycleError(f"{label} requires --reason")
+    if not clean_by:
+        raise LifecycleError(f"{label} requires --by <orcid>")
+    if not _ORCID_RE.fullmatch(clean_by):
+        raise LifecycleError(f"{label} --by must be an ORCID iD")
+    return clean_reason, clean_by
+
+
 def _coherence_report(project_dir: Path, status: str) -> dict:
     """Filesystem-only record-currency check (never trusts agent bookkeeping).
 
@@ -242,6 +256,7 @@ def _coherence_report(project_dir: Path, status: str) -> dict:
             {"id": "report-present", "ok": True, "detail": f"REPORT.md not required at {status or 'unknown'}"}
         )
 
+    claims_required = status in _REPORT_REQUIRED_STATES and report.is_file()
     if report.is_file() and claims.is_file():
         current = claims.stat().st_mtime >= report.stat().st_mtime
         checks.append(
@@ -251,6 +266,8 @@ def _coherence_report(project_dir: Path, status: str) -> dict:
                 "detail": "claims.json current with REPORT.md" if current else "claims.json older than REPORT.md",
             }
         )
+    elif claims_required:
+        checks.append({"id": "claims-current", "ok": False, "detail": "claims.json missing for REPORT.md"})
     else:
         checks.append({"id": "claims-current", "ok": True, "detail": "no claims.json/REPORT.md pair to compare"})
 
@@ -364,14 +381,13 @@ def run_lifecycle(args: argparse.Namespace) -> int:
             override_id = getattr(args, "override", None)
             record_id = getattr(args, "record", None)
             if override_id:
-                by = getattr(args, "by", None)
-                if not by:
-                    print("gate --override requires --by <orcid>.", file=sys.stderr)
-                    return 2
+                reason, by = _validate_override_args(
+                    getattr(args, "reason", None), getattr(args, "by", None), "gate --override"
+                )
                 entry = {
                     "gate": override_id,
                     "override": True,
-                    "reason": getattr(args, "reason", None) or "",
+                    "reason": reason,
                     "by": by,
                     "at": _now(),
                 }
@@ -464,10 +480,9 @@ def run_lifecycle(args: argparse.Namespace) -> int:
                             f"reviewed → complete blocked by coherence checks: {failing}. "
                             "Re-run with --override-coherence --reason ... --by ... to proceed."
                         )
-                    reason = getattr(args, "reason", None)
-                    by = getattr(args, "by", None)
-                    if not reason or not by:
-                        raise LifecycleError("--override-coherence requires --reason and --by")
+                    reason, by = _validate_override_args(
+                        getattr(args, "reason", None), getattr(args, "by", None), "--override-coherence"
+                    )
                     _record_gate(
                         project_dir,
                         {"gate": "coherence", "override": True, "reason": reason, "by": by, "at": _now()},

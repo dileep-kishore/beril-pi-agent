@@ -41,6 +41,11 @@ test("synthesisBar: flagged when high/medium synthesis lacks grounding or discon
   const singleSource = [at("notebook", "01.ipynb"), at("paper", "PMID:1")];
   // Well-grounded but never searched for disconfirming evidence → flagged.
   assert.equal(synthesisBar({ confidence: "high", supports: wellGrounded, refutes: [] }), true);
+  // Legacy placeholder text is not a real search note.
+  assert.equal(
+    synthesisBar({ confidence: "high", supports: wellGrounded, refutes: [], refutesSearched: "not recorded" }),
+    true,
+  );
   // Disconfirmation sought but only a single grounded source → flagged.
   assert.equal(
     synthesisBar({ confidence: "medium", supports: singleSource, refutes: [], refutesSearched: "alt" }),

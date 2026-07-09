@@ -72,6 +72,20 @@ def test_gate_override_requires_by(monkeypatch, capsys, tmp_path):
     assert rc == 2 and "--by" in capsys.readouterr().err
 
 
+def test_gate_override_requires_reason(monkeypatch, capsys, tmp_path):
+    _proj(tmp_path, "active")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="gate", override="coherence", by="0000-0001-2345-6789"))
+    assert rc == 2 and "reason" in capsys.readouterr().err.lower()
+
+
+def test_gate_override_requires_orcid_shape(monkeypatch, capsys, tmp_path):
+    _proj(tmp_path, "active")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="gate", override="coherence", reason="ok", by="not-an-orcid"))
+    assert rc == 2 and "orcid" in capsys.readouterr().err.lower()
+
+
 def test_gate_override_records_human_act(monkeypatch, capsys, tmp_path):
     d = _proj(tmp_path, "active")
     monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
@@ -128,6 +142,20 @@ def test_coherence_flags_missing_report_and_record_behind(monkeypatch, capsys, t
     assert by_id["trace-present"]["ok"] is False
 
 
+def test_coherence_fails_when_claims_missing_for_reviewed_report(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "reviewed")
+    (d / "REPORT.md").write_text("# r")
+    (d / "TRACE.jsonl").write_text('{"event": "x"}\n')
+    (d / "provenance.json").write_text("{}")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="coherence"))
+    out = json.loads(capsys.readouterr().out)
+    by_id = {c["id"]: c for c in out["checks"]}
+    assert rc == 0 and out["ok"] is False
+    assert by_id["claims-current"]["ok"] is False
+    assert "missing" in by_id["claims-current"]["detail"]
+
+
 # ── reviewed → complete enforcement ──────────────────────
 
 
@@ -169,6 +197,30 @@ def test_complete_override_requires_reason_and_by(monkeypatch, capsys, tmp_path)
     monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
     rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="complete", override_coherence=True))
     assert rc == 2 and "reason" in capsys.readouterr().err.lower()
+    assert load_project(d)["status"] == "reviewed"
+
+
+def test_complete_override_requires_orcid_shape(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "reviewed")
+    (d / "REPORT.md").write_text("# r")
+    (d / "notebooks").mkdir()
+    (d / "notebooks" / "01.ipynb").write_text("{}")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(
+        _ns(action="set", state="complete", override_coherence=True, reason="record ok", by="not-an-orcid")
+    )
+    assert rc == 2 and "orcid" in capsys.readouterr().err.lower()
+    assert load_project(d)["status"] == "reviewed"
+
+
+def test_complete_blocked_when_claims_missing_for_reviewed_report(monkeypatch, capsys, tmp_path):
+    d = _proj(tmp_path, "reviewed")
+    (d / "REPORT.md").write_text("# r")
+    (d / "TRACE.jsonl").write_text('{"event": "x"}\n')
+    (d / "provenance.json").write_text("{}")
+    monkeypatch.setattr(lifecycle_cmd, "find_repo_root", lambda: tmp_path)
+    rc = lifecycle_cmd.run_lifecycle(_ns(action="set", state="complete"))
+    assert rc == 2 and "claims-current" in capsys.readouterr().err
     assert load_project(d)["status"] == "reviewed"
 
 

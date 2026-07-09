@@ -29,6 +29,8 @@ const MATCHERS: { re: RegExp; kind: SysErrorKind }[] = [
   { re: /overloaded_error/, kind: "overloaded" },
   { re: /authentication_error|invalid_api_key|invalid_x_api_key/, kind: "auth" },
   { re: /insufficient_quota|billing_error|credit balance is too low/, kind: "billing" },
+  { re: /\bBERDL authentication is missing or expired\b/i, kind: "auth" },
+  { re: /\b(?:BERDL|Spark Connect|server).*(?:unreachable|retries exhausted)/i, kind: "connectivity" },
   // gRPC transport status codes — the same structured tokens `beril` surfaces.
   { re: /\bRETRIES_EXCEEDED\b|\bUNAVAILABLE\b/, kind: "connectivity" },
 ];

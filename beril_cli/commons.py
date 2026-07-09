@@ -219,7 +219,11 @@ def extract_from_report(project_dir: Path) -> dict[str, list[str]]:
     findings = _section_bullets(report_text, ["findings", "key findings"]) if report_text else []
     if not findings:
         findings = _supported_claims(project_dir)
-    gaps = _section_bullets(report_text, ["open questions", "gaps", "open questions / gaps"]) if report_text else []
+    gaps = (
+        _section_bullets(report_text, ["open questions", "gaps", "open questions / gaps", "future directions"])
+        if report_text
+        else []
+    )
     refutation = _newest_refutation(project_dir)
     lessons = _surviving_checks(refutation.read_text()) if refutation else []
     return {"finding": findings, "gap": gaps, "lesson": lessons}

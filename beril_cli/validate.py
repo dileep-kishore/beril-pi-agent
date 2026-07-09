@@ -95,7 +95,7 @@ def profile(rows: list[dict[str, Any]], group_col: str | None = None, axis: str 
             zeros = sum(1 for f in numeric if f == 0.0)
             zeros_frac = zeros / len(numeric)
             nonzero = [f for f in numeric if f != 0.0]
-            if zeros_frac >= _ZERO_SENTINEL_FRAC and nonzero:
+            if zeros_frac >= _ZERO_SENTINEL_FRAC and len(set(nonzero)) > 1:
                 add_finding(
                     "zero-sentinel", "warn", name,
                     f"{round(zeros_frac * 100)}% exact zeros — 0 may mean not-measured",

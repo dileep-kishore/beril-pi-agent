@@ -33,6 +33,13 @@ def test_zero_sentinel_ignores_all_zero_column():
     assert _finding(result, "zero-sentinel") is None
 
 
+def test_zero_sentinel_ignores_binary_indicator_columns():
+    rows = [{"flag": 0} for _ in range(30)] + [{"flag": 1} for _ in range(70)]
+    result = profile(rows)
+    assert _finding(result, "zero-sentinel") is None
+    assert _col(result, "flag")["flags"] == []
+
+
 def test_numeric_as_string_lexicographic_trap():
     rows = [{"ph": s} for s in ("1", "2", "10", "20", "7.5")]
     result = profile(rows)
@@ -98,11 +105,11 @@ def test_clean_data_passes():
 
 def test_run_validate_reads_rows_json(tmp_path, capsys):
     path = tmp_path / "rows.json"
-    path.write_text(json.dumps([{"x": 0}, {"x": 0}, {"x": 0}, {"x": 5}]))
+    path.write_text(json.dumps([{"x": 0}, {"x": 0}, {"x": 0}, {"x": 5}, {"x": 7}]))
     args = argparse.Namespace(rows_json=str(path), group_col=None, axis=None)
     rc = validate_cmd.run_validate(args)
     out = json.loads(capsys.readouterr().out)
-    assert rc == 0 and out["n_rows"] == 4 and out["verdict"] == "warn"
+    assert rc == 0 and out["n_rows"] == 5 and out["verdict"] == "warn"
 
 
 def test_run_validate_rejects_non_array(tmp_path, capsys):

@@ -151,6 +151,7 @@ export function synthesisBar(view: {
   if (claimTypeForEvidence(view.supports) !== "synthesis") return false;
   if (view.confidence !== "high" && view.confidence !== "medium") return false;
   const wellGrounded = groundednessForEvidence(view.supports) === "well-grounded";
-  const soughtDisconfirmation = (view.refutes ?? []).length > 0 || Boolean(view.refutesSearched);
+  const searchNote = (view.refutesSearched ?? "").trim().toLowerCase();
+  const soughtDisconfirmation = (view.refutes ?? []).length > 0 || Boolean(searchNote && searchNote !== "not recorded");
   return !(wellGrounded && soughtDisconfirmation);
 }

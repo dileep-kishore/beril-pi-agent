@@ -709,6 +709,7 @@ export function claimStateCard(
     `${roleStyle(theme, "refutes")("Refuted    ")}${theme.fg("text", String(summary.refuted))}`,
     `${theme.fg("muted", "Unsupported")}${theme.fg(summary.unsupported ? "warning" : "text", String(summary.unsupported).padStart(2))}`,
     `${theme.fg("muted", "Empty refutes")}${theme.fg(summary.emptyRefutes ? "warning" : "text", String(summary.emptyRefutes).padStart(1))}`,
+    `${theme.fg("muted", "Synthesis bar")}${theme.fg(summary.synthesisBar ? "warning" : "text", String(summary.synthesisBar ?? 0).padStart(1))}`,
     `${theme.fg("muted", "Persisted  ")}${persisted ? theme.fg("success", "claims.json") : theme.fg("dim", "no")}`,
     "",
     ...rows.slice(0, 8).map((r) => `${statusTag(theme, r.status)}  ${theme.fg("text", r.claim)}`),

@@ -495,29 +495,24 @@ export default function berilGovernance(pi: ExtensionAPI) {
         ctx.ui.notify("Submission cancelled.", "info");
         return;
       }
-      // Regenerate the RO-Crate metadata so every submission carries an
-      // interoperable provenance package (derived artifact — best-effort).
-      try {
-        await berilExec(pi, ["crate", project]);
-      } catch (err) {
-        if (ctx.hasUI) ctx.ui.notify(`RO-Crate metadata not written: ${(err as Error).message}`, "warning");
-      }
+      // Regenerate derived local artifacts before the irreversible upload. If
+      // either fails, stop here rather than submitting an archive without its
+      // provenance crate or cumulative-memory landing.
+      await berilExec(pi, ["crate", project]);
+      const landed = await berilExec<{ landed: number; skipped_duplicates: number }>(pi, [
+        "commons",
+        "land",
+        project,
+        "--from-report",
+      ]);
       try {
         const manifest = await berilExec<Record<string, unknown>>(pi, ["submit", project]);
         await berilExec(pi, ["lifecycle", "marker", project, "--kind", "submitted"]);
         // A marker, not a state transition: signal submission distinctly, never claim a lifecycle state.
         pi.events.emit("beril:submitted", { project });
-        // Land findings/gaps/lessons in the knowledge commons at the finalize
-        // seam (KOROS D115): cumulative memory, dedup'd, project-visibility.
-        const landed = await berilExec<{ landed: number; skipped_duplicates: number }>(pi, [
-          "commons",
-          "land",
-          project,
-          "--from-report",
-        ]).catch(() => undefined);
         if (ctx.hasUI) {
           const files = manifest.file_count != null ? ` (${manifest.file_count} files)` : "";
-          const commons = landed ? ` Commons: ${landed.landed} entr(ies) landed.` : "";
+          const commons = landed.landed != null ? ` Commons: ${landed.landed} entr(ies) landed.` : "";
           ctx.ui.notify(`Submitted ${project}${files}.${commons}`, "info");
         }
       } catch (err) {

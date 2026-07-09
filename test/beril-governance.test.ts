@@ -171,6 +171,85 @@ test("review_preflight summarizes claims, hashes, refutes, review, and readiness
   }
 });
 
+test("review_preflight warns when synthesis claims miss the synthesis bar", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-review-preflight-synthesis-"));
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      [
+        "# Report",
+        "",
+        "## Key Findings",
+        "",
+        "### Finding 1: Soil genes increase",
+        "",
+        "Status: supported",
+        "Confidence: high",
+        "Supports: notebooks/01.ipynb — result",
+        "Supports: query:soil-genes — independent query",
+        "Supports: paper PMID:123 — mechanism",
+        "Refutes:",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "No surviving disconfirming checks.\n", "utf8");
+    await writeFile(join(dir, "REVIEW_1.md"), "Review\n", "utf8");
+    const { tools } = harness(async (_c: string, args: string[]) => {
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: "{}", stderr: "", code: 0, killed: false };
+    });
+    const res = await tools.review_preflight.execute("id", { project: "demo" }, undefined, undefined, {
+      hasUI: false,
+      mode: "json",
+      cwd: root,
+    });
+    assert.ok((res.details as any).warnings.some((w: string) => /synthesis/i.test(w)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("review_preflight blocks empty refutes without a search note", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-review-preflight-refutes-"));
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: supported\nConfidence: medium\nSupports: notebooks/01.ipynb — test\nRefutes:\n",
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "No surviving disconfirming checks.\n", "utf8");
+    const { tools } = harness(async (_c: string, args: string[]) => {
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "analysis" }), stderr: "", code: 0, killed: false };
+      }
+      return { stdout: "{}", stderr: "", code: 0, killed: false };
+    });
+    const res = await tools.review_preflight.execute("id", { project: "demo" }, undefined, undefined, {
+      hasUI: false,
+      mode: "json",
+      cwd: root,
+    });
+    assert.ok((res.details as any).blockers.some((b: string) => /refuting evidence search note/i.test(b)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("/synthesize prompt requires claim_state and refutation checks before lifecycle transition", async () => {
   const sent: string[] = [];
   const { commands } = harness(async () => ({ stdout: "{}", stderr: "", code: 0, killed: false }));
@@ -273,6 +352,102 @@ test("/submit uploads and marks submitted when ORCID present", async () => {
       calls.find((a) => a[0] === "lifecycle" && a[1] === "marker" && a.includes("submitted")),
       "marked submitted",
     );
+    assert.ok(
+      calls.find((a) => a[0] === "crate" && a[1] === "demo"),
+      "wrote crate before upload",
+    );
+    assert.ok(
+      calls.find((a) => a[0] === "commons" && a[1] === "land" && a.includes("--from-report")),
+      "landed commons knowledge",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("/submit stops before upload when crate generation fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-submit-crate-fails-"));
+  const calls: string[][] = [];
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: supported\nConfidence: medium\nSupports: notebooks/01.ipynb — test\nRefutes: none found — searched controls\n",
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "No surviving disconfirming checks.\n", "utf8");
+    await writeFile(join(dir, "REVIEW_1.md"), "Review\n", "utf8");
+    const { commands } = harness(async (_c: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "user") {
+        return {
+          stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+          stderr: "",
+          code: 0,
+          killed: false,
+        };
+      }
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "crate") {
+        return { stdout: "", stderr: "crate failed", code: 2, killed: false };
+      }
+      return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+    });
+    const { ctx: cctx } = cmdCtx();
+    cctx.cwd = root;
+    await assert.rejects(() => commands.submit.handler("demo", cctx), /crate failed/);
+    assert.ok(!calls.find((a) => a[0] === "submit"), "must not upload when crate generation fails");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("/submit stops before upload when commons landing fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beril-submit-commons-fails-"));
+  const calls: string[][] = [];
+  try {
+    const dir = join(root, "projects", "demo");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "RESEARCH_PLAN.md"), "- **H1:** Soil genes increase.\n", "utf8");
+    await writeFile(
+      join(dir, "REPORT.md"),
+      "### Finding 1: Soil genes increase\n\nStatus: supported\nConfidence: medium\nSupports: notebooks/01.ipynb — test\nRefutes: none found — searched controls\n",
+      "utf8",
+    );
+    await writeFile(join(dir, "REFUTATION_1.md"), "No surviving disconfirming checks.\n", "utf8");
+    await writeFile(join(dir, "REVIEW_1.md"), "Review\n", "utf8");
+    const { commands } = harness(async (_c: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === "user") {
+        return {
+          stdout: JSON.stringify({ name: "A", affiliation: "LBL", orcid: "0000-0001" }),
+          stderr: "",
+          code: 0,
+          killed: false,
+        };
+      }
+      if (args[0] === "hash") {
+        return { stdout: JSON.stringify({ "01.ipynb": "sha256:abc" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "lifecycle" && args[1] === "status") {
+        return { stdout: JSON.stringify({ status: "reviewed" }), stderr: "", code: 0, killed: false };
+      }
+      if (args[0] === "commons") {
+        return { stdout: "", stderr: "commons failed", code: 2, killed: false };
+      }
+      return { stdout: JSON.stringify({ archive_key: "k", file_count: 3 }), stderr: "", code: 0, killed: false };
+    });
+    const { ctx: cctx } = cmdCtx();
+    cctx.cwd = root;
+    await assert.rejects(() => commands.submit.handler("demo", cctx), /commons failed/);
+    assert.ok(!calls.find((a) => a[0] === "submit"), "must not upload when commons landing fails");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
