@@ -2,7 +2,7 @@
 
 A [Pi](https://github.com/earendil-works/pi) package that turns the **BERIL Research Observatory** into a terminal/TUI research workbench.
 
-BERIL's scientific judgment (query patterns, research protocols, rubrics, biological interpretation) stays as Pi **skills**; connection, execution, state, safety, and rendering live in thin Pi **extensions** (one concern each, see `extensions/`) that shell out to a **bundled `beril` CLI** (in `beril_cli/` + `scripts/` + `tools/`). The proven Python keeps the logic and reproducibility; the package owns the Pi surface.
+BERIL's scientific judgment (query patterns, research protocols, rubrics, biological interpretation) stays as Pi **skills**; connection, execution, state, safety, and rendering live in thin Pi **extensions** (one concern each, see `extensions/`) that shell out to a **bundled `beril` CLI** (in `beril_cli/` + `scripts/` + `tools/`). Python owns durable lifecycle and execution contracts; the package owns the Pi surface.
 
 > **Self-contained.** This repo replaces the Claude Code / Codex skill layer of the original BERIL Research Observatory and bundles its own BERDL execution substrate — it does **not** depend on that repo at runtime. It is also a terminal workbench: no web app / Observatory UI.
 
@@ -53,52 +53,21 @@ inventory of commands, skills, and tools.
   can return to a plan or first-result checkpoint instead of manually hunting the
   session tree.
 
-**Extensions** (`extensions/`)
-- `beril-env` — connection lifecycle (`berdl_env_check`, `/berdl-connect`,
-  `/berdl-status`) and the workflow HUD widget + footer connection indicator.
-- `beril-data` — `berdl_query` (bounded read-only SQL), `berdl_discover`,
-  `berdl_peek` (one-shot table preview), `berdl_feasibility`, `berdl_export`
-  (destructive, gated), data-result hints, each rendered as a card.
-- `beril-analysis` — `notebook_scaffold` / `notebook_run` / `notebook_list`
-  tools and `/analyze` (split into `--first-result` and `--continue`).
-- `beril-audit` — `project_provenance`, `project_trace`, `/provenance`, and
-  `/trace` for inspectable project provenance and session traces.
-- `beril-capabilities` — `/skills`, `/capabilities`, `/capabilities --all`,
-  the capability palette, and soft route nudges that map plain-language
-  scientific intent to a likely skill without forcing the route.
-- `beril-plan` — `/research-plan`, `planning_preflight`, and the
-  `research_plan` plan-card tool.
-- `beril-paper` — `/paper-plan` and the `paper_plan` narrative-plan card.
-- `beril-governance` — lifecycle + reproducibility (`notebook_hash`,
-  `claim_state`, `lifecycle_transition`, `beril_user`, `lakehouse_submit`) and
-  `/synthesize` → `/berdl-review` → `/submit`.
-- `beril-literature` — literature tools (PubMed + Europe PMC, free/keyless) and
-  `/literature-review`, with `--project <id>` for project-scoped references.
-- `beril-ideas` — `science_memory`, `/science-memory`, and `/idea-tournament`
-  for using approved discoveries as priors for better next studies.
-- `beril-reroll` — science bookmarks and session forks for plan/result rerolls.
-- `beril-web` — read-only `web_read` (open web) and `docs_lookup` (current
-  library docs); both keyless, and web/docs evidence stays low-tier.
-- `beril-checkpoint` — the `request_checkpoint` decision tool.
-- `beril-review` — `/berdl-review` and `/berdl-refute`, the independent
-  review family including the adversarial red-team pass.
-- `beril-conduct` / `beril-display` — the always-on research-conduct contract
-  and display policy: collapsed routine tools plus quiet bash rendering.
-- `beril-safety` — the central destructive-action gate (`berdl_export`,
-  `lakehouse_submit`, `mc rm`/`rm -rf`): confirms in interactive mode, **blocks**
-  headless.
+## Documentation
 
-**Skills** (`skills/`) — Pi-optimized scientific judgment: `berdl-query`,
-`berdl-discover`, `research-plan`, `analysis-notebooks`, `paper-plan`, `synthesize`,
-`berdl-review`, `submit`, `literature-review`, `suggest-research`,
-`pitfall-capture`, `berdl-minio`. Invoke as `/skill:<name>` or let the model use
-them.
+- [`docs/agent/README.md`](docs/agent/README.md) — maintained, task-routed
+  architecture and implementation reference for agents and contributors.
+- [`docs/agent/capability-map.md`](docs/agent/capability-map.md) — current
+  extensions, tools, commands, skills, CLI areas, and their tests.
+- [`docs/agent/lifecycle-and-trust.md`](docs/agent/lifecycle-and-trust.md) —
+  lifecycle, gates, claims, review, provenance, and submission semantics.
+- [`docs/README.md`](docs/README.md) — full documentation index, including the
+  dated design and implementation records under `docs/superpowers/`.
 
-**Prompts** (`prompts/`) — `/berdl-start` onboarding. **Themes** (`themes/`) — `beril` (BERIL branding) and `phenix` (PHENIX branding). BERDL labels are reserved for the connection/data-access layer.
-
-> Where each capability lives (skill vs extension vs sub-agent vs command),
-> including the unmigrated cloud skills, is recorded in
-> `docs/superpowers/specs/2026-06-06-skill-home-mapping.md`.
+The exact runtime inventory is also available inside the workbench through
+`/capabilities --all`. Skills may be invoked as `/skill:<name>` or selected by
+the model. `/berdl-start` is the onboarding prompt; `beril` and `phenix` are the
+bundled themes.
 
 ## Requirements
 
