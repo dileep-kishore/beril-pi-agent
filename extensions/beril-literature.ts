@@ -7,6 +7,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { Type } from "typebox";
 import { searchEuropePmc } from "../lib/europepmc.ts";
 import { type LitRecord, fetchAbstract, fetchArticle, searchPubmed } from "../lib/lit.ts";
+import { resolveRoleModel } from "../lib/model-roles.ts";
 import { parallelMap } from "../lib/parallel-map.ts";
 import {
   abstractCard,
@@ -44,9 +45,11 @@ export interface Completer {
 
 /**
  * Expand a topic into focused PubMed search queries via an in-process `complete()`
- * call. Prefers `ctx.model`; otherwise falls back to the default model + the
- * model registry's resolved auth. Returns `[topic]` whenever no model/auth is
- * available or the response is not a JSON array of strings.
+ * call. Prefers the `fast` role model (`BERIL_FAST_MODEL`, e.g. `lbl/cborg-mini`
+ * in CBORG sessions) when it resolves, else `ctx.model`; otherwise falls back to
+ * the default model + the model registry's resolved auth. Returns `[topic]`
+ * whenever no model/auth is available or the response is not a JSON array of
+ * strings.
  */
 export async function expandQueries(
   ctx: Pick<ExtensionCommandContext, "model" | "modelRegistry" | "signal">,
@@ -57,7 +60,7 @@ export async function expandQueries(
   const getModelFn = deps.getModel ?? getModel;
   const completeFn = deps.complete ?? complete;
   try {
-    let model = ctx.model;
+    let model = resolveRoleModel(ctx, "fast");
     let apiKey: string | undefined;
     let headers: Record<string, string> | undefined;
     if (model) {
@@ -145,9 +148,10 @@ export interface StanceResult {
 /**
  * Assess each abstract's stance toward a hypothesis via an in-process `complete()`
  * call. Mirrors {@link expandQueries} exactly for model/auth resolution and the
- * `__completer` seam: prefers `ctx.model`, else falls back to the default model +
- * the registry's resolved auth. Returns every paper as `NEI` (low confidence)
- * whenever no model/auth is available or the response is not a usable JSON array.
+ * `__completer` seam: prefers the `fast` role model, else `ctx.model`, else the
+ * default model + the registry's resolved auth. Returns every paper as `NEI`
+ * (low confidence) whenever no model/auth is available or the response is not a
+ * usable JSON array.
  */
 export async function assessStances(
   ctx: Pick<ExtensionCommandContext, "model" | "modelRegistry" | "signal">,
@@ -169,7 +173,7 @@ export async function assessStances(
   const getModelFn = deps.getModel ?? getModel;
   const completeFn = deps.complete ?? complete;
   try {
-    let model = ctx.model;
+    let model = resolveRoleModel(ctx, "fast");
     let apiKey: string | undefined;
     let headers: Record<string, string> | undefined;
     if (model) {

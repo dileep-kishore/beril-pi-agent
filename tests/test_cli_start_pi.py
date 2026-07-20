@@ -129,3 +129,107 @@ def test_start_theme_env_sets_theme_when_flag_absent(monkeypatch, tmp_path):
     monkeypatch.setattr(start.os, "execvp", lambda binary, argv: None)
     start.run_start(extra_args=[])
     assert calls == [("phenix", True)]
+
+
+# ── --provider ────────────────────────────────────────────
+
+_PROVIDER_ENV = (
+    "BERIL_MODEL_PROVIDER",
+    "BERIL_MAIN_MODEL",
+    "BERIL_FAST_MODEL",
+    "BERIL_REVIEW_MODEL",
+    "BERIL_VISION_MODEL",
+    "CBORG_API_KEY",
+)
+
+
+def _stub_provider_launch(monkeypatch, tmp_path):
+    """Provider-test stubs: isolated models.json, stubbed provisioner, captured argv.
+
+    Every provider env var is set-then-deleted via monkeypatch so run_start's
+    direct os.environ writes are rolled back to the pre-test state at teardown.
+    """
+    _stub_launch(monkeypatch, tmp_path)
+    monkeypatch.setattr(start, "_checkout_release", lambda root, v: 0)
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))  # never the real ~/.pi
+    for name in _PROVIDER_ENV:
+        monkeypatch.setenv(name, "sentinel")
+        monkeypatch.delenv(name)
+    calls: list[str] = []
+    monkeypatch.setattr(start, "ensure_model_provider", lambda p: calls.append(p))
+    captured: dict = {}
+    monkeypatch.setattr(start.os, "execvp", lambda binary, argv: captured.setdefault("argv", argv))
+    return calls, captured
+
+
+def test_cli_start_passes_provider_flag(monkeypatch):
+    """`beril start --provider cborg` is consumed by argparse and forwarded to run_start."""
+    from beril_cli import cli, start as start_mod
+
+    seen: dict = {}
+
+    def fake_run_start(extra_args=None, version=None, theme=None, provider=None):
+        seen["extra_args"] = extra_args
+        seen["provider"] = provider
+        return 0
+
+    monkeypatch.setattr(start_mod, "run_start", fake_run_start)
+    assert cli.main(["start", "--provider", "cborg", "explore the data"]) == 0
+    assert seen["provider"] == "cborg"
+    assert seen["extra_args"] == ["explore the data"]
+
+
+def test_start_provider_cborg_provisions_and_sets_defaults(monkeypatch, tmp_path):
+    calls, captured = _stub_provider_launch(monkeypatch, tmp_path)
+    monkeypatch.setenv("CBORG_API_KEY", "sk-test")
+    start.run_start(extra_args=[], provider="cborg")
+    assert calls == ["cborg"]
+    assert captured["argv"] == ["pi", "--provider", "cborg", "--model", "lbl/cborg-coder"]
+    assert start.os.environ["BERIL_MODEL_PROVIDER"] == "cborg"
+    assert start.os.environ["BERIL_MAIN_MODEL"] == "cborg/lbl/cborg-coder"
+    assert start.os.environ["BERIL_FAST_MODEL"] == "cborg/lbl/cborg-mini"
+    assert start.os.environ["BERIL_REVIEW_MODEL"] == "cborg/lbl/cborg-deepthought"
+    assert start.os.environ["BERIL_VISION_MODEL"] == "cborg/lbl/cborg-vision"
+
+
+def test_start_provider_cborg_keeps_user_model(monkeypatch, tmp_path):
+    calls, captured = _stub_provider_launch(monkeypatch, tmp_path)
+    start.run_start(extra_args=["--model", "lbl/cborg-coder-fast"], provider="cborg")
+    argv = captured["argv"]
+    assert argv.count("--model") == 1
+    assert "lbl/cborg-coder" not in argv
+    assert argv[argv.index("--model") + 1] == "lbl/cborg-coder-fast"
+
+
+def test_start_provider_cborg_normalizes_joined_model_form(monkeypatch, tmp_path):
+    """--model=x is normalized to the space form — the only form Pi's parser accepts."""
+    calls, captured = _stub_provider_launch(monkeypatch, tmp_path)
+    start.run_start(extra_args=["--model=lbl/cborg-coder-fast"], provider="cborg")
+    argv = captured["argv"]
+    assert argv.count("--model") == 1
+    assert "lbl/cborg-coder" not in argv
+    assert argv[argv.index("--model") + 1] == "lbl/cborg-coder-fast"
+
+
+def test_start_other_provider_is_reappended_not_provisioned(monkeypatch, tmp_path):
+    """--provider openai must not be silently dropped (argparse consumed it)."""
+    calls, captured = _stub_provider_launch(monkeypatch, tmp_path)
+    start.run_start(extra_args=["--model", "gpt-5"], provider="openai")
+    assert calls == []
+    assert captured["argv"] == ["pi", "--model", "gpt-5", "--provider", "openai"]
+    assert "BERIL_MODEL_PROVIDER" not in start.os.environ
+
+
+def test_start_provider_cborg_warns_without_api_key(monkeypatch, tmp_path, capsys):
+    calls, captured = _stub_provider_launch(monkeypatch, tmp_path)
+    start.run_start(extra_args=[], provider="cborg")
+    assert "CBORG_API_KEY" in capsys.readouterr().err
+    assert captured["argv"][0] == "pi"  # launch still happened
+
+
+def test_start_provider_cborg_respects_user_role_env(monkeypatch, tmp_path):
+    calls, captured = _stub_provider_launch(monkeypatch, tmp_path)
+    monkeypatch.setenv("BERIL_REVIEW_MODEL", "anthropic/claude-opus-4-8")
+    start.run_start(extra_args=[], provider="cborg")
+    assert start.os.environ["BERIL_REVIEW_MODEL"] == "anthropic/claude-opus-4-8"
+    assert start.os.environ["BERIL_FAST_MODEL"] == "cborg/lbl/cborg-mini"

@@ -11,6 +11,14 @@ import berilLit, {
   resolveDoi,
 } from "../extensions/beril-literature.ts";
 
+// Model-role resolution reads BERIL_* env vars; scrub them so these tests are
+// deterministic even when run from inside a CBORG beril session.
+for (const k of Object.keys(process.env)) {
+  if (k === "BERIL_MODEL_PROVIDER" || /^BERIL_(MAIN|FAST|REVIEW|VISION)_MODEL$/.test(k)) {
+    Reflect.deleteProperty(process.env, k);
+  }
+}
+
 function harness() {
   const tools: any = {};
   const commands: any = {};
@@ -122,6 +130,100 @@ test("expandQueries returns [topic] when ctx has no model and no fallback auth",
     },
   });
   assert.deepEqual(out, ["bare topic"]);
+});
+
+test("expandQueries routes through the fast role model in a CBORG session", async () => {
+  process.env.BERIL_MODEL_PROVIDER = "cborg";
+  process.env.BERIL_FAST_MODEL = "cborg/lbl/cborg-mini";
+  try {
+    const mini = { provider: "cborg", id: "lbl/cborg-mini" };
+    const used: unknown[] = [];
+    const out = await expandQueries(
+      {
+        model: { id: "lbl/cborg-coder" },
+        modelRegistry: {
+          find: (p: string, id: string) => (p === "cborg" && id === "lbl/cborg-mini" ? mini : undefined),
+          getAll: () => [mini],
+          getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k" }),
+        },
+      } as any,
+      "topic",
+      {
+        complete: async (model: unknown) => {
+          used.push(model);
+          return { content: [{ type: "text", text: '["q1"]' }] } as any;
+        },
+      },
+    );
+    assert.deepEqual(out, ["q1"]);
+    assert.equal(used[0], mini, "expansion must use lbl/cborg-mini, not the session model");
+  } finally {
+    Reflect.deleteProperty(process.env, "BERIL_MODEL_PROVIDER");
+    Reflect.deleteProperty(process.env, "BERIL_FAST_MODEL");
+  }
+});
+
+test("expandQueries returns [topic] when the fast role model resolves but has no auth", async () => {
+  // The common misconfiguration: CBORG provisioned (model resolves via the
+  // registry) but CBORG_API_KEY unset (auth {ok:false}) — the unauthenticated
+  // complete() throws and expansion must degrade to the bare topic.
+  process.env.BERIL_MODEL_PROVIDER = "cborg";
+  process.env.BERIL_FAST_MODEL = "cborg/lbl/cborg-mini";
+  try {
+    const mini = { provider: "cborg", id: "lbl/cborg-mini" };
+    const out = await expandQueries(
+      {
+        model: { id: "lbl/cborg-coder" },
+        modelRegistry: {
+          find: (p: string, id: string) => (p === "cborg" && id === "lbl/cborg-mini" ? mini : undefined),
+          getAll: () => [mini],
+          getApiKeyAndHeaders: async () => ({ ok: false, error: "no key" }),
+        },
+      } as any,
+      "topic",
+      {
+        complete: async (_model: unknown, _ctx: unknown, opts: any) => {
+          if (!opts?.apiKey) throw new Error("401: no auth");
+          return { content: [{ type: "text", text: '["q1"]' }] } as any;
+        },
+      },
+    );
+    assert.deepEqual(out, ["topic"]);
+  } finally {
+    Reflect.deleteProperty(process.env, "BERIL_MODEL_PROVIDER");
+    Reflect.deleteProperty(process.env, "BERIL_FAST_MODEL");
+  }
+});
+
+test("expandQueries falls back to the session model when the fast role ref cannot resolve", async () => {
+  process.env.BERIL_FAST_MODEL = "cborg/lbl/cborg-mini";
+  try {
+    const session = { id: "session-model" };
+    const used: unknown[] = [];
+    // Registry has no cborg provider (profile never provisioned) → helper
+    // falls back to ctx.model, exactly the pre-role behavior.
+    const out = await expandQueries(
+      {
+        model: session,
+        modelRegistry: {
+          find: () => undefined,
+          getAll: () => [],
+          getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k" }),
+        },
+      } as any,
+      "topic",
+      {
+        complete: async (model: unknown) => {
+          used.push(model);
+          return { content: [{ type: "text", text: '["q1"]' }] } as any;
+        },
+      },
+    );
+    assert.deepEqual(out, ["q1"]);
+    assert.equal(used[0], session);
+  } finally {
+    Reflect.deleteProperty(process.env, "BERIL_FAST_MODEL");
+  }
 });
 
 test("expandQueries parses a JSON array from the completion", async () => {

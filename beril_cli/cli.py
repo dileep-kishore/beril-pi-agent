@@ -44,6 +44,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="THEME",
         help="Set the Pi theme for this checkout (e.g. beril, phenix, dark, light, or a custom registered theme).",
     )
+    start_parser.add_argument(
+        "--provider",
+        default=None,
+        metavar="PROVIDER",
+        help="Model provider for this launch. 'cborg' provisions the CBORG profile; other values pass through to Pi.",
+    )
 
     # env
     env_parser = sub.add_parser("env", help="Report BERDL environment readiness")
@@ -220,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             extra_args=remaining,
             version=args.version,
             theme=args.theme,
+            provider=args.provider,
         )
 
     if args.command == "env":
