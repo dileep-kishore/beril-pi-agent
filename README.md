@@ -184,6 +184,37 @@ BERIL's `CLAUDE_CODE_USE_VERTEX` env). Example for an Anthropic-compatible gatew
 
 For true Vertex, use ADC (`gcloud auth application-default login` + `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION`).
 
+### CBORG (LBL-hosted models)
+
+LBL users can route BERIL through [CBORG](https://cborg.lbl.gov), the lab's
+LiteLLM gateway. BERIL provisions the Pi provider profile for you — no
+hand-written `models.json` needed:
+
+```bash
+CBORG_API_KEY=sk-... uv run beril start --provider cborg
+```
+
+This writes a `cborg` entry into Pi's `models.json` (preserving any other
+custom providers you have), launches on `lbl/cborg-coder`, and points BERIL's
+model roles at the on-prem aliases: literature query expansion and stance
+triage use `lbl/cborg-mini` (cheap, fast), while `/berdl-review` and
+`/berdl-refute` use `lbl/cborg-deepthought` — the strongest analytical alias,
+which is what adversarial review wants. Pass `--model lbl/cborg-coder-fast`
+(or any other alias) to override the session model; `--list-models` shows the
+seeded catalog.
+
+Per-role overrides via env (accept `provider/model` or a bare model id):
+`BERIL_MAIN_MODEL`, `BERIL_FAST_MODEL`, `BERIL_REVIEW_MODEL`,
+`BERIL_VISION_MODEL`. Set
+`BERIL_CBORG_API_BASE=https://api-local.cborg.lbl.gov/v1` on LBLnet/VPN for
+the direct route. To switch back, just launch without `--provider cborg` (or
+use `/model` in the TUI) — the default Pi provider behavior is unchanged.
+
+**Gotcha:** CBORG enforces an IP allowlist *before* auth. Off LBLnet/VPN you
+get `403 ip_not_authorized` on every call — it looks like a bad key but is
+not. Connect via VPN or authorize your IP at
+<https://api.cborg.lbl.gov/key/manage> first.
+
 ## Safety & isolation
 
 Pi runs extensions with **full system access** and has no built-in sandbox. This package adds a central confirmation gate for destructive operations, but for untrusted automation run Pi inside isolation:

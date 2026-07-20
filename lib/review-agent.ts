@@ -1,4 +1,3 @@
-import { getModel } from "@earendil-works/pi-ai";
 import type { Model } from "@earendil-works/pi-ai";
 import {
   type ExtensionCommandContext,
@@ -8,6 +7,7 @@ import {
   createAgentSession,
   createExtensionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { resolveModelReference, resolveRoleModel } from "./model-roles.ts";
 import { parallelMap } from "./parallel-map.ts";
 import { REVIEW_PANEL, type SpecialistSpec } from "./review-rubric.ts";
 
@@ -84,23 +84,24 @@ const defaultFactory: SessionFactory = async ({ model, cwd, rubric, modelRegistr
   return session as ReviewSession;
 };
 
-/** `getModel` is statically typed against known ids; loosen for a runtime id string. */
-const getModelLoose = getModel as unknown as (provider: string, modelId: string) => Model<any> | undefined;
-
 /**
  * Run an isolated, read-only review subagent and return its review markdown.
  *
- * Resolves the reviewer model (override or Opus 4.8); if that model has no
- * resolvable auth, falls back to the parent session's `ctx.model`. Bails with a
- * clear error if neither is usable. Wires `ctx.signal` to `session.abort()` and
- * disposes the session in `finally`.
+ * Resolves the reviewer model — an explicit override (`provider/modelId` or a
+ * bare id, e.g. a CBORG alias), else the `review` role (`BERIL_REVIEW_MODEL`),
+ * else Opus 4.8 — via the registry, so custom-provider models resolve too. If
+ * the chosen model has no resolvable auth, falls back to the parent session's
+ * `ctx.model`. Bails with a clear error if neither is usable. Wires
+ * `ctx.signal` to `session.abort()` and disposes the session in `finally`.
  */
 export async function runReviewSubagent(
   ctx: Pick<ExtensionCommandContext, "model" | "modelRegistry" | "signal">,
   req: ReviewRequest,
   factory: SessionFactory = defaultFactory,
 ): Promise<string> {
-  const chosen = getModelLoose("anthropic", req.modelOverride ?? DEFAULT_REVIEW_MODEL);
+  const chosen = req.modelOverride
+    ? resolveModelReference(ctx.modelRegistry, req.modelOverride, "anthropic")
+    : resolveRoleModel(ctx, "review", { provider: "anthropic", model: DEFAULT_REVIEW_MODEL });
   let model: Model<any> | undefined;
   if (chosen) {
     const auth = await ctx.modelRegistry.getApiKeyAndHeaders(chosen);
@@ -155,7 +156,10 @@ export async function runReviewPanel(
   factory: SessionFactory = defaultFactory,
 ): Promise<PanelResult[]> {
   const panel = opts.panel ?? REVIEW_PANEL;
-  const settled = await parallelMap(panel, opts.concurrency ?? panel.length, (spec) =>
+  // CBORG asks on-prem clients to hold to <=5 parallel requests (no-op for the
+  // default 4-specialist panel; bites only for custom panels).
+  const cap = process.env.BERIL_MODEL_PROVIDER === "cborg" ? 5 : Number.POSITIVE_INFINITY;
+  const settled = await parallelMap(panel, Math.min(opts.concurrency ?? panel.length, cap), (spec) =>
     runReviewSubagent(
       ctx,
       {

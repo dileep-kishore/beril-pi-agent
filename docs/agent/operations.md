@@ -28,6 +28,16 @@ repository root.
 session flags request resume/continue behavior. Project sessions are named with
 project and phase where possible.
 
+`beril start --provider cborg` provisions the CBORG (LBL LiteLLM gateway)
+custom provider into Pi's `models.json` (`beril_cli/model_provider.py`),
+exports `BERIL_MODEL_PROVIDER` plus per-role model defaults
+(`BERIL_MAIN_MODEL`, `BERIL_FAST_MODEL`, `BERIL_REVIEW_MODEL`,
+`BERIL_VISION_MODEL`), and appends `--provider cborg --model lbl/cborg-coder`
+to Pi's argv (Pi ignores `--provider` without `--model`). Any other
+`--provider` value passes through to Pi unchanged. Extensions resolve
+role-specific models through `lib/model-roles.ts`; see the README "Model
+provider" section for usage and the CBORG IP-allowlist gotcha.
+
 Release behavior is forward-only:
 
 - Default: move to a newer published release tag only when behind; never

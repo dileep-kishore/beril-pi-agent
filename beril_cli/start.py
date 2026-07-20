@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 from beril_cli.detect import print_jupyterhub_path_hint
+from beril_cli.model_provider import CBORG_DEFAULT_MODEL, ensure_model_provider
 from beril_cli.paths import find_repo_root
 
 GITHUB_API_TIMEOUT_SECONDS = 10
@@ -331,10 +332,50 @@ def _pull_latest(repo_root: Path, branch: str) -> int:
     return 0
 
 
+def _apply_provider(extra_args: list[str], provider: str) -> list[str]:
+    """Provision the selected model provider and re-append its Pi flags.
+
+    argparse consumed ``--provider`` from the passthrough args, so it must be
+    re-appended for every provider. For CBORG, also provision Pi's models.json,
+    export the role-model env defaults, and append a default ``--model`` —
+    ``--provider`` alone is inert in Pi 0.79.1 (only consumed with ``--model``).
+    A joined ``--model=x`` is normalized to the space form, which is the only
+    form Pi's parser accepts.
+    """
+    if provider != "cborg":
+        return [*extra_args, "--provider", provider]
+
+    normalized: list[str] = []
+    for arg in extra_args:
+        if arg.startswith("--model="):
+            normalized += ["--model", arg.split("=", 1)[1]]
+        else:
+            normalized.append(arg)
+    extra_args = normalized
+
+    ensure_model_provider("cborg")
+    os.environ["BERIL_MODEL_PROVIDER"] = "cborg"
+    os.environ.setdefault("BERIL_MAIN_MODEL", "cborg/lbl/cborg-coder")
+    os.environ.setdefault("BERIL_FAST_MODEL", "cborg/lbl/cborg-mini")
+    os.environ.setdefault("BERIL_REVIEW_MODEL", "cborg/lbl/cborg-deepthought")
+    os.environ.setdefault("BERIL_VISION_MODEL", "cborg/lbl/cborg-vision")
+    if not os.environ.get("CBORG_API_KEY"):
+        print(
+            "Warning: CBORG_API_KEY is not set; Pi will launch but the first "
+            "model request will fail.",
+            file=sys.stderr,
+        )
+    args = [*extra_args, "--provider", "cborg"]
+    if not any(arg.split("=", 1)[0] == "--model" for arg in extra_args):
+        args += ["--model", CBORG_DEFAULT_MODEL]
+    return args
+
+
 def run_start(
     extra_args: list[str] | None = None,
     version: str | None = None,
     theme: str | None = None,
+    provider: str | None = None,
 ) -> int:
     """Launch the Pi coding agent from the repo root.
 
@@ -386,6 +427,9 @@ def run_start(
         _ensure_default_theme(repo_root)
         os.environ.setdefault("BERIL_THEME", _read_pi_theme(repo_root) or "beril")
     _ensure_quiet_startup(repo_root)
+
+    if provider:
+        extra_args = _apply_provider(extra_args, provider)
 
     print(f"Launching {agent}...")
     print_jupyterhub_path_hint(repo_root)
